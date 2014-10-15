@@ -1,25 +1,30 @@
-<% includeTpl('Announcement') %>
+<%include file="Announcement.tpl"/>
 
-<div class="pageHeader pageHeaderMainPage clearfix">
-        <% includeTpl('SessionBar') %>
+<div class="page-header clearfix" style="background-color: #36798C;">
+        <%include file="SessionBar.tpl" args="dark=False"/>
 
         <!--
             set fixed height on anchor to assure that the height is
             corrected if the image cannot be retrieved (i.e. https problems) -->
-        <a style="min-height: 66px;" href="<%= urlHandlers.UHWelcome.getURL() %>">
-            <img class="headerLogo" src="<%= imgLogo %>" />
+        <a style="min-height: 60px;" href="${ urlHandlers.UHWelcome.getURL() }">
+            <img class="header-logo" src="${ systemIcon('burotel.png') }" />
         </a>
 
-    <div class="headerAboutIndico">
-        <%= _("Burotel, Desk booking service") %>
-    </div>
-    <% if len(adminItemList) >= 1: %>
-    <div class="globalMenu">
-        <ul>
+    <div class="global-menu toolbar">
 
-                <li onmouseover="this.className = 'mouseover'" onmouseout="this.className = ''"><a href="<%= urlHandlers.UHRoomBookingWelcome.getURL() %>"><%= _("Room booking") %></a></li>
-                <li onmouseover="this.className = 'mouseover'" onmouseout="this.className = ''"><a href="<%= adminItemList[0]['url'] %>"><%= adminItemList[0]['text'] %></a></li>
-        </ul>
+        % if roomBooking:
+            <a href="${ urlHandlers.UHRoomBookingWelcome.getURL() }">${ _("Room booking") }</a>
+        % endif
+        
+        % if len(adminItemList) == 1:
+            <a href="${ adminItemList[0]['url'] }">${ adminItemList[0]['text'] }</a>
+        % elif len(adminItemList) > 1:
+            <a class="arrow" href="#" data-toggle="dropdown">${ _("Administration") }</a>
+            <ul class="dropdown">
+            % for item in adminItemList:
+                <li><a href="${ item['url'] }">${ item['text'] }</a></li>
+            % endfor
+            </ul>
+        % endif
     </div>
-   <% end %>
 </div>
