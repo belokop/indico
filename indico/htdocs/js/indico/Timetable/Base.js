@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 var TimetableDefaults = {
     topMargin: 30,
     bottomMargin: 40,
@@ -5,12 +22,12 @@ var TimetableDefaults = {
     rightMargin: 5,
     resolution: 1,
     menuWidth: 150,
-    blockMargin: 4,         // Margin used inside timetable blocks
-    wholeDay : 7,              // # of hours of duration for a timetable event to be seen as be during the whole day.
+    blockMargin: 4,        // Margin used inside timetable blocks
+    wholeday : 7,              // # of hours of duration for a timetable event to be seen as be during the whole day.
     minContribHeight: 20,      // Minimum height for a contrib displayed inside a session TODO: remove?
     layouts: {'compact': {name: "Compact",
                           values : {
-                              pxPerHour: 60,
+                              pxPerHour: 150,
                               pxPerSpace: 2,
                               minPxPerBlock: 50
                           },
@@ -18,7 +35,7 @@ var TimetableDefaults = {
 
               'proportional': {name: 'Proportional',
                                values : {
-                                   pxPerHour: 50,
+                                   pxPerHour: 120, //50 when not proportional
                                    minPxPerBlock: 25
                                },
                                manager: new ProportionalLayoutManager()
@@ -48,11 +65,12 @@ type("TimeTable", ["HistoryListener"], {
 
 
     _draw: function(timetableDiv) {
-
-        return Html.div({style:{width: this.width}},
-                        this.header,
-                        timetableDiv,
-                        this.loadingIndicator);
+        return $('<div/>').css({width: this.width}).append(
+            $('<div/>').css('display', 'block'),
+            this.legend,
+            this.header,
+            timetableDiv.dom,
+            this.loadingIndicator.dom).get();
     },
 
     _getMenu: function() {
@@ -61,11 +79,15 @@ type("TimeTable", ["HistoryListener"], {
 
     postDraw: function() {
         this.timetableDrawer.postDraw();
-        this.LookupTabWidget.prototype.postDraw.call(this);
+        //this.LookupTabWidget.prototype.postDraw.call(this);
     },
 
     getData: function() {
         return this.data;
+    },
+
+    get_elem: function(blkId) {
+        return $(this.getTimetableDrawer()._blockMap[blkId]);
     },
 
     getById: function(id) {
@@ -88,11 +110,21 @@ type("TimeTable", ["HistoryListener"], {
             throw 'unrecognized id!';
         }
 
-        for (day in this.data) {
+        for (var day in this.data) {
             if (this.data[day][compositeId]) {
                 return this.data[day][compositeId];
             }
         }
+    },
+
+    setSelectedTab: function(val) {
+        // same as inherited, but return deferred
+        var dfr = $.Deferred();
+        $('body').one('timetable_ready', function() {
+            dfr.resolve();
+        });
+        this.JLookupTabWidget.prototype.setSelectedTab.call(this, val);
+        return dfr.promise();
     },
 
     getTimetableDrawer: function() {
@@ -112,17 +144,30 @@ type("TimeTable", ["HistoryListener"], {
     _getHeader: function() {
         return Html.div({});
     },
+
+    /*
+      * To be overloaded. Returns the small "Session legend" displayed in
+      * detailed mode (only).
+      */
+    _getLegend: function() {
+            return Html.div({});
+    },
     /*
       * To be overloaded. Returns buttons to be displayed below the tabs in
       * the tab widget.
       */
     _functionButtons: function() {
         return [];
+    },
+
+    //To be overloaded
+    redrawLegend: function() {
+        return;
     }
+
 },
      function(data, width, wrappingElement, detailLevel, managementMode) {
          var self = this;
-
          this.data = data;
 
          this.enabled = true;
@@ -132,7 +177,7 @@ type("TimeTable", ["HistoryListener"], {
          this.width = width;
          this.loadingIndicator = this._createLoadingIndicator();
          this.header = this._getHeader();
-
+         this.legend = $('<div/>');
      }
     );
 
@@ -165,7 +210,6 @@ type("DisplayTimeTable", ["TimeTable"], {
             self.print();
 
         });
-
         return Html.ul({className: "inner", style: {display: 'none'}},
                        Html.li("menuConfMiddleCell",
                                printLink));
@@ -173,99 +217,106 @@ type("DisplayTimeTable", ["TimeTable"], {
     print: function() {
         var self = this;
 
-        //self.timetableDrawer.setPrintableVersion(true);
+        self.timetableDrawer.setPrintableVersion(true);
+        var timetableElements = translate(self.timetableDrawer.canvas.dom.childNodes, function(value) {return value;});
 
-        var bodyPadding = $E(document.body).dom.style.padding;
-        var timetableElements = translate(self.timetableDrawer.canvas.dom.childNodes, function(value) {return $E(value);});
-        var elements = translate($E(document.body).dom.childNodes, function(value) {return $E(value);});
+        var goBackLink = $('<a/>').prop('href', window.location.hash).html($T('Go back')).css('font-size', '17px');
+        var separator = $('<a/>').html(' | ').css('fontSize', '17px');
+        var printLink = $('<a/>').prop('href', window.location.hash).html($T('Print')).css('font-size', '17px');
 
-        var goBackLink = Html.a({href: window.location.hash, style: {fontSize: '17px'}}, $T('Go back'));
-        var printLink = Html.a({href: window.location.hash, style: {fontSize: '17px'}}, $T('Print'));
+        var links = $('<span/>').append(goBackLink, separator, printLink).css('float', 'right');
 
-        var links = Html.span({style: {cssFloat: 'right'}}, printLink, ' | ', goBackLink);
+        var header = $('<div/>').addClass('timetableHeader clearfix').append(links).css({'padding': '0px 5px 5px 5px',
+                                                                                        'border-bottom': '1px solid black',
+                                                                                        'text-align': 'center',
+                                                                                        'width': self.timetableDrawer.width});
+        header.append($('<span/>').append(self._titleTemplate(self.timetableDrawer.day)).css('float', 'left'));
 
-        var headerStyle = {padding: '0px 5px 5px 5px',
-            borderBottom: '1px solid black',
-            textAlign: 'center',
-            width: pixels(self.timetableDrawer.width)};
-        var header = Html.div({className: 'timetableHeader clearfix', style: headerStyle}, links,
-            Html.span({style: {cssFloat: 'left'}}, self._titleTemplate(self.timetableDrawer.day)));
-
-        goBackLink.observeClick(function(e) {
-            self.timetableDrawer.setPrintableVersion(false);
-            $E(document.body).setStyle('padding', bodyPadding);
-            $E(document.body).set(elements);
-
+        goBackLink.click(function() {
+            location.reload();
         });
-        printLink.observeClick(function(e) {
+
+        printLink.click(function() {
             window.print();
         });
-        var timetableDiv = Html.div({style: {paddingTop: pixels(20), position: 'relative'}}, timetableElements);
-        $E(document.body).set(header, timetableDiv);
-        $E(document.body).setStyle('padding', pixels(30));
+
+        var timetableDiv = $('<div/>').append(timetableElements).css({'padding-top': '20px', 'position': 'relative'});
+
+        $("body").html(header.add(timetableDiv));
+        $("body").css("padding", "30px");
     },
 
     pdf: function() {
-        window.location = Indico.Urls.ConfTimeTableCustomPDF + '?confId=' + this.eventInfo.id + '&showDays=all&showSessions=all';
+        window.location = build_url(Indico.Urls.ConfTimeTableCustomPDF, {
+            confId: this.eventInfo.id,
+            showDays: 'all',
+            showSessions: 'all'
+        });
     },
 
     fullScreen: function() {
         var self = this;
 
-        //self.timetableDrawer.setPrintableVersion(true);
-
-        var bodyPadding = $E(document.body).dom.style.padding;
-        var elements = translate($E(document.body).dom.childNodes, function(value) {return $E(value);});
         IndicoUI.Dialogs.Util.progress($T("Switching to full screen mode..."));
-
-        var goBackLink = Html.a({href: window.location.hash, style: {fontSize: '17px'}}, $T('Go back'));
-
-        var links = Html.span({style: {cssFloat: 'right'}}, goBackLink);
-
-        self.previousWidth = self.timetableDrawer.width;
-
-        goBackLink.observeClick(function(e) {
-            IndicoUI.Dialogs.Util.progress($T("Switching to normal mode..."));
-            // This timeout is needed in order to give time to the progress indicator to be rendered
-            setTimeout(function(){
-                self.timetableDrawer.width = self.previousWidth;
-                self.timetableDrawer.setPrintableVersion(false);
-                $E(document.body).setStyle('padding', bodyPadding);
-                $E(document.body).set(elements);
-                self.timetableDrawer.redraw(self.currentDay);
-            }, 50);
-        });
-
-     // This timeout is needed in order to give time to the progress indicator to be rendered
+        // This timeout is needed in order to give time to the progress indicator to be rendered
         setTimeout(function(){
-            self.timetableDrawer.width = $E(document.body).dom.clientWidth - 50; // 50 is a width offset.
+            self.timetableDrawer.width = $(window).width() - 50; // 50 is a width offset.
 
-            var headerStyle = {padding: '0px 5px 5px 5px',
-                    borderBottom: '1px solid black',
-                    textAlign: 'center',
-                    width: pixels(self.timetableDrawer.width)};
-            var header = Html.div({className: 'timetableHeader clearfix', style: headerStyle}, links,
-                Html.span({style: {cssFloat: 'left'}}, self._titleTemplate(self.timetableDrawer.day)));
+            var header = $('<div/>').addClass('timetableFullScreenHeader clearfix').css('width', self.timetableDrawer.width);
+            header.append($('<span/>').append(self._titleTemplate(self.timetableDrawer.day)).css('float', 'left'));
 
+            var timetableCanvas = $('#timetable_canvas');
+            $('#timetable_canvas').width('width', self.timetableDrawer.width);
+            $("body").html(header);
+            $("body").css("padding", "30px");
+            $(".timetableFullScreenHeader").before(self._getExtraButtons());
+            $(".timetableFullScreenHeader").before(self.legend);
+            $(".timetableFullScreenHeader").after(timetableCanvas);
             self.timetableDrawer.redraw(self.currentDay);
-            var timetableElements = translate(self.timetableDrawer.canvas.dom.childNodes, function(value) {return $E(value);});
-            var timetableDiv = Html.div({style: {width:pixels(self.timetableDrawer.width), paddingTop: pixels(20), position: 'relative'}}, timetableElements);
-            $E(document.body).set(header, timetableDiv);
-            $E(document.body).setStyle('padding', pixels(30));
+
+            self._filterSetup();
+            if (self.timetableDrawer.detail.get() == 'contribution') {
+                var newDetailLevel = self.timetableDrawer.detail.get() == 'contribution' ? 'session' : 'contribution';
+                self.timetableDrawer.detail.set(newDetailLevel);
+                self.toggleDetailedView();
+            }
         }, 50);
+    },
+
+    _getExtraButtons: function() {
+        var self = this;
+        var container = $('<div class="tabExtraButtons"/>');
+        var goBackButton = {'btn': Html.div('buttonWhite', $T('Exit Full Screen')),
+            'onclick': function(btnContainer) {
+                location.reload();
+            }
+        };
+        var buttons = self._functionButtons();
+        buttons[2] = goBackButton;
+        $.each(buttons, function(i, btnData) {
+            var btn = $('<div class="buttonContainer"/>').append(btnData.btn.dom || btnData.btn).click(function() {
+                btnData.onclick(btn);
+            });
+            container.append(btn);
+        });
+        container.children(':first').addClass('buttonContainerLeft');
+        container.children(':last').addClass('buttonContainerRight');
+        goBackButton.btn.getParent().dom.style.background ="#9F883B";
+        return container;
     },
 
     _filterSetup: function() {
         var self = this;
         this.filter = new TimeTableFilter(this.timetableDrawer, function () {
             // When closed restore the filter button color
-            self.filterButtonContainer.dom.style.background = "";
+            self.filterButtonContainer.css('background', '');
             return true;
         });
         this.filter.draw();
     },
 
     toggleDetailedView: function() {
+        var self = this;
         var detailLevel = this.timetableDrawer.detail.get();
         var newDetailLevel = detailLevel == 'contribution' ? 'session' : 'contribution';
         this.timetableDrawer.detail.set(newDetailLevel);
@@ -274,6 +325,30 @@ type("DisplayTimeTable", ["TimeTable"], {
         //detailsButton.btn.set(state ? "Hide details" : "Show details");
         this.detailsButton.btn.getParent().dom.style.background = state ? "#9F883B" : "";
         this._addToHistory(this.currentDay + (state?'.detailed':''));
+
+        var legend;
+
+        //If the "Detailed view" button is clicked and "activated".
+        if(this.inDetailedMode) {
+            /* Draw legend or "undraw" legend (getLegend() returns an empty div)
+               when toggling for detailed view. */
+            legend = this._getLegend();
+            this.legend.replaceWith(legend);
+
+            if (this._legendActive) {
+                self._toggleLegend(true);
+            } else {
+                self._legendPostDraw();
+            }
+        } else {
+            if (this._legendActive) {
+                self._toggleLegend(false);
+            }
+            legend = $('<div/>');
+            this.legend.replaceWith(legend)
+
+        }
+        this.legend = legend;
     },
 
     _functionButtons: function() {
@@ -286,31 +361,33 @@ type("DisplayTimeTable", ["TimeTable"], {
         };
 
         this.pdfButton = {'btn': Html.div('buttonWhite', $T('PDF')),
-                'onclick': function(btnContainer) {
-                    self.pdf();
-                }
+            'onclick': function(btnContainer) {
+                self.pdf();
+            }
         };
 
         this.fullScreenButton = {'btn': Html.div('buttonWhite', $T('Full screen')),
-                'onclick': function(btnContainer) {
-                    self.fullScreen();
-                }
+            'onclick': function(btnContainer) {
+                self.fullScreen();
+            }
         };
 
         // TODO: Needs to be implemented
         this.linkButton = Html.div('linkButtonWhite', $T('Link'));
 
-        this.detailsButton = {'btn': Html.div('buttonWhite', Html.span({}, $T('Detailed view'))),
+        this.detailsButton = {'btn': Html.div({className: 'buttonWhite', id: 'detailsButton'},
+                                               Html.span({}, $T('Detailed view'))),
             'onclick': function() {self.toggleDetailedView();}};
 
         this.filterButton = {'btn': Html.div('buttonWhite', $T('Filter')),
             'onclick': function(btnContainer) {
-                // Save the container so that the filter button background
-                // color can be restored when filter is closed
-                self.filterButtonContainer = btnContainer;
-                self.filter.toggle();
-                var state = self.filter.state.get();
-                btnContainer.dom.style.background = state ? "#9F883B" : "";
+              // Save the container so that the filter button background
+              // color can be restored when filter is closed
+              self.filterButtonContainer = btnContainer;
+              self.filter.toggle();
+              var state = self.filter.state.get();
+              self._filterActive = state;
+              btnContainer.css('background', state ? "#9F883B" : "");
             }
         };
 
@@ -319,8 +396,8 @@ type("DisplayTimeTable", ["TimeTable"], {
                 this.fullScreenButton,
                 this.detailsButton,
                 this.filterButton];
-    }
-},
+        }
+    },
      function(data, width, wrappingElement, detailLevel) {
          this.TimeTable(data, width, wrappingElement, detailLevel, false);
 
@@ -332,11 +409,10 @@ type("DisplayTimeTable", ["TimeTable"], {
     );
 
 
-type("TopLevelTimeTableMixin", ["LookupTabWidget"], {
+type("TopLevelTimeTableMixin", ["JLookupTabWidget"], {
 
     draw: function() {
-
-        return this.LookupTabWidget.prototype.draw.call(this);
+      return this.JLookupTabWidget.prototype.draw.call(this);
     },
 
     getDays: function() {
@@ -345,12 +421,12 @@ type("TopLevelTimeTableMixin", ["LookupTabWidget"], {
 
     disable: function() {
         this.enabled = false;
-        this.LookupTabWidget.prototype.disable.call(this);
+        this.JLookupTabWidget.prototype.disable.call(this);
     },
 
     enable: function() {
         this.enabled = true;
-        this.LookupTabWidget.prototype.enable.call(this);
+        this.JLookupTabWidget.prototype.enable.call(this);
     },
 
     _titleTemplate : function(text) {
@@ -383,6 +459,7 @@ type("TopLevelTimeTableMixin", ["LookupTabWidget"], {
     },
 
     switchToInterval : function(intervalId) {
+        var dfr = $.Deferred();
         this.disable();
 
         var intervalInfo = this.data[this.currentDay][intervalId];
@@ -393,31 +470,45 @@ type("TopLevelTimeTableMixin", ["LookupTabWidget"], {
                                                                  intervalInfo,
                                                                  this.eventInfo,
                                                                  this.width.slice(0,-2),
-                                                                 this.canvas,
+                                                                 this.canvas[0],
                                                                  'contribution',
-                                                                this.isSessionTimetable);
+                                                                 this.isSessionTimetable,
+                                                                 this.customLinks);
 
         this.intervalTimeTable.setData(intervalInfo);
-        var content = this.intervalTimeTable.draw()
-        this.canvas.set(content);
-        this.menu.dom.style.display = 'none';
+        var content = this.intervalTimeTable.draw();
+        this.canvas.html(content[0]);
+        this.intervalTimeTable.postDraw();
 
+        $('body').trigger('timetable_switch_interval', this.intervalTimeTable);
+
+        dfr.resolve();
+        return dfr.promise();
     },
 
     postDraw: function() {
         this.TimeTable.prototype.postDraw.call(this);
-        var self = this;
-
     },
 
-    switchToTopLevel : function() {
+    switchToTopLevel : function(day) {
+        day = day || this.currentDay;
+        var dfr = $.Deferred();
         this.enable();
-        this.setSelectedTab(this.currentDay);
-        this._drawContent();
-        this.menu.dom.style.display = 'block';
+        this.setSelectedTab(day || this.currentDay);
+        this._generateContent(this.getSelectedPanel());
         this.timetableDrawer.redraw();
-    }
 
+        // Refresh header (menu, etc...)
+        var header = this._getHeader();
+        this.header.replaceWith(header);
+        this.header = header;
+
+        $('body').trigger('timetable_switch_toplevel', this);
+        window.location = '#' + day;
+
+        dfr.resolve();
+        return dfr.promise();
+    }
 },
      function(data, width, wrappingElement, detailLevel, managementActions, historyBroker, timetableLayoutId) {
 
@@ -467,11 +558,11 @@ type("TopLevelTimeTableMixin", ["LookupTabWidget"], {
 
          this.currentDay = initialTab;
 
-         this.LookupTabWidget( translate(this.sortedKeys, function(key) {
+         this.JLookupTabWidget(translate(this.sortedKeys, function(key) {
 
              return [key, function() {
 
-                 detailed = self.inDetailedMode?'.detailed':'';
+                 var detailed = self.inDetailedMode?'.detailed':'';
 
                  self.currentDay = key;
                  // each time one tab is clicked,
@@ -493,6 +584,7 @@ type("TopLevelTimeTableMixin", ["LookupTabWidget"], {
                  }
              }];
          }), this.width, 100, initialTab, this._functionButtons(), this.canvas);
+         this.makeScrollable();
 
          if (dayAndInterval[1]) {
              var subref = dayAndInterval[1];
@@ -528,6 +620,10 @@ type("IntervalTimeTableMixin", [], {
             " (", $B(Html.span({}), this.slotStartTime), " - ", $B(Html.span({}), this.slotEndTime),")" )));
     },
 
+    postDraw: function() {
+        this.timetableDrawer.postDraw();
+    },
+
     setData: function(data) {
         var day = IndicoUtil.formatDate2(IndicoUtil.parseJsonDate(data.startDate));
         var ttData = {};
@@ -558,7 +654,7 @@ type("IntervalTimeTableMixin", [], {
 
 
 },
-     function(parent, width, wrappingElement, managementActions) {
+     function(parent, width, wrappingElement, managementActions, layout) {
 
          this.managementActions = managementActions;
          this.parentTimetable = parent;
@@ -568,11 +664,12 @@ type("IntervalTimeTableMixin", [], {
                                                             this._functionButtons(),
                                                             this.loadingIndicator,
                                                             !!managementActions,
-                                                            managementActions);
+                                                            managementActions,
+                                                            layout || 'compact');
      });
 
 
-type("ManagementTimeTable",["TimeTable"], {
+type("ManagementTimeTable",["TimeTable", "UndoMixin"], {
 
     _generateSlotTitle: function(slotData) {
         return slotData.title + (slotData.slotTitle ? ": " + slotData.slotTitle : '');
@@ -610,12 +707,12 @@ type("ManagementTimeTable",["TimeTable"], {
                                    OWNER_START_DATE_EXTENDED: {
                                        SessionSlot : $T('The <strong>starting time</strong> of the session interval <strong>')  + title + $T('</strong> was moved from '),
                                        Session: $T('The <strong>starting time</strong> of the session interval <strong>')  + title  + $T('</strong> was moved from '),
-                                       Conference: $T('The <strong>starting time</strong> of the <strong>Conference</strong> was moved from ')
+                                       Conference: $T('The <strong>starting time</strong> of the <strong>Event</strong> was moved from ')
                                    },
                                    OWNER_END_DATE_EXTENDED: {
                                        SessionSlot : $T('The <strong>ending time</strong> of the session interval <strong>') + title + $T('</strong> was moved from '),
                                        Session: $T('The <strong>ending time</strong> of the session interval <strong>') + title + $T('</strong> was moved from '),
-                                       Conference: $T('The <strong>ending time</strong> of the <strong>Conference</strong> was moved from ')
+                                       Conference: $T('The <strong>ending time</strong> of the <strong>Event</strong> was moved from ')
                                    },
                                    ENTRIES_MOVED: {
                                        SessionSlot: $T('The contents of the interval <strong>') + title + $T('</strong> were moved from ')
@@ -628,6 +725,34 @@ type("ManagementTimeTable",["TimeTable"], {
                                return Html.li({}, span);
                            }),
                        closeButton);
+    },
+
+
+    _updateMovedEntry: function(result, oldEntryId) {
+        return this._updateEntry(result, oldEntryId, function(data){
+
+            var oldDay = Util.formatDateTime(Util.parseDateTime(result.old.startDate, IndicoDateTimeFormats.Default),
+                                          IndicoDateTimeFormats.Ordinal);
+
+            if (result.old.sessionId) {
+                // block was inside session slot
+                delete data[oldDay]['s' + result.old.sessionId + 'l' + result.old.sessionSlotId].entries[result.old.id];
+            } else {
+                // block was in top level
+                delete data[oldDay][result.old.id];
+            }
+
+            if(result.slotEntry){
+                // block moves inside session slot
+                data[result.day][result.slotEntry.id].entries[result.id] = result.entry;
+                // updates the time of the session if it has to be extended
+                data[result.day][result.slotEntry.id].startDate.time = result.slotEntry.startDate.time;
+                data[result.day][result.slotEntry.id].endDate.time = result.slotEntry.endDate.time;
+            } else {
+                // block moves to top level
+                data[result.day][result.id]=result.entry;
+            }
+        });
     },
 
     /*
@@ -676,6 +801,7 @@ type("ManagementTimeTable",["TimeTable"], {
 
         var type = Util.parseId(entry[2])[0];
 
+        var conference = null;
         var slot = null;
         var title = "";
 
@@ -685,7 +811,7 @@ type("ManagementTimeTable",["TimeTable"], {
         if (type == "Session") {
             return null;
         } else if (type == 'Conference') {
-            conference = self.timetable.getById(entry[2]);
+            conference = this.getById(entry[2]);
             title = conference.title;
             startTime = conference.startDate.time.slice(0,5);
             endTime = conference.endDate.time.slice(0,5);
@@ -717,6 +843,89 @@ type("ManagementTimeTable",["TimeTable"], {
         return null;
     },
 
+    _allowCreateHere: function(elementType) {
+        switch(elementType) {
+        case 'Session':
+            return (this.contextInfo._type == "Conference");
+        case 'Break':
+            return (this.contextInfo._type == "Conference" ? true : (this.contextInfo.isPoster === false));
+        case 'Contribution':
+            return true;
+        }
+
+    },
+
+    _retrieveSessionColor: function(session){
+        return this.getById("s"+session.id).color;
+    },
+
+    _openSessionMenu: function(triggerElement, parent) {
+
+        if (exists(this.addMenu) && this.addMenu.isOpen()) {
+            return;
+        }
+
+        var self = this;
+
+        var menuItems = {};
+
+        var sessions = {};
+        each(this.eventInfo.sessions, function(session, key) {
+            sessions[session.id] = {};
+            sessions[session.id].func = function() { self.managementActions.addSessionSlot(session); };
+            sessions[session.id].color = self._retrieveSessionColor(session);
+            sessions[session.id].title = session.title;
+        });
+
+        var menu = {
+            '' : {content: {'Create a new session': function() {
+                self.managementActions.addSession();
+                $('.button-menu').dropdown('close');
+            }}, description: ''},
+            'Add another block to:': {content: sessions, description: ''}
+        };
+
+        var te = new Html(triggerElement.find('a').get(0));
+        var sessMenu = new SessionSectionPopupMenu(menu, [te], 'timetableSectionPopupList popupListChained', true, true);
+
+        var pos = triggerElement.offset();
+        sessMenu.open(pos.left, pos.top - 1);
+    },
+
+    _createAddMenu: function(elem) {
+        var self = this;
+        var menuItems = {};
+        var ul = $('<ul class="dropdown"/>');
+
+        if (this._allowCreateHere('Session')) {
+            var sessionAdd = $('<a href="#"/>').text($T('Session')).appendTo(ul).wrap("<li/>");
+            sessionAdd.bind('menu_select', function() {
+                if (keys(self.eventInfo.sessions).length === 0) {
+                    self.managementActions.addSession();
+                } else {
+                    self._openSessionMenu($(this).parent(), ul);
+                }
+                return true;
+            });
+
+        }
+
+        if (this._allowCreateHere('Contribution')){
+            $('<a href="#"/>').text($T('Contribution')).bind('menu_select', function() {
+                self.managementActions.addContribution();
+                return false;
+            }).appendTo(ul).wrap("<li/>");
+        }
+        if (this._allowCreateHere('Break')){
+            $('<a href="#"/>').text($T('Break')).bind('menu_select', function() {
+                self.managementActions.addBreak();
+                return false;
+            }).appendTo(ul).wrap("<li/>");
+        }
+
+        return ul;
+
+    },
 
     _getHeader: function() {
 
@@ -724,62 +933,92 @@ type("ManagementTimeTable",["TimeTable"], {
 
         this.infoBox = Html.div({className: 'timetableInfoBox'});
 
-        if (this.contextInfo.isPoster) {
-            this.addMenuLink = Html.a({className: 'fakeLink', style: {margin: '0 15px'}}, 'Add poster');
-            this.addMenuLink.observeClick(function() {
+        this.addMenuLink = this.contextInfo.isPoster ?
+            $('<a href="#"/>').text($T('Add poster')).bind('menu_select', function() {
                 self.managementActions.addContribution();
-            });
-        }else {
-            this.addMenuLink = Html.a({className: 'dropDownMenu fakeLink', style: {margin: '0 15px'}}, 'Add new');
-            this.addMenuLink.observeClick(function() {
-                self.managementActions._openAddMenu(self.addMenuLink, self.contextInfo);
-            });
-        }
+            }) : $('<a href="#" id="add_new" class="arrow" data-toggle="dropdown"/>').text($T('Add new'));
 
-        this.separator = Html.span({}, " | ");
 
-        this.rescheduleLink = Html.span({className: 'fakeLink', style:{paddingLeft: pixels(15), paddingRight: pixels(15)}}, $T('Reschedule'));
-        this.rescheduleLink.observeClick(function(){
+        this.rescheduleLink = $('<a href="#"/>').text($T('Reschedule')).bind('menu_select', function() {
             var popup = new RescheduleDialog(self);
             popup.open();
+            return false;
         });
 
-        this.addIntervalLink = Html.span({className: 'fakeLink', style:{paddingLeft: pixels(15), paddingRight: pixels(15)}}, $T('Add new block'));
-        this.separator2 = Html.span({}, " | ");
-        this.fitInnerTimetableLink = Html.span({className: 'fakeLink', style:{paddingLeft: pixels(15), paddingRight: pixels(15)}}, $T('Fit to content'));
-
-
-        if (self.isSessionTimetable) {
-            this.addIntervalLink.observeClick(function() {
-                self.managementActions.addSessionSlot(self.eventInfo.timetableSession);
-            });
-        }
-
-        this.fitInnerTimetableLink.observeClick(function(){
+        this.fitInnerTimetableLink = $('<a href="#"/>').text($T('Fit to content')).bind('menu_select', function() {
             var popup = new FitInnerTimetableDialog(self);
             popup.open();
+            return false;
         });
+
+        this.addIntervalLink = $('<a href="#"/>').text($T('Add new block')).bind('menu_select', function() {
+            self.managementActions.addSessionSlot(self.eventInfo.timetableSession);
+            return false;
+        });
+
+
+        var customLinks = $();
+        for(var linkName in this.customLinks){
+            var link = $('<a href="#"/>').text(linkName).bind('menu_select', function(event) {
+                var elem = event.srcElement?event.srcElement:event.currentTarget;
+                var func = eval(self.customLinks[elem.innerHTML]);
+                func(self);
+            });
+            customLinks = customLinks.add(link);
+        }
 
         this.warningArea = this._createInfoArea();
         this.warningArea.dom.style.display = 'none';
-        this.menu = Html.div({style: {cssFloat: 'right', color: '#777'}},
-                             this.getTTMenu(),
-                             this.addMenuLink,
-                             this.addIntervalLink,
-                             this.contextInfo.isPoster?null:this.separator,
-                             this.contextInfo.isPoster?null:this.rescheduleLink,
-                             this.contextInfo.isPoster?null:this.separator2,
-                             this.contextInfo.isPoster?null:this.fitInnerTimetableLink);
-        return Html.div({}, this.warningArea, Html.div('clearfix', this.menu, this.infoBox));
+
+        this.menu = $('<div class="group right"/>');
+
+        if (this.isSessionTimetable) {
+            this.menu.append(this.addIntervalLink)
+        }
+        else {
+            this.menu.append(this.addMenuLink);
+        }
+
+        if (!this.contextInfo.isPoster) {
+            if (this.contextInfo.entryType == 'Session') {
+                this.fitInnerTimetableLink.appendTo(this.menu);
+            }
+            this.rescheduleLink.appendTo(this.menu);
+        }
+
+        customLinks.appendTo(this.menu);
+
+        var tt_hour_tip = $('<div id="tt_hour_tip"/>').hide().append($('<img/>').prop('src', imageSrc(Indico.SystemIcons.tt_time)).prop('title', $T("Add one hour")));
+        var tt_status_info = $('<div id="tt_status_info" />');
+
+        this.menu.children('a').addClass('i-button');
+
+        if (!this.contextInfo.isPoster && !this.isSessionTimetable) {
+            this.menu.find('#add_new').after(this._createAddMenu(this.addMenuLink.parent()));
+        }
+
+        var ret = $('<div/>').append(
+            this.warningArea.dom,
+            $('<div id="headPanel" class="ui-follow-scroll"></div>').append($('<div class="clearfix toolbar" id="tt_menu"/>').
+                append(this.menu.dropdown({effect_on: 'slideDown'}),
+                        tt_status_info, this.infoBox.dom)),
+            tt_hour_tip);
+
+        var extra = this.getTTMenu();
+        if (extra) {
+            ret.find('#tt_menu .group').after(extra);
+        }
+
+        return ret;
     }
+
 },
-     function(data, contextInfo, eventInfo, width, wrappingElement, detailLevel) {
+     function(data, contextInfo, eventInfo, width, wrappingElement, detailLevel, customLinks) {
+         this.customLinks = customLinks;
          this.eventInfo = eventInfo;
          this.contextInfo = contextInfo;
          this.warnings = new WatchList();
-
          this.TimeTable(data, width, wrappingElement, detailLevel, true);
-
      }
     );
 
@@ -789,22 +1028,213 @@ type("TopLevelDisplayTimeTable", ["DisplayTimeTable", "TopLevelTimeTableMixin"],
     _retrieveHistoryState: function(hash) {
         var currentDay = this._parseDayInterval(hash)[0];
         this.setSelectedTab(currentDay);
+    },
+
+    _getLegend: function() {
+        var self = this;
+        //Initially show N and have the rest hidden (buried under "...more")
+        self._maxLegendItemsShownInitially = 4;
+
+        var toggleLegendButton = $('<div id="legendMainToggle">' +
+                                   $T("Session legend") + '</div>');
+
+        if (this._legendActive) {
+            toggleLegendButton.addClass('active');
+        }
+
+        toggleLegendButton.click(function() {
+            self._legendActive = !self._legendActive;
+            self._toggleLegend(self._legendActive);
+        });
+
+        self._toggleLegendButton = toggleLegendButton;
+
+        this.legendItems = self._legendItemsContainer();
+        // hide it so that we can execute the nice scroll down animation
+        this.legendItems.hide();
+
+        // create 'update' event that will be called when the day changes (redraw)
+        this.legendItems.bind('update', function(){
+            $(this).html(self._legendItemsContainer().children());
+            if (self._legendActive && self.legendSessionInfo[self.currentDay].length){
+                $(this).slideDown();
+            } else {
+                $(this).slideUp();
+            }
+            self._legendPostDraw();
+        });
+
+        return $('<div id="wholeLegend"/>').append(toggleLegendButton).append(this.legendItems);
+    },
+
+    _legendItemsContainer: function() {
+        var self = this;
+        var state = false;
+        var moreText = $T("see more...");
+        var showMoreLink = $('<a id="showMoreLink" class="showMoreLink">' + moreText + '</a>').click(
+            function() {
+                if(!state) {
+                    self._fadeShowAllLegendItems();
+                    showMoreLink.text($T('less...'));
+                } else{
+                    self._fadeHideLegendItems();
+                    showMoreLink.text(moreText);
+                }
+                self._legendPostDraw();
+                state = !state;
+            });
+
+        var closeButton = $('<div class="legendCloseButton"/>').click(function() {
+            self._toggleLegend(false);
+            self._legendActive = false;
+        });
+
+        var sessions = self.legendSessionInfo[this.currentDay];
+        var container = $('<div id="timeTableLegend" class="timeTableLegend ui-follow-scroll">').append(closeButton);
+
+        if (sessions.length) {
+            // Returns a div with each color + session name element
+            var legendElements = self._generateLegendDivItems(sessions);
+            container.append($('<div id="legendItemContainer"/>').append(legendElements));
+            if (sessions.length > self._maxLegendItemsShownInitially) {
+                container.append(showMoreLink);
+            }
+        }
+        return container;
+    },
+
+    // Generates the "legend items"
+    // (a small colored rounded square with the sessions title on its right hand side)
+    // Returns a Div with those legend element items.
+    _generateLegendDivItems: function(sessions) {
+        var self = this;
+        var showNumSessionsCounter = 0;
+        var container = $('<div>');
+
+        $.each(sessions, function(idx, l){
+            var div =  $('<div class="legendItem" />').
+                append($('<div class="timeTableItemColour" />').css('background', l[2]),
+                       $('<span/>').text(l[1]));
+
+            container.append(div);
+
+            if (idx >= self._maxLegendItemsShownInitially){
+                div.hide();
+            }
+        });
+        return container;
+    },
+
+    redrawLegend: function() {
+        if (this.legendItems) {
+            this.legendItems.trigger('update');
+        }
+    },
+
+    // Used by the "...more"-button when you want to show more elements
+    _fadeShowAllLegendItems: function() {
+        $('.legendItem').fadeIn();
+    },
+
+    // Used by the "...less"-button when you want to hide more elementsmaxLegendItemsShownInitially
+    // Note, it does NOT HIDE ALL: depending on "maxLegendItemsShownInitially".
+    _fadeHideLegendItems: function() {
+        $('.legendItem').slice(this._maxLegendItemsShownInitially).fadeOut();
+    },
+
+    /* This function is also called in "this.filterButton" in order
+       to hide it (the Session Legend) when the Filter is brought up */
+    _toggleLegend: function(state) {
+        var self = this;
+
+        if (state) {
+            $('#legendMainToggle').addClass('active');
+            if (this.legendSessionInfo[this.currentDay].length) {
+                $('#timeTableLegend').slideDown();
+            }
+        } else {
+            $('#timeTableLegend').slideUp();
+            $('#legendMainToggle').removeClass('active');
+        }
+        this._legendPostDraw();
+    },
+
+    _legendPostDraw: function() {
+        var self = this;
+        // loop for truncation of too long session titles,
+        // the text next a coloured box in the "session legend".
+        var initialTruncing = null;
+        var i = 0;
+
+        // Loop through each legend item
+        $('.legendItem').each(function(){
+            var titleIsTruncated = false;
+            var fullTitle = $(this).text();
+            initialTruncing = fullTitle.length;
+            // Keep truncating the title until its short enough to be written in
+            // one line and still less wide than the
+            // "maximum legend item width".
+
+            var span = $(this).children('span');
+
+            while(span.get(0).offsetHeight > 25 || span.get(0).offsetWidth > 130) {
+                titleIsTruncated = true;
+                var truncSessionTitle = TimetableBlockBase.prototype.truncateTitle(--initialTruncing, fullTitle);
+                span.html(truncSessionTitle);
+            }
+
+            if(titleIsTruncated) {
+                $(this).qtip({content: fullTitle, position: {my: 'top middle', at: 'bottom middle'}});
+            }
+        });
+
+        if ($('#detailsButton').length) {
+            $('#legendMainToggle').position({my: 'left top',
+                                             at: 'left bottom',
+                                             of: $('#detailsButton').parent('.buttonContainer')});
+            $('#timeTableLegend:visible').width($('#timeTableLegend').get(0).clientWidth-10);
+        }
+
+    },
+
+    _extractSessionInfo: function(data) {
+        // get an a dictionary where the keys are days and the values are lists
+        // of [id, title, color] tuples (sessions only)
+        var days = {};
+
+        _(data).each(function(entries, day) {
+            days[day] = _(entries).chain().
+                select(function(e) { return e.entryType == 'Session'; }).
+                groupBy(function(e) { return e.sessionId; }).
+                reduce(function(l, s) { return l.concat(s[0]); }, []).
+                map(function(e){ return [e.id, e.title, e.color, e.sessionId]; }).
+                sortBy(function(e){ return e[1]; }).
+                value();
+        });
+
+        // for "all days", put it all together
+        days['all'] = _(days).chain().
+            flatten(true).
+            groupBy(function(e) { return e[3]; }).
+            reduce(function(l, s) { return l.concat([s[0]]); }, []).
+            sortBy(function(e){ return e[1]; }).
+            value();
+
+        return days;
     }
-
-
 },
      function(data, contextInfo, width, wrappingElement, detailLevel, historyBroker, timetableLayoutId) {
+         this.postDraw = TopLevelTimeTableMixin.prototype.postDraw;
+         this.legendSessionInfo = this._extractSessionInfo(data);
+         this._legendActive = true;
 
          this.DisplayTimeTable(data, width, wrappingElement, detailLevel);
          this.TopLevelTimeTableMixin(data, width, wrappingElement, detailLevel, null, historyBroker, timetableLayoutId);
 
          this.eventInfo = contextInfo;
-
          this._filterSetup();
-
-         this.postDraw = TopLevelTimeTableMixin.prototype.postDraw;
-
      });
+
 
 type("TopLevelManagementTimeTable", ["ManagementTimeTable", "TopLevelTimeTableMixin"], {
 
@@ -844,6 +1274,7 @@ type("TopLevelManagementTimeTable", ["ManagementTimeTable", "TopLevelTimeTableMi
 
     _updateEntry: function(result, oldEntryId, updateCycle) {
 
+        var self = this;
         var data = this.getData();
 
         // AutoOp Warnings (before updates are done)
@@ -860,7 +1291,12 @@ type("TopLevelManagementTimeTable", ["ManagementTimeTable", "TopLevelTimeTableMi
 
             // If none is defined in the function args,
             // execute the default action
-            data[result.day][result.id] = result.entry;
+            if(exists(result.slotEntry)){
+                data[result.day][result.slotEntry.id].entries[result.entry.id] = result.entry;
+            }
+            else {
+                data[result.day][result.id] = result.entry;
+            }
 
             // A session interval may contain entries, that
             // should be preserved (e.g. content (contribs, breaks) of
@@ -883,7 +1319,13 @@ type("TopLevelManagementTimeTable", ["ManagementTimeTable", "TopLevelTimeTableMi
             this.eventInfo.endDate.time = result.entry.endDate.time;
         }
 
+        var dfr = $.Deferred();
+        $('body').one('timetable_redraw', function() {
+            $('body').trigger('timetable_update', self);
+            dfr.resolve();
+        });
         this.timetableDrawer.redraw();
+        return dfr.promise();
     },
 
     /**
@@ -924,31 +1366,25 @@ type("TopLevelManagementTimeTable", ["ManagementTimeTable", "TopLevelTimeTableMi
             this.eventInfo.endDate.time = latestTime;
         }
 
-        this.timetableDrawer.redraw();
-    },
-
-    _updateMovedEntry: function(result, oldEntryId) {
-        this._updateEntry(result, oldEntryId, function(data){
-            if (exists(result.slotEntry)) {
-                // move into a session slot
-                data[result.day][result.slotEntry.id].entries[result.id] = result.entry;
-                // updates the time of the session if it has to be extended
-                data[result.day][result.slotEntry.id].startDate.time = result.slotEntry.startDate.time;
-                data[result.day][result.slotEntry.id].endDate.time = result.slotEntry.endDate.time;
-            } else {
-                data[result.day][result.id] = result.entry;
-            }
+        var self = this;
+        var dfr = $.Deferred();
+        $('body').bind('timetable_redraw', function() {
+            dfr.resolve();
+            $('body').trigger('timetable_update', self);
         });
+        this.timetableDrawer.redraw();
+        return dfr.promise();
+
     },
 
     _updateSessionData: function(sessionId, fields, newValues) {
 
         var data = this.getData();
 
-        for (day in data) {
-            for (entry in data[day]) {
+        for (var day in data) {
+            for (var entry in data[day]) {
                 if ( data[day][entry]["entryType"] == "Session" && data[day][entry]["sessionId"] == sessionId ) {
-                    for (i = 0 ; i < fields.length ; ++i) {
+                    for (var i = 0 ; i < fields.length ; ++i) {
                         data[day][entry][fields[i]] = newValues[i];
                     }
                 }
@@ -963,19 +1399,7 @@ type("TopLevelManagementTimeTable", ["ManagementTimeTable", "TopLevelTimeTableMi
     },
 
     getTTMenu: function() {
-
-        this.separator2.dom.style.display = "none";
-        this.fitInnerTimetableLink.dom.style.display = "none";
-        if (this.isSessionTimetable) {
-            this.addMenuLink.dom.style.display = "none";
-            this.addIntervalLink.dom.style.display = "inline";
-            this.rescheduleLink.dom.style.display = "none";
-            this.separator.dom.style.display = "none";
-        } else {
-            this.addIntervalLink.dom.style.display = "none";
-        }
-
-        return '';
+        return null;
     },
 
     _retrieveHistoryState: function(hash) {
@@ -990,15 +1414,14 @@ type("TopLevelManagementTimeTable", ["ManagementTimeTable", "TopLevelTimeTableMi
             this.setSelectedTab(dayInterval[0]);
         }
     }
-
 },
-     function(data, eventInfo, width, wrappingElement, detailLevel, historyBroker, isSessionTimetable) {
+     function(data, eventInfo, width, wrappingElement, detailLevel, historyBroker, isSessionTimetable, customLinks) {
 
          this.isSessionTimetable = isSessionTimetable;
 
-         this.ManagementTimeTable(data, eventInfo, eventInfo, width, wrappingElement, detailLevel);
+         this.ManagementTimeTable(data, eventInfo, eventInfo, width, wrappingElement, detailLevel, customLinks);
          var managementActions = new TopLevelTimeTableManagementActions(this, eventInfo, eventInfo, isSessionTimetable);
-         this.TopLevelTimeTableMixin(data, width, wrappingElement, detailLevel, managementActions, historyBroker);
+       this.TopLevelTimeTableMixin(data, width, wrappingElement, detailLevel, managementActions, historyBroker, 'proportional');
 
          this.postDraw = TopLevelTimeTableMixin.prototype.postDraw;
 
@@ -1014,6 +1437,7 @@ type("IntervalManagementTimeTable", ["ManagementTimeTable", "IntervalTimeTableMi
 
     _updateEntry: function(result, oldEntryId, updateCycle) {
 
+        var self = this;
         var slot = this.contextInfo;
         var data = this.getData();
 
@@ -1037,7 +1461,6 @@ type("IntervalManagementTimeTable", ["ManagementTimeTable", "IntervalTimeTableMi
             }
 
             if (exists(result.slotEntry)) {
-
                 // Save the entries, otherwise they are lost
                 result.slotEntry.entries = slot.entries;
                 this.parentTimetable.data[result.day][result.slotEntry.id] = result.slotEntry;
@@ -1051,23 +1474,13 @@ type("IntervalManagementTimeTable", ["ManagementTimeTable", "IntervalTimeTableMi
 
         }
 
-        this.timetableDrawer.redraw();
-
-    },
-
-    _updateMovedEntry: function(result, oldEntryId) {
-        this._updateEntry(result, oldEntryId, function(data){
-            if(exists(result.slotEntry)){
-                // from slot to slot
-                data[result.day][result.slotEntry.id].entries[result.id] = result.entry;
-                // updates the time of the session if it has to be extended
-                data[result.day][result.slotEntry.id].startDate.time = result.slotEntry.startDate.time;
-                data[result.day][result.slotEntry.id].endDate.time = result.slotEntry.endDate.time;
-            } else {
-                // from slot to top level
-                data[result.day][result.id]=result.entry;
-            }
+        var dfr = $.Deferred();
+        $('body').one('timetable_redraw', function() {
+            $('body').trigger('timetable_update', self);
+            dfr.resolve();
         });
+        this.timetableDrawer.redraw();
+        return dfr.promise();
     },
 
     /**
@@ -1108,47 +1521,40 @@ type("IntervalManagementTimeTable", ["ManagementTimeTable", "IntervalTimeTableMi
                               result.slotEntry.endDate.time);
         }
 
+        var dfr = $.Deferred();
+        $('body').bind('timetable_redraw', function() {
+            dfr.resolve();
+        });
         this.timetableDrawer.redraw();
+        return dfr.promise();
     },
 
     getTTMenu: function() {
         var self = this;
+        var goBackLink = $('<a class="icon-arrow-up i-button go_back" href="#"/>').text($T('Up to timetable')).
+            click(function() {
+                self.parentTimetable.switchToTopLevel();
+                self._hideWarnings();
+                self.session = null;
+                return false;
+            });
 
-        if (this.isSessionTimetable) {
-            this.addMenuLink.dom.style.display = "inline";
-            this.addIntervalLink.dom.style.display = "none";
-            this.separator2.dom.style.display = "none";
-            this.fitInnerTimetableLink.dom.style.display = "none";
-            this.rescheduleLink.dom.style.display = "none";
-            this.separator.dom.style.display = "inline";
-        } else {
-            this.addIntervalLink.dom.style.display = "none";
-        }
-
-        var goBackLink = Html.span({}, Html.a({className: 'fakeLink', style: {fontWeight: 'bold', margin: '0 15px'}}, 'Go back to timetable'), ' | ');
-        goBackLink.observeClick(function() {
-            self.parentTimetable.switchToTopLevel();
-            self._hideWarnings();
-            self.session = null;
-
-        });
-
-        return goBackLink;
-
+        return $('<div class="group right"/>').append(goBackLink);
     }
 
 },
-     function(parent, data, contextInfo, eventInfo, width, wrappingElement, detailLevel, isSessionTimetable) {
+     function(parent, data, contextInfo, eventInfo, width, wrappingElement, detailLevel, isSessionTimetable, customLinks) {
 
-         this.ManagementTimeTable(data, contextInfo, eventInfo, width, wrappingElement, detailLevel);
+         this.ManagementTimeTable(data, contextInfo, eventInfo, width, wrappingElement, detailLevel, customLinks);
          var managementActions = new IntervalTimeTableManagementActions(this, eventInfo, contextInfo, isSessionTimetable);
-         this.IntervalTimeTableMixin(parent, width, wrappingElement, managementActions);
+         this.IntervalTimeTableMixin(parent, width, wrappingElement, managementActions, 'proportional');
 
          this.canvas = Html.div({});
          this.isPoster = contextInfo.isPoster;
 
          this.setData = IntervalTimeTableMixin.prototype.setData;
          this.getById = IntervalTimeTableMixin.prototype.getById;
+         this.postDraw = IntervalTimeTableMixin.prototype.postDraw;
 
      });
 
@@ -1177,4 +1583,3 @@ type("SessionDisplayTimeTable", ["TopLevelDisplayTimeTable"], {
         this.TopLevelDisplayTimeTable(data, eventInfo, width, wrappingElement, 'contribution', historyBroker, null);
 
     });
-

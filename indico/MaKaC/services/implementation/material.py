@@ -1,20 +1,40 @@
+# -*- coding: utf-8 -*-
+##
+##
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+##
+## Indico is free software; you can redistribute it and/or
+## modify it under the terms of the GNU General Public License as
+## published by the Free Software Foundation; either version 3 of the
+## License, or (at your option) any later version.
+##
+## Indico is distributed in the hope that it will be useful, but
+## WITHOUT ANY WARRANTY; without even the implied warranty of
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+## General Public License for more details.
+##
+## You should have received a copy of the GNU General Public License
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
+
 """
 Schedule-related services
 """
 
-from MaKaC.services.interface.rpc.common import ServiceError, ServiceAccessError
+from MaKaC.services.interface.rpc.common import ServiceError, ServiceAccessError,NoReportError
 from MaKaC.services.implementation.base import \
      ParameterManager, ProtectedModificationService, ProtectedDisplayService
 
 import MaKaC.webinterface.locators as locators
-from MaKaC.errors import ModificationError, MaKaCError
+from MaKaC.errors import ModificationError
 
 import MaKaC.conference as conference
 from MaKaC.user import AvatarHolder, GroupHolder
 from MaKaC.common.fossilize import fossilize
-from MaKaC.fossils.conference import IMaterialFossil, IMaterialMinimalFossil,\
+from MaKaC.fossils.conference import IMaterialFossil,\
         ILinkFossil, ILocalFileFossil, ILocalFileExtendedFossil
 from MaKaC.common.PickleJar import DictPickler
+from MaKaC.webinterface.rh.contribMod import RCContributionPaperReviewingStaff
 
 
 class UserListChange(object):
@@ -74,7 +94,10 @@ class MaterialBase:
 
 
         except Exception, e:
-            raise ServiceError("ERR-M0", str(e))
+            if self._target is None:
+                raise NoReportError(_("The material with does not exist anymore. Please refresh the page."))
+            else:
+                raise ServiceError("ERR-M0", str(e))
 
 class MaterialDisplayBase(ProtectedDisplayService, MaterialBase):
 
@@ -91,6 +114,10 @@ class MaterialModifBase(MaterialBase, ProtectedModificationService):
     def _checkProtection(self):
         owner = self._material.getOwner()
 
+        # Conference submitters have access
+        if isinstance(owner, conference.Conference) and owner.getAccessController().canUserSubmit(self._aw.getUser()):
+            return
+
         # There are two exceptions to the normal permission scheme:
         # (sub-)contribution submitters and session coordinators
 
@@ -101,9 +128,13 @@ class MaterialModifBase(MaterialBase, ProtectedModificationService):
 
             reviewingState = self._material.getReviewingState()
 
-            if (reviewingState < 3 and
+            if (reviewingState < 3 and # it means the papers has not been submitted yet (or not reviewing material)
                 owner.canUserSubmit(self._aw.getUser())):
                 # Submitters have access
+                return
+            # status = 3 means the paper is under review (submitted but not reviewed)
+            # status = 2 means that the author has not yet submitted the material
+            elif isinstance(owner, conference.Contribution) and RCContributionPaperReviewingStaff.hasRights(self, contribution = owner, includingContentReviewer=False) and reviewingState in [2, 3]:
                 return
             elif owner.getSession() and \
                      owner.getSession().canCoordinate(self._aw, "modifContribs"):
@@ -122,9 +153,6 @@ class MaterialModifBase(MaterialBase, ProtectedModificationService):
         except ModificationError:
             raise ServiceAccessError(_("you are not authorised to manage material "
                                        "for this contribution"))
-        except Exception, e:
-            raise e
-
 class ResourceBase:
     """
     Base class for material resource access
@@ -161,7 +189,11 @@ class ResourceBase:
                 self._categ=self._target.getCategory()
 
         except Exception, e:
-            raise ServiceError("ERR-M0", str(e))
+            if self._target is None:
+                raise NoReportError(_("The resource with does not exist anymore. Please refresh the page."))
+
+            else:
+                raise ServiceError("ERR-M0", str(e))
 
 
 class ResourceDisplayBase(ProtectedDisplayService, ResourceBase):
@@ -178,8 +210,6 @@ class ResourceModifBase(ResourceBase, MaterialModifBase):
     def _checkParams(self):
         ResourceBase._checkParams(self)
 
-    #def _checkProtection(self):
-    #    MaterialModifBase._checkProtection(self)
 
 class GetMaterialClassesBase(MaterialDisplayBase):
     """
@@ -210,17 +240,22 @@ class GetReviewingMaterial(GetMaterialClassesBase):
     Base class for obtaining a listing of reviewing material classes
     """
 
+    def _checkProtection(self):
+        if not RCContributionPaperReviewingStaff.hasRights(self):
+            GetMaterialClassesBase._checkProtection(self)
+
     def _getAnswer(self):
         """
         Provides the list of material classes, based on the target
         resource (conference, session, contribution, etc...)
         """
-        matList = {}
 
+        matList = {}
         rev = self._target.getReviewing()
         if (rev != None and len(rev._Material__resources) != 0):
+            reviewManager = self._target.getReviewManager()
             matList[rev.getId()] = rev.fossilize(IMaterialFossil)
-
+            matList[rev.getId()]["isUnderReview"] = rev.getReviewingState() == 2 and len(reviewManager.getVersioning()) > 1
         return matList
 
 
@@ -317,6 +352,9 @@ class EditMaterialClassBase(MaterialModifBase, UserListChange):
         Updates the material with the new properties
         """
 
+        if self._material.isBuiltin() and self._material.getTitle() != self._title:
+            raise ServiceError("", "You can't change the name of a built-in material.")
+
         self.changeUserList(self._material, self._newUserList)
 
         self._material.setTitle(self._title);
@@ -397,26 +435,34 @@ class GetResourceAllowedUsers(ResourceModifBase):
 
 class DeleteResourceBase(ResourceModifBase):
 
-    def _getAnswer(self):
-        resourceId = self._resource.getId()
-
+    def _deleteResource(self):
         # remove the resource
         self._material.removeResource(self._resource)
-        event = self._material.getOwner()
+        self._event = self._material.getOwner()
 
         # if there are no resources left inside the material,
         # just delete it
         if len(self._material.getResourceList()) == 0:
-            event.removeMaterial(self._material)
+            self._event.removeMaterial(self._material)
 
-        newMaterialTypes = event.getMaterialRegistry().getMaterialList(event)
 
+class DeleteResource(DeleteResourceBase):
+
+    def _getAnswer(self):
+        self._deleteResource()
         return {
-            'deletedResourceId': resourceId,
-            'newMaterialTypes': newMaterialTypes
+            'deletedResourceId': self._resource.getId(),
+            'newMaterialTypes': self._event.getMaterialRegistry().getMaterialList(self._event)
             }
 
+class DeleteResourceReviewing(DeleteResourceBase):
 
+    def _getAnswer(self):
+        self._deleteResource()
+        return {
+            'deletedResourceId': self._resource.getId(),
+            'newMaterialTypes': [["reviewing", "Reviewing"]]
+            }
 
 methodMap = {
 
@@ -436,6 +482,7 @@ methodMap = {
     "resources.listAllowedUsers": GetResourceAllowedUsers,
     "resources.list": GetResourcesBase,
     "resources.edit": EditResourceBase,
-    "resources.delete": DeleteResourceBase
+    "resources.delete": DeleteResource,
+    "reviewing.resources.delete": DeleteResourceReviewing
     }
 

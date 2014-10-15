@@ -1,28 +1,27 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 import MaKaC.webinterface.pages.conferences as conferences
 import MaKaC.webinterface.pages.registrationForm as registrationForm
 from MaKaC.webinterface import wcomponents
 from xml.sax.saxutils import quoteattr
-from MaKaC.common import Configuration
+from indico.core import config as Configuration
 from MaKaC.webinterface import urlHandlers
 import MaKaC
 
@@ -138,42 +137,6 @@ class WConfModifEPaymentWorldPayDataModif( WTemplated ):
 
 
 
-
-class WEPaymentWorldPayModifFrame( WTemplated ):
-
-    def __init__(self, conf, aw):
-        self._conf = conf
-        self._aw = aw
-        self._worldPay = self._conf.getModPay().getPayModByTag(MODULE_ID)
-
-    def getHTML( self, body, **params ):
-        params["body"] = body
-        return WTemplated.getHTML( self, params )
-
-    def getVars( self ):
-        vars = WTemplated.getVars( self )
-        vars["context"] = wcomponents.WConfModifHeader( self._conf, self._aw ).getHTML(vars)
-        vars["title"] = self._worldPay.getTitle()
-        vars["titleTabPixels"] = self.getTitleTabPixels()
-        vars["intermediateVTabPixels"] = self.getIntermediateVTabPixels()
-        vars["closeHeaderTags"] = self.getCloseHeaderTags()
-        return vars
-
-    def getOwnerComponent( self ):
-        wc = wcomponents.WConferenceModifFrame(self._conf, self._aw)
-        return wc
-
-    def getIntermediateVTabPixels( self ):
-        wc = self.getOwnerComponent()
-        return 7 + wc.getIntermediateVTabPixels()
-
-    def getTitleTabPixels( self ):
-        wc = self.getOwnerComponent()
-        return wc.getTitleTabPixels() - 7
-
-    def getCloseHeaderTags( self ):
-        wc = self.getOwnerComponent()
-        return "</table></td></tr>" + wc.getCloseHeaderTags()
 
 ### classes needed by callback
 class WPConfirmEPaymentWorldPay( conferences.WPConferenceDefaultDisplayBase ):

@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 # For now, disable Pylint
 # pylint: disable-all
@@ -26,17 +25,21 @@ Contains tests regarding some scenarios related to submission and archiving
 of files.
 """
 
-import unittest
 import os
 from indico.tests.env import *
+from indico.tests.python.unit.util import IndicoTestCase, with_context
 
-class TestMaterialRepository(unittest.TestCase):
+
+class TestMaterialRepository(IndicoTestCase):
     """
     Tests the basic functionalities of the MaterialLocalRepository file
     repository.
     """
 
+    _requires = ["db.DummyUser"]
+
     def setUp( self ):
+        super(TestMaterialRepository, self).setUp()
         self._archivePath = os.path.join( os.getcwd(), "tmpArchive" )
         #create a directory where the archive will be set up
         try:
@@ -46,12 +49,13 @@ class TestMaterialRepository(unittest.TestCase):
             pass
         #the MaterialLocalRepository takes the repository base path from
         #   the system configuration so we have to set it up to the new dir
-        from MaKaC.common import Config
+        from indico.core.config import Config
         cfg = Config.getInstance()
         #we overrride the system repository path with the temp one
         cfg._archivePath = self._archivePath
 
     def tearDown( self ):
+        super(TestMaterialRepository, self).tearDown()
         #delete the temporary archive space and all the files below
         #os.removedirs( self._archivePath )
         for root, dirs, files in os.walk(self._archivePath, topdown=False):
@@ -73,6 +77,7 @@ class TestMaterialRepository(unittest.TestCase):
 #        fr = MaterialLocalRepository()
 #        self.assertEqual( fr.getRepositoryPath(), self._archivePath )
 
+    @with_context('database')
     def testArchiveConferenceFile( self ):
         """Makes sure a file wich is attached to a conference gets stored in
             the right path: basePath/year/C0/0/test.txt

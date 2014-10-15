@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 
 
 
@@ -262,6 +279,7 @@ IndicoUI.Widgets = {
     Generic: {
 
         /**
+         * (DEPRECATED)
          * Creates a tooltip above the given element.
          * Example of usage:
          *
@@ -275,61 +293,25 @@ IndicoUI.Widgets = {
          * @param {String} content Whatever content is desired.
          */
         tooltip: function(in_this, event, content) {
-            domTT_activate(in_this, event,
-                           'content',
-                           content,
-                           'type',
-                           'greasy',
-                           'caption',
-                           false ,
-                           'trail',
-                           false,
-                           'delay',
-                           0,
-                           'maxWidth',
-                           500,
-                           'styleClass',
-                           'tip' );
+            var $this = $(in_this);
+            if($this.data('hasTooltip')) {
+                return;
+            }
+            $this.data('hasTooltip', true).qtip({
+                content: {
+                    text: content
+                },
+                show: {
+                    ready: true
+                }
+            });
 
             // Return the onmouseout handler in case
             // it needs to be called from outside
-            return function(in_event) {
-                // Hides the tooltip
-                domTT_mouseout(in_this, in_event);
-                // This resets the tooltip in case it's redrawn
-                // with a different content
-                domTT_tooltips.set(in_this.id, null)
+            return function() {
+                $this.qtip('hide');
             };
         },
-
-
-        /**
-         * Creates an error tooltip at the specified position, by adding it to the document body with position: fixed
-         * Also returns the div with the tooltip.
-         * @param {Integer} mouseX
-         * @param {Integer} mouseX
-         * @param {String} content The content inside the tooltip, for example an Html.span()
-         * @param {String} klass The CSS class that will be applied to the div sourrounding the tooltip. If null, the default will be 'tooltip'
-         */
-        errorTooltip: function(mouseX, mouseY, content, klass) {
-            var div = Html.div({style:{top: pixels(mouseY),
-                left: pixels(mouseX),
-                marginTop: pixels(10),
-                marginLeft: pixels(10),
-                position:'fixed',
-                zIndex: IndicoUI.__globalLayerLevel + 1}},
-                content);
-
-            if (!klass) {
-                klass="tooltip";
-            }
-
-            div.dom.className = klass;
-            Dom.Content.add(document.body, div);
-
-            return div;
-        },
-
 
 
         simpleButton: function(elem, method, attributes, handler, caption) {
@@ -338,11 +320,6 @@ IndicoUI.Widgets = {
             },caption));
             elem.set(button);
             return button;
-        },
-
-        switchOptionButton: function(method, attributes, caption, messageId) {
-            var button = new SwitchOptionButton(method, attributes, caption, messageId);
-            return button.draw();
         },
 
         sourceSelectionField: function(elem, source, options){
@@ -361,11 +338,7 @@ IndicoUI.Widgets = {
 
 
         selectionField: function(elem, method, attributes, options, cachedValue, observer){
-            var cachedRpcValue = IndicoUtil.cachedRpcValue(Indico.Urls.JsonRpcService, method, attributes, cachedValue);
-            IndicoUI.Widgets.Generic.sourceSelectionField(elem, cachedRpcValue, options);
-            if (observer) {
-                cachedRpcValue.observe(observer);
-            }
+            elem.set(new SelectEditWidget(method, attributes, options, cachedValue, observer).draw());
         },
 
         sourceTextField: function(elem, source){
@@ -388,15 +361,8 @@ IndicoUI.Widgets = {
             $B(elem, Html.div({}, editable(source, context), Widget.text(" "), Widget.text($B(chooser, context))));
         },
 
-        textField: function(elem, method, attributes, cachedValue){
-
-            IndicoUI.Widgets.Generic.sourceTextField(elem,
-                                                     IndicoUtil.cachedRpcValue(
-                                                         Indico.Urls.JsonRpcService,
-                                                         method,
-                                                         attributes,
-                                                         cachedValue));
-
+        textField: function(elem, method, attributes, cachedValue, observer){
+            elem.set(new InputEditWidget(method, attributes, cachedValue, true, observer).draw());
         },
 
         richTextField: function(elem, method, attributes, width, height, cachedValue){
@@ -573,7 +539,7 @@ IndicoUI.Widgets = {
                     }
                 }
             } else { // if there is no initial value, we retrieve it from the server and set the appropiate radio button to checked
-                initialValueHandler = function(result,error) {
+                var initialValueHandler = function(result,error) {
                     if (!error) {
                         radioButtons[result].dom.checked = true;
                     }
@@ -624,7 +590,7 @@ IndicoUI.Widgets = {
                     row2.append(cell2);
                 }
 
-                cellMessage = Html.td();
+                var cellMessage = Html.td();
                 cellMessage.dom.style.verticalAlign = "middle";
                 cellMessage.dom.rowSpan = 2;
                 cellMessage.append(message);
@@ -640,7 +606,7 @@ IndicoUI.Widgets = {
                 return table;
             }
             else {
-                alert($T("developer error: kind of radioButtonField is not correct, should be 'vertical', 'horizontal1', 'horizontal2'"));
+                new AlertPopup($T("Developer error"), $T("Kind of radioButtonField is not correct, should be 'vertical', 'horizontal1', 'horizontal2'")).open();
             }
 
         },
@@ -930,8 +896,7 @@ IndicoUI.Widgets = {
                 var update = (cal.dateClicked || exists(cal.activeDiv._range)); // if there is _range we are updating the time
                 if (update && p.inputField) {
                     p.inputField.value = cal.date.print(p.ifFormat);
-                    if (typeof p.inputField.onchange == "function")
-                        p.inputField.onchange();
+                    $(p.inputField).trigger('change');
                 }
                 if (update && p.displayArea)
                     p.displayArea.innerHTML = cal.date.print(p.daFormat);
@@ -970,7 +935,7 @@ IndicoUI.Widgets = {
          * @param {Dictionary} elemInfo Additional parameters attached to the input element (optional).
          * @return {XElement} The text input field with the calendar attached.
          */
-        dateField: function(showTime, attributes, hiddenFields, elemInfo, format){
+        dateField: function(showTime, attributes, hiddenFields, elemInfo, format, callback){
             attributes = attributes || {};
             elemInfo = elemInfo || {};
             extend(elemInfo, attributes);
@@ -998,6 +963,10 @@ IndicoUI.Widgets = {
                 if(typeof(elem.dom.onchange) === 'function') {
                     elem.dom.onchange();
                 }
+
+                if (callback !== undefined) {
+                    callback();
+                }
             };
             tab.processDate = elem.processDate;
 
@@ -1014,8 +983,7 @@ IndicoUI.Widgets = {
 
         timeField: function(attributes, hiddenFields){
             attributes = attributes || {};
-            var elem = Html.input("text",attributes);
-            return elem;
+            return Html.input("text", attributes);
         },
 
         dateEditor: function(elem, method, attributes, cachedValue){
@@ -1033,23 +1001,17 @@ IndicoUI.Widgets = {
             $B(elem, [editable(IndicoUtil.cachedRpcValue(Indico.Urls.JsonRpcService, method, attributes, cachedValue), context), Widget.text(" "), IndicoUI.Aux.defaultEditMenu(context)]);
         },
 
-        dateStartEndTimeField: function(defaultStartTime, defaultEndTime, additional) {
+        dateStartEndTimeField: function(defaultStartTime, defaultEndTime, attributesStartTime, attributesEndTime, additional) {
 
             var obj = new WatchObject();
             obj.set('startTime', defaultStartTime);
             obj.set('endTime', defaultEndTime);
 
-            var attributes = {
-                style: {
-                    width: '50px'
-                }
-            };
-
             var dash = Html.span({style: {padding: '0 10px'}});
             dash.dom.innerHTML = '&ndash;';
 
-            var startTimeField = IndicoUI.Widgets.Generic.timeField(attributes);
-            var endTimeField =  IndicoUI.Widgets.Generic.timeField(attributes);
+            var startTimeField = IndicoUI.Widgets.Generic.timeField(attributesStartTime);
+            var endTimeField = IndicoUI.Widgets.Generic.timeField(attributesEndTime);
 
             var element = Widget.block([
                 $B(startTimeField, obj.accessor('startTime')), dash,

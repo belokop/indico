@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 """
 Agent definitions for CERN Search
@@ -34,6 +33,8 @@ from lxml import etree
 from indico.ext.livesync.agent import AgentProviderComponent, RecordUploader
 from indico.ext.livesync.bistate import BistateBatchUploaderAgent
 
+from indico.util.date_time import nowutc
+
 
 class CERNSearchUploadAgent(BistateBatchUploaderAgent):
 
@@ -49,15 +50,13 @@ class CERNSearchUploadAgent(BistateBatchUploaderAgent):
         self._username = username
         self._password = password
 
-    def _run(self, records, logger=None, monitor=None, dbi=None):
+    def _run(self, records, logger=None, monitor=None, dbi=None, task=None):
 
         self._v_logger = logger
 
         # the uploader will manage everything for us...
-
         uploader = CERNSearchRecordUploader(logger, self, self._url,
-                                            self._username, self._password)
-
+                                            self._username, self._password, task)
         if self._v_logger:
             self._v_logger.info('Starting metadata/upload cycle')
 
@@ -70,11 +69,12 @@ class CERNSearchRecordUploader(RecordUploader):
     A worker that uploads data using HTTP
     """
 
-    def __init__(self, logger, agent, url, username, password):
+    def __init__(self, logger, agent, url, username, password, task=None):
         super(CERNSearchRecordUploader, self).__init__(logger, agent)
         self._url = url
         self._username = username
         self._password = password
+        self._task = task
 
     def _postRequest(self, batch):
 
@@ -93,7 +93,7 @@ class CERNSearchRecordUploader(RecordUploader):
         # get a batch
 
         self._logger.info('Generating metadata')
-        data = self._agent._getMetadata(batch)
+        data = self._agent._getMetadata(batch, logger=self._logger)
         self._logger.info('Metadata ready ')
 
         postData = {
@@ -125,6 +125,9 @@ class CERNSearchRecordUploader(RecordUploader):
 
         # right now there is nothing else to pay attention to
         booleanResult = etree.tostring(xmlDoc, method="text")
+
+        if self._task:
+            self._task.setOnRunningListSince(nowutc())
 
         if result.code == 200 and booleanResult == 'true':
             self._logger.info('Batch of %d records stored in server'

@@ -1,45 +1,38 @@
-<% from MaKaC.paperReviewing import ConferencePaperReview %>
-            <table cellspacing="0" cellpadding="2" width="100%" >
-                <tr>
-                    <td class="dataCaptionTD" style="width: 25%;padding-right: 1px">
-                        <span class="titleCellFormat" style="font-size: 12px;"><%= _("Layout judgement:")%></span>
-                    </td>
-                    <td style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;">
-                        <%= Editing.getJudgement() %>,
-                        <em><%= _(" submitted on ") %><%= Editing.getAdjustedSubmissionDate().strftime(format) %></em>
-                    </td>
-                </tr>
-                <% if Editing.getComments(): %>
-                <tr>
-                    <td class="dataCaptionTD" style="width: 25%;padding-right: 1px">
-                        <span class="titleCellFormat" style="font-size: 12px;"><%= _("Comments:")%></span>
-                    </td>
-                    <td style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;">
-                        <%= Editing.getComments() %>
-                    </td>
-                </tr>
-                <% end %>
-                <% if Editing.getAnswers(): %>
-                <tr>
-                    <td class="dataCaptionTD" width="100%" style="width: 25%;padding-right: 1px">
-                        <span class="titleCellFormat" style="font-size: 12px;"><%= _("Criteria Evaluation:")%></span>
-                    </td>
-                    <td style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;">
-                        <% for a in Editing.getAnswers(): %>
-                            <%= a %>
-                            <br/>
-                        <% end %>
-                    </td>
-                </tr>
-                <% end %>
-                <% if ShowEditor: %>
-                <tr>
-                    <td class="dataCaptionTD" style="width: 25%;padding-right: 1px">
-                        <span class="titleCellFormat" style="font-size: 12px;"><%= _("Layout Reviewer:")%></span>
-                    </td>
-                    <td style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;">
-                        <%= Editing.getAuthor().getFullName() %>
-                    </td>
-                </tr>
-                <% end %>
-            </table>
+<%page args="Editing=None, ShowEditor=None, format=None, showTitle=True"/>
+
+<div class="historyReviewJudgment">
+    <table>
+        <tr>
+            % if showTitle:
+            <td class="dataCaptionTD" style="white-space: nowrap; width: 50px">
+                <span class="titleCellFormat" style="font-size: 12px;">${ _("Layout:")}</span>
+            </td>
+            % endif
+            <td>
+                <div class="contributionReviewingStatus ${getStatusClass(Editing.getJudgement())}" style="margin-top: 0">
+                    ${getStatusText(Editing.getJudgement())}
+                </div>
+                <div>
+                ${ _("submitted on") } <span style="font-style: italic">${ Editing.getAdjustedSubmissionDate().strftime(format) }</span>
+                    % if ShowEditor:
+                       ${ _("by") } <span style="font-style: italic">${ Editing.getAuthor().getStraightFullName()}</span>
+                    % endif
+                </div>
+                % if Editing.getComments():
+                    <div class="historyReviewJugmentComments"">
+                        <span style= "font-weight: bold">${_("Comments")}</span><br/>
+                        ${ Editing.getComments() | h, html_breaks}
+                    </div>
+                % endif
+                % if Editing.getAnswers():
+                    <div class="historyReviewJugmentComments">
+                        <span style= "font-weight: bold">${_("Answers")}</span>
+                        % for a in Editing.getAnswers():
+                            <br/>${ a }
+                        % endfor
+                    </div>
+                % endif
+            </td>
+       </tr>
+    </table>
+</div>

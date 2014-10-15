@@ -1,4 +1,22 @@
-from MaKaC.services.interface.rpc.offline import offlineRequest
+# -*- coding: utf-8 -*-
+##
+##
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+##
+## Indico is free software; you can redistribute it and/or
+## modify it under the terms of the GNU General Public License as
+## published by the Free Software Foundation; either version 3 of the
+## License, or (at your option) any later version.
+##
+## Indico is distributed in the hope that it will be useful, but
+## WITHOUT ANY WARRANTY; without even the implied warranty of
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+## General Public License for more details.
+##
+## You should have received a copy of the GNU General Public License
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
+
 from MaKaC.common.fossilize import fossilize
 
 
@@ -45,60 +63,4 @@ class UserDataFactory(object):
 
     def __init__(self, user):
         self._user = user
-
-class macros:
-
-    FIELD_TEXT = 'textField'
-    FIELD_RICHTEXT = 'richTextField'
-    FIELD_SELECT = 'selectionField'
-    FIELD_DATE = 'dateEditor'
-
-    @classmethod
-    def genericField(cls, dataType, domId, method, params, preCache=False, rh=None, options = None, orderOptionsBy = None):
-        """ orderOptionsBy can have the following values: None (no order), 'key', 'value'
-            use for options that come as a Python dictionary
-        """
-
-        if preCache:
-            if not rh:
-                raise Exception('Precaching of RPC values requires a request handler to be specified!')
-
-            cacheDef = ",%s" % offlineRequest(rh, method, params)
-        else:
-            cacheDef = ''
-
-        if dataType == cls.FIELD_SELECT:
-
-            if (type(options) == dict and orderOptionsBy is not None):
-
-                tupleList = options.items()
-                if orderOptionsBy == 'key':
-                    tupleList = sorted(tupleList, key=lambda t: t[0])
-                else:
-                    tupleList = sorted(tupleList, key=lambda t: t[1])
-
-                optionsDef = "".join([", {",
-                                      ", ".join(["'" + str(key) + "' : '" + str(value) + "'" for key, value in tupleList]),
-                                      "}"])
-
-            else:
-                optionsDef = ",%s" % options
-
-        elif dataType == cls.FIELD_RICHTEXT:
-            optionsDef = ", %s, %s" % (options[0], options[1])
-
-        else:
-            optionsDef = ''
-
-
-        return """new IndicoUI.Widgets.Generic.%s($E('%s'),
-                    '%s', %s%s%s);\n""" % (
-                    dataType,
-                    domId,
-                    method,
-                    params,
-                    optionsDef,
-                    cacheDef
-                    )
-
 

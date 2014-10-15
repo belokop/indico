@@ -1,36 +1,32 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 import logging
-import os
-import thread
-import time
 import random
 
-from MaKaC.common import db
-from MaKaC.common.logger import Logger
+from indico.core.db import DBMgr
 
 
-from indico.modules.scheduler import SchedulerModule, base, tasks
-from indico.modules.scheduler.slave import ProcessWorker, ThreadWorker
-from indico.util.date_time import nowutc, int_timestamp
+from indico.modules.scheduler import SchedulerModule, base
+from indico.modules.scheduler.tasks.periodic import PeriodicTask, TaskOccurrence
+from indico.modules.scheduler.slave import ProcessWorker
+from indico.util.date_time import int_timestamp
 
 
 class Scheduler(object):
@@ -45,7 +41,7 @@ class Scheduler(object):
     waiting queue. The waiting queue is then checked periodically for the next task,
     and when the time comes the task is executed.
 
-    Tasks are executed in different threads.
+    Tasks are executed in different processes.
 
     The :py:class:`~indico.modules.scheduler.Client` class works as a transparent
     remote proxy for this class.
@@ -55,9 +51,6 @@ class Scheduler(object):
 
     # configuration options
     _options = {
-        # either 'threads' or 'processes'
-        'multitask_mode': 'processes',
-
         # time to wait between cycles
         'sleep_interval': 10,
 
@@ -68,7 +61,7 @@ class Scheduler(object):
 
         # Number of times to try to run a task before aborting (min 1)
         'task_max_tries': 5
-        }
+    }
 
     def __init__(self, **config):
         """
@@ -79,7 +72,7 @@ class Scheduler(object):
 
         self._logger = logging.getLogger('scheduler')
 
-        self._dbi = db.DBMgr.getInstance()
+        self._dbi = DBMgr.getInstance()
 
         self._dbi.startRequest()
         self._schedModule = SchedulerModule.getDBInstance()
@@ -172,10 +165,10 @@ class Scheduler(object):
         task.setStatus(status)
 
         # if it's a periodic task, do some extra things
-        if isinstance(task, tasks.PeriodicTask):
+        if isinstance(task, PeriodicTask):
             # prepare an "occurrence" object
 
-            occurrence = tasks.TaskOccurrence(task)
+            occurrence = TaskOccurrence(task)
 
             task.addOccurrence(occurrence)
 
@@ -276,7 +269,7 @@ class Scheduler(object):
                 # even if a shutdown order is sent
 
                 # process tasks that have finished meanwhile
-                # (tasks have been running in different threads, so, the sync
+                # (tasks have been running in different processes, so, the sync
                 # thas was done above won't hurt)
                 self._checkFinishedTasks()
 
@@ -308,6 +301,9 @@ class Scheduler(object):
             self._sleep('Nothing to do. Sleeping for %d secs...' %
                         self._config.sleep_interval)
 
+            # read from DB again after sleeping
+            self._readFromDb()
+
     def _checkFinishedTasks(self):
         """
         Check if there are any tasks that have finished recently, and
@@ -316,28 +312,28 @@ class Scheduler(object):
 
         self._logger.debug("Checking finished tasks")
 
-        for taskId, thread in self._runningWorkers.items():
+        for taskId, process in self._runningWorkers.items():
 
-            # the thread is dead? good, it's finished
-            if not thread.isAlive():
+            # the process is dead? good, it's finished
+            if not process.isAlive():
                 task = self._schedModule._taskIdx[taskId]
 
                 # let's check if it was successful or not
                 # and write it in the db
 
-                if thread.getResult() == True:
+                if process.getResult() == True:
                     self._db_notifyTaskStatus(task, base.TASK_STATUS_FINISHED)
-                elif thread.getResult() == False:
+                elif process.getResult() == False:
                     self._db_notifyTaskStatus(task, base.TASK_STATUS_FAILED)
                 else:
                     # something weird happened
                     self._logger.warning("task %s finished, but the return value "
                                          "was %s" %
-                                         (task, thread.getResult()))
+                                         (task, process.getResult()))
 
                 # delete the entry from the dictionary
                 del self._runningWorkers[taskId]
-                thread.join()
+                process.join()
 
     def _printStatus(self, mode='debug'):
         """
@@ -390,15 +386,9 @@ class Scheduler(object):
 
         self._db_setTaskRunning(timestamp, curTask)
 
-        # Start a worker subprocess
-        # Add it to the thread dict
-
-        if self._config.multitask_mode == 'processes':
-            wclass = ProcessWorker
-        else:
-            wclass = ThreadWorker
+        # Start a worker subprocess and add it to the worker dict
         delay = int_timestamp(self._getCurrentDateTime()) - timestamp
-        self._runningWorkers[curTask.id] = wclass(curTask.id, self._config, delay)
+        self._runningWorkers[curTask.id] = ProcessWorker(curTask.id, self._config, delay)
         self._runningWorkers[curTask.id].start()
 
     def _processSpool(self):
@@ -409,19 +399,23 @@ class Scheduler(object):
         pair = self._db_popFromSpool()
 
         while pair:
-            op, obj = pair
+            try:
+                op, obj = pair
 
-            if op == 'add':
-                self._db_addTaskToQueue(obj)
-            elif op == 'change':
-                # pass oldTS and task
-                self._db_changeTaskStartDate(*obj)
-            elif op == 'del':
-                self._deleteTaskFromQueue(obj)
-            elif op == 'shutdown':
-                raise base.SchedulerQuitException(obj)
-            else:
-                raise base.SchedulerUnknownOperationException(op)
+                if op == 'add':
+                    self._db_addTaskToQueue(obj)
+                elif op == 'change':
+                    # pass oldTS and task
+                    self._db_changeTaskStartDate(*obj)
+                elif op == 'del':
+                    self._db_deleteTaskFromQueue(obj)
+                elif op == 'shutdown':
+                    raise base.SchedulerQuitException(obj)
+                else:
+                    raise base.SchedulerUnknownOperationException(op)
+            except Exception, e:
+                self._logger.exception('Exception in task %s: %s' % (obj, e))
+                raise
             pair = self._db_popFromSpool()
 
     def _sleep(self, msg):
@@ -436,31 +430,32 @@ class Scheduler(object):
         self._logger.debug('_abortDb()..')
         self._dbi.abort()
 
-    def _deleteTaskFromQueue(self, task):
+    def _db_deleteTaskFromQueue(self, task):
         """
         """
 
-        if isinstance(task, tasks.PeriodicTask):
+        if isinstance(task, PeriodicTask):
             # don't let periodic tasks respawn
             task.dontComeBack()
             self._dbi.commit()
 
         oldStatus = task.getStatus()
 
+        self._logger.info("dequeueing %s from status %s" % \
+                          (task, base.status(oldStatus)))
+
         # it doesn't matter if the task is already running again,
         # get rid of it
         self._db_moveTask(task,
                           oldStatus,
-                          base.TASK_STATUS_FAILED)
+                          base.TASK_STATUS_NONE)
 
-        self._logger.info("%s dequeued from status %s" % \
-                          (task, base.status(oldStatus)))
 
     def _checkAWOLTasks(self):
 
         self._logger.debug('Checking AWOL tasks...')
 
-        for task in self._schedModule.getRunningList():
+        for task in self._schedModule.getRunningList()[:]:
             if not task.getOnRunningListSince():
                 self._logger.warning("Task %s is in the runningList but has no "
                                "onRunningListSince value! Removing from runningList "

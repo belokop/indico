@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 """
 This module provides a skeleton of a test runner (BaseTestRunner) that all the
@@ -25,10 +24,14 @@ other TestRunners should inherit from.
 
 # System modules
 import os, sys
+from threading import Thread
 
 # Python stdlib
 import StringIO
 import pkg_resources
+from smtpd import SMTPServer
+import asyncore
+import logging
 
 # Indico
 from indico.util.console import colored
@@ -94,27 +97,26 @@ class OptionProxy(object):
         """
         Initializes the options based on command line parameters
         """
-
         for optName, optClass  in self._optionTable.iteritems():
             if optName in kwargs:
                 self._options[optName] = optClass(kwargs[optName])
             else:
-                self._options[optName] = optClass(False)
+                self._options[optName] = optClass(None)
 
         for optName in kwargs:
             if optName not in self._optionTable:
                 raise TestOptionException("Option '%s' not allowed here!" %
                                           optName)
 
-
-    def valueOf(self, optName):
+    def valueOf(self, optName, default=None):
         """
         Returns the direct value of an option
         """
-        if optName in self._options:
+        if optName in self._options and \
+                self._options[optName].value is not None:
             return self._options[optName].value
         else:
-            return None
+            return default
 
 
 class Option(IOMixin):
@@ -164,6 +166,7 @@ class BaseTestRunner(IOMixin):
         # initialize allowed options
         self.options = OptionProxy(self._runnerOptions)
         self.options.configure(**kwargs)
+        self._logger = logging.getLogger('test')
 
     def _run(self):
         """
@@ -236,7 +239,6 @@ class BaseTestRunner(IOMixin):
         Goes throught the plugin directories, and adds
         existing unit test dirs
         """
-
         dirs = []
 
         for epoint in pkg_resources.iter_entry_points('indico.ext_types'):
@@ -298,3 +300,25 @@ class BaseTestRunner(IOMixin):
         self.options.call(self, method, *args)
 
 
+# Some utils
+
+class FakeMailServer(SMTPServer):
+    def process_message(self, peer, mailfrom, rcpttos, data):
+         logging.getLogger('indico.test.fake_smtp').info("mail from %s" % mailfrom)
+
+
+class FakeMailThread(Thread):
+    def __init__(self, addr):
+        super(FakeMailThread, self).__init__()
+        self.addr = addr
+        self.server = FakeMailServer(self.addr, '')
+
+    def run(self):
+        asyncore.loop()
+
+    def close(self):
+        if self.server:
+            self.server.close()
+
+    def get_addr(self):
+        return self.server.socket.getsockname()

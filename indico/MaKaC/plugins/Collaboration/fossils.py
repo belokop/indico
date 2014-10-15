@@ -1,21 +1,20 @@
 # -*- coding: utf-8 -*-
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 """ This file has the common fossils for Collaboration
     There are 3 groups of fossils:
@@ -27,9 +26,25 @@
 
 
 from MaKaC.common.fossilize import IFossil
-from MaKaC.fossils.conference import IConferenceFossil
+from MaKaC.fossils.conference import IConferenceFossil, IConferenceMinimalFossil
+from MaKaC.fossils.contribution import IContributionFossil
 from MaKaC.common.Conversion import Conversion
+from MaKaC.plugins import Collaboration
 
+
+class ISpeakerWrapperBaseFossil(IFossil):
+
+    def getUniqueId(self):
+        pass
+
+    def getStatus(self):
+        pass
+
+    def getContId(self):
+        pass
+
+    def getSpeakerId(self):
+        pass
 
 ##################### Booking fossils #####################
 class ICSBookingBaseFossil(IFossil):
@@ -62,9 +77,15 @@ class ICSBookingBaseFossil(IFossil):
     def getBookingParams(self):
         """ Returns a dictionary with the booking params. """
 
+    def hasAcceptReject(self):
+        """ Returns if this booking belongs to a plugin who has a "accept or reject" concept. """
 
 
 class ICSBookingBaseConfModifFossil(ICSBookingBaseFossil):
+
+    def getConference(self):
+        """ Returns the assocaited event id """
+    getConference.result = IConferenceMinimalFossil
 
     def getWarning(self):
         """ Returns a warning object attached to this booking. (self._warning) """
@@ -84,11 +105,14 @@ class ICSBookingBaseConfModifFossil(ICSBookingBaseFossil):
     def hasStop(self):
         """ Returns if this booking belongs to a plugin who has a "start" concept. """
 
+    def hasConnect(self):
+        """ Returns if this booking belongs to a plugin who has a "connect" concept. """
+
     def hasCheckStatus(self):
         """ Returns if this booking belongs to a plugin who has a "check status" concept. """
 
-    def hasAcceptReject(self):
-        """ Returns if this booking belongs to a plugin who has a "accept or reject" concept. """
+    def isLinkedToEquippedRoom(self):
+        pass
 
     def requiresServerCallForStart(self):
         """ Returns if this booking belongs to a plugin who requires a server call when the start button is pressed."""
@@ -135,8 +159,6 @@ class ICSBookingBaseConfModifFossil(ICSBookingBaseFossil):
     def isAllowMultiple(self):
         """ Returns if this booking belongs to a type that allows multiple bookings per event. """
 
-
-
 class ICSBookingBaseIndexingFossil(ICSBookingBaseFossil):
 
     def getConference(self):
@@ -148,6 +170,16 @@ class ICSBookingBaseIndexingFossil(ICSBookingBaseFossil):
     getModificationURL.name = "modificationURL"
     getModificationURL.convert = lambda url: str(url)
 
+
+class ICSBookingInstanceIndexingFossil(ICSBookingBaseIndexingFossil):
+    def getStartDate(self):
+        pass
+    getStartDate.name = "instanceDate"
+    getStartDate.convert = Conversion.datetime
+
+    def getTalk(self):
+        """ Returns fossil of the talk this booking relates to """
+    getTalk.result = IContributionFossil
 
 
 ##################### Error fossils #####################
@@ -205,3 +237,57 @@ class IQueryResultFossil(IFossil):
 
     def getNPages(self):
         pass
+
+""" MetadataFossil created for use with iCal serialisation of Collaboration /
+    VideoService events.
+"""
+class ICollaborationMetadataFossil(IFossil):
+
+    def getStartDateAsString(self):
+        pass
+
+    def getAcceptRejectStatus(self):
+        pass
+    getAcceptRejectStatus.produce = lambda s: Collaboration.collaborationTools.CollaborationTools.getBookingShortStatus(s)
+    getAcceptRejectStatus.name = 'status'
+
+    def getStartDate(self):
+        pass
+    getStartDate.produce = lambda s: s.getStartDate() or s.getConference().getStartDate()
+
+    def getEndDate(self):
+        pass
+    getEndDate.produce = lambda s: s.getEndDate() or s.getConference().getEndDate()
+
+    def _getTitle(self):
+        pass
+
+    _getTitle.produce = lambda s: Collaboration.collaborationTools.CollaborationTools.getBookingTitle(s.getLinkObject() if s.hasSessionOrContributionLink() else s)
+    _getTitle.name = 'title'
+
+    def getType(self):
+        pass
+
+    def getUniqueId(self):
+        pass
+
+    def getConference(self):
+        pass
+    getConference.name = 'event_id'
+    getConference.convert = lambda e: e.getId()
+
+    def getLocation(self):
+        pass
+
+    def getRoom(self):
+        pass
+
+    def getURL(self):
+        pass
+    getURL.produce = lambda s: str(Collaboration.collaborationTools.CollaborationTools.getConferenceOrContributionURL(s))
+    getURL.name = 'url'
+
+    def getAudience(self):
+        pass
+    getAudience.produce = lambda s: Collaboration.collaborationTools.CollaborationTools.getAudience(s)
+    getAudience.name = 'audience'

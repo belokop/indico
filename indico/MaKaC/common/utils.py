@@ -1,94 +1,58 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2013 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
+# stdlib imports
 import time, re, os
 from random import randint
 from datetime import datetime, date, timedelta
+
+# 3rd party imports
+from BTrees.OOBTree import OOBTree
+from indico.util.date_time import format_datetime, format_date, format_time
+
+# indico legacy imports
 from MaKaC.common.timezoneUtils import isSameDay, isToday, getAdjustedDate,\
     isTomorrow
-from MaKaC import user, errors
-from MaKaC.i18n import _
+from MaKaC.common import info
+from MaKaC import errors
+
+# indico imports
+from indico.core.config import Config
+from indico.core.db import DBMgr
+from indico.util.i18n import currentLocale
+# backward compatibility
+from indico.util.string import truncate
 
 # fcntl is only available for POSIX systems
 if os.name == 'posix':
     import fcntl
 
-
-
-###########
-#CONSTANTS#
-###########
 _KEY_DEFAULT_LENGTH = 20
 _FAKENAME_SIZEMIN = 5
 _FAKENAME_SIZEMAX = 10
 
 
-
-###########
-#functions#
-###########
-
-from MaKaC.common.db import DBMgr
-from BTrees.OOBTree import OOBTree
-
-
-def isWeekend( d ):
+def isWeekend(d):
     """
     Accepts date or datetime object.
     """
     return d.weekday() in [5, 6]
-
-
-HOLIDAYS_KEY = 'Holidays'
-class HolidaysHolder:
-
-    @classmethod
-    def isWorkingDay( cls, d ):
-        if isinstance( d, datetime ):
-            d = d.date()
-        if isWeekend( d ):
-            return False
-        return not cls.__getBranch().has_key( d )
-
-    @classmethod
-    def getHolidays( cls ):
-        """
-        Returns list of holidays
-        """
-        return cls.__getBranch().keys()
-
-    @classmethod
-    def insertHoliday( cls, d ):
-        cls.__getBranch()[d] = None
-
-    @classmethod
-    def clearHolidays( cls ):
-        root = DBMgr.getInstance().getDBConnection().root()
-        root[HOLIDAYS_KEY] = OOBTree()
-
-    @staticmethod
-    def __getBranch():
-        root = DBMgr.getInstance().getDBConnection().root()
-        if not root.has_key( HOLIDAYS_KEY ):
-            root[HOLIDAYS_KEY] = OOBTree()
-        return root[HOLIDAYS_KEY]
 
 
 def stringToDate( str ):
@@ -163,13 +127,15 @@ def sortSlotByDate(x,y):
     return cmp(x.getStartDate(),y.getStartDate())
 
 def sortCategoryByTitle(x,y):
-    return cmp(x.getTitle(),y.getTitle())
+    return cmp(x.getTitle().lower(),y.getTitle().lower())
 
 def sortPrincipalsByName(x,y):
+
+    from MaKaC.user import Group
     firstNamex, firstNamey = "", ""
     if x is None:
         namex = ""
-    elif isinstance(x, user.CERNGroup) or isinstance(x, user.Group):
+    elif isinstance(x, Group):
         namex = x.getName()
     else:
         namex = x.getFamilyName()
@@ -177,7 +143,7 @@ def sortPrincipalsByName(x,y):
 
     if y is None:
         namey = ""
-    elif isinstance(y, user.CERNGroup) or isinstance(y, user.Group):
+    elif isinstance(y, Group):
         namey = y.getName()
     else:
         namey = y.getFamilyName()
@@ -188,7 +154,7 @@ def sortPrincipalsByName(x,y):
         cmpRes = cmp(firstNamex.lower(),firstNamey.lower())
     return cmpRes
 
-def validMail(emailstr):
+def validMail(emailstr, allowMultiple=True):
     """
     Check the validity of an email address or serie of email addresses
     - emailstr: a string representing a single email address or several
@@ -203,6 +169,9 @@ def validMail(emailstr):
 
     # Creates a list of emails
     emaillist = emails.split(",")
+
+    if not allowMultiple and len(emaillist) > 1:
+        return False
 
     # Checks the validity of each email in the list
     if emaillist != None or emaillist != []:
@@ -243,7 +212,7 @@ def validIP(ip):
 
 def isStringHTML(s):
     if type(s) == str:
-        tags = [ "<p>", "<p ", "<br>" ]
+        tags = [ "<p>", "<p ", "<br", "<li>" ]
         for tag in tags:
             if s.lower().find(tag) != -1:
                 return True
@@ -397,52 +366,51 @@ def unicodeSlice(s, start, end, encoding = 'utf-8'):
     """
     return s.decode(encoding, 'replace')[start:end]
 
-def daysBetween(dtStart, dtEnd):
-    d = dtEnd - dtStart
-    days = [ dtStart + timedelta(n) for n in range(0, d.days + 1)]
-    if days[-1] != dtEnd:
-        # handles special case, when d.days is the
-        # actual span minus 2
-        # |----|----|----|----|
-        # (4 days)
-        #    |----|----|---
-        # (2 days and some hours)
-        days.append(dtEnd)
 
-    return days
+def formatDateTime(dateTime, showWeek=False, format=None, locale=None, server_tz=False):
+    week = "EEEE" if showWeek else ""
 
-def formatDateTime(dateTime, showWeek=False, format=None):
+    if not format:
+        return format_datetime(dateTime, week+'d/M/yyyy H:mm', locale=locale, server_tz=server_tz)
+    else:
+        return format_datetime(dateTime, format, locale=locale, server_tz=server_tz)
+
+
+def formatDate(date, showWeek=False, format=None, locale=None):
     week = ""
     if showWeek:
-        week = "%a "
+        week = "EEE "
     if not format:
-        return datetime.strftime(dateTime, week+'%d/%m/%Y %H:%M')
+        return format_date(date, week+'d/M/yyyy', locale=locale)
     else:
-        return datetime.strftime(dateTime, format)
+        return format_date(date, format, locale=locale)
 
-def formatDate(date, showWeek=False, format=None):
-    week = ""
-    if showWeek:
-        week = "%a "
+
+def formatTime(tm, format=None, locale=None, server_tz=False):
     if not format:
-        return datetime.strftime(date, week+'%d/%m/%Y')
+        return format_time(tm, 'H:mm', locale=locale, server_tz=server_tz)
     else:
-        return datetime.strftime(date, format)
+        return format_time(tm, format, locale=locale, server_tz=server_tz)
 
-def formatTime(time):
-    return time.strftime('%H:%M')
 
 def parseDate(dateStr, format='%d/%m/%Y'):
     t=time.strptime(dateStr, format)
     return datetime(t.tm_year,t.tm_mon, t.tm_mday).date()
 
+def prettyDuration(duration):
+    """Return duration 01:05 in a pretty format 1h05'"""
+    hours = duration.seconds/60/60
+    minutes = duration.seconds/60%60
+    if hours:
+        return "%sh%s'" % (hours, minutes)
+    else:
+        return "%s'" % minutes
 
 def formatDuration(duration, units = 'minutes', truncate = True):
     """ Formats a duration (a timedelta object)
     """
 
     seconds = duration.days * 86400 + duration.seconds
-
 
     if units == 'seconds':
         result = seconds
@@ -475,10 +443,6 @@ def formatDuration(duration, units = 'minutes', truncate = True):
         return int(result)
     else:
         return result
-
-
-
-
 
 
 def formatTwoDates(date1, date2, tz = None, useToday = False, useTomorrow = False, dayFormat = None, capitalize = True, showWeek = False):
@@ -626,11 +590,6 @@ def resolveHierarchicalId(objId):
     except errors.MaKaCError:
         return None
 
-def truncate(text, maxSize):
-    if len(text) > maxSize:
-        return text[:maxSize]+'...'
-    else:
-        return text
 
 class OSSpecific(object):
     """
@@ -643,7 +602,7 @@ class OSSpecific(object):
         """
         Locks file f with lock type lockType
         """
-        fcntl.fcntl(f, lockType)
+        fcntl.flock(f, lockType)
 
     @classmethod
     def _lockFileOthers(cls, f, lockType):
@@ -676,3 +635,30 @@ class OSSpecific(object):
             'LOCK_UN': None,
             'LOCK_SH': None
             }
+
+
+def getProtectionText(target):
+    if target.hasAnyProtection():
+        if target.isItselfProtected():
+            return "protected_own", None
+        elif target.hasProtectedOwner():
+            return "protected_parent", None
+        elif target.getDomainList() != []:
+            return "domain", list(x.getName() for x in target.getDomainList())
+        else:
+            return getProtectionText(target.getOwner())
+    return "", None
+
+
+def getReportNumberItems(obj):
+    rns = obj.getReportNumberHolder().listReportNumbers()
+    reportCodes = []
+
+    for rn in rns:
+        key = rn[0]
+        if key in Config.getInstance().getReportNumberSystems().keys():
+            number = rn[1]
+            reportNumberId="s%sr%s"%(key, number)
+            name = Config.getInstance().getReportNumberSystems()[key]["name"]
+            reportCodes.append({"id" : reportNumberId, "number": number, "system": key, "name": name})
+    return reportCodes

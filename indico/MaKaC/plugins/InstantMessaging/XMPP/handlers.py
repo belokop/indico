@@ -1,37 +1,37 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 import urllib2, os, tempfile, stat
 from MaKaC.plugins.InstantMessaging.XMPP.chatroom import XMPPChatroom
 from MaKaC.plugins.InstantMessaging.handlers import ChatroomServiceBase
 from MaKaC.services.implementation.base import ServiceBase, ParameterManager
 from MaKaC.services.interface.rpc.common import ServiceError, NoReportError
-from MaKaC.common.Configuration import Config
+from MaKaC.common import log
+from indico.core.config import Config
 from MaKaC.common.contextManager import ContextManager
-from MaKaC.common.logger import Logger
+from indico.core.logger import Logger
 from MaKaC.common.externalOperationsManager import ExternalOperationsManager
 from MaKaC.common.timezoneUtils import nowutc, DisplayTZ
 from MaKaC.common.fossilize import fossilize
 from MaKaC.plugins import Observable
 from MaKaC.plugins.util import PluginFieldsWrapper
-from MaKaC.plugins.helpers import DBHelpers, MailHelper
+from MaKaC.plugins.helpers import DBHelpers
 from MaKaC.plugins.InstantMessaging.XMPP.helpers import DeleteLogLinkGenerator, LogLinkGenerator, generateCustomLinks, generateLogLink, XMPPLogsActivated
 from MaKaC.i18n import _
 
@@ -52,8 +52,8 @@ class XMPPChatroomService( ChatroomServiceBase ):
                  'CRdeletedFromClient': _('Someone deleted the chat room from the XMPP server since this page was loaded. We recommend you to delete the chatroom from Indico as well')
                  }
 
-    def __init__(self, params, session, req):
-        ChatroomServiceBase.__init__(self, params, session, req)
+    def __init__(self, params):
+        ChatroomServiceBase.__init__(self, params)
         #we want the data from the XMPP plugin in the InstantMessaging Plugin type
         oh = PluginFieldsWrapper('InstantMessaging', 'XMPP')
         self._botJID = oh.getOption('indicoUsername') + '@' + oh.getOption('chatServerHost')
@@ -75,15 +75,15 @@ class XMPPChatroomService( ChatroomServiceBase ):
 
         self._user = self._getUser()
 
-    def proccessAnswer(self, answer):
+    def processAnswer(self, answer):
         # controlled error
         if hasattr(answer, '_error') and answer._error['error']:
             # we need to make a distinction in this case to show the widget in the client
             if answer._error['reason'] is 'roomExists':
-                Logger.get('InstantMessaging (XMPP-XMPP server)').error("User %s tried to create the room %s, but it exists already" %(self._room.getOwner(), self._room.getTitle()))
+                Logger.get('InstantMessaging (XMPP-XMPP server)').error("User %s tried to create the room %s, but it exists already" % (self._room.getOwner(), self._room.getTitle()))
                 raise NoReportError(self.messages['sameName'], explanation='roomExists')
             else:
-                Logger.get('InstantMessaging (XMPP-XMPP server)').error("User %s executed an XMPP operation that provoked an error: %s" %(self._room.getOwner(), answer._error['reason']))
+                Logger.get('InstantMessaging (XMPP-XMPP server)').error("User %s executed an XMPP operation that provoked an error: %s" % (self._room.getOwner(), answer._error['reason']))
                 raise ServiceError(message = answer._error['reason'])
         # this should never happen! When an error happens, it should ALWAYS be set in the
         # _error variable in bot.py
@@ -101,7 +101,7 @@ class XMPPChatroomService( ChatroomServiceBase ):
         except Exception, e:
             Logger.get('InstantMessaging (XMPP-XMPP server)').exception("Exception while checking if room existed")
             raise ServiceError(message = self.messages['default'])
-        return self.proccessAnswer(self._bot)
+        return self.processAnswer(self._bot)
 
     def roomPreferencesXMPP(self, jid, password, room):
         """ Creates the room in the XMPP server """
@@ -112,7 +112,7 @@ class XMPPChatroomService( ChatroomServiceBase ):
         except Exception, e:
             Logger.get('InstantMessaging (XMPP-XMPP server)').error("Exception while checking if room existed: %s" %e)
             raise ServiceError(message = self.messages['default'])
-        return self.proccessAnswer(self._bot)
+        return self.processAnswer(self._bot)
 
     def createRoomXMPP(self, jid, password, room):
         """ Creates the room in the XMPP server """
@@ -123,7 +123,7 @@ class XMPPChatroomService( ChatroomServiceBase ):
         except Exception, e:
             Logger.get('InstantMessaging (XMPP-XMPP server)').error("Exception while creating: %s" %e)
             raise ServiceError(message = self.messages['creating'])
-        return self.proccessAnswer(self._bot)
+        return self.processAnswer(self._bot)
 
     def editRoomXMPP(self, jid, password, room, checkRoomExists = True):
         """ Edits the room in the XMPP server. If checkRoomExists is set to true
@@ -137,7 +137,7 @@ class XMPPChatroomService( ChatroomServiceBase ):
         except Exception, e:
             Logger.get('InstantMessaging (XMPP-XMPP server)').error("Exception while editing: %s" %e)
             raise ServiceError(message = self.messages['editing'])
-        return self.proccessAnswer(self._bot)
+        return self.processAnswer(self._bot)
 
     def deleteRoomXMPP(self, jid, password, room, message):
         """ Deletes the room in the XMPP server """
@@ -148,7 +148,7 @@ class XMPPChatroomService( ChatroomServiceBase ):
         except Exception, e:
             Logger.get('InstantMessaging (XMPP-XMPP server)').error("Exception while deleting: %s" %e)
             raise ServiceError(message = self.messages['deleting'])
-        return self.proccessAnswer(self._bot)
+        return self.processAnswer(self._bot)
 
 class CreateChatroom( XMPPChatroomService ):
 
@@ -172,7 +172,6 @@ class CreateChatroom( XMPPChatroomService ):
         if self._room.getCreatedInLocalServer():
             self.roomExistsXMPP(self._botJID, self._botPass, self._room)
         try:
-            ContextManager.getdefault('mailHelper', MailHelper())
             self._notify('createChatroom', {'room': self._room,
                                             'conference': conference})
         except ServiceError, e:
@@ -192,7 +191,6 @@ class CreateChatroom( XMPPChatroomService ):
 
         tz = DisplayTZ(self._aw, conference).getDisplayTZ()
 
-        ContextManager.get('mailHelper').sendMails()
         fossilizedRoom = self._room.fossilize(tz=tz)
 
         # add links to join the room
@@ -243,8 +241,9 @@ class EditChatroom( XMPPChatroomService ):
                 self.roomExistsXMPP(self._botJID, self._botPass, self._room)
 
             #edit the chat room in indico
-            ContextManager.getdefault('mailHelper', MailHelper())
-            self._notify('editChatroom', {'oldTitle': oldRoom.getTitle(), 'newRoom':self._room})
+            self._notify('editChatroom', {'oldTitle': oldRoom.getTitle(),
+                                          'newRoom': self._room,
+                                          'userId': self._user.getId()})
         except ServiceError, e:
             Logger.get('ext.im').error("Exception while editing: %s" %e)
             raise ServiceError( message=_('Problem while accessing the database: %s' %e))
@@ -280,7 +279,6 @@ class EditChatroom( XMPPChatroomService ):
         if modified:
             Logger.get('ext.im').info("The room %s has been modified by the user %s at %s hours" %(self._title, self._user.getName(), self._room.getModificationDate()))
 
-        ContextManager.get('mailHelper').sendMails()
         return self._room.fossilizeMultiConference(values['conference'])
 
 
@@ -298,7 +296,6 @@ class DeleteChatroom( XMPPChatroomService ):
         message = _("%s has requested to delete this room. Please address this person for further information" %self._user.getName())
         #delete room from Indico
         try:
-            ContextManager.getdefault('mailHelper', MailHelper())
             self._notify('deleteChatroom', {'room': self._room})
         except ServiceError, e:
             Logger.get('ext.im').exception(_('Problem deleting indexes in the database for chat room %s' % self._room.getTitle()))
@@ -316,7 +313,6 @@ class DeleteChatroom( XMPPChatroomService ):
             document = urllib2.urlopen(req)
             Logger.get('ext.im').info("The room %s has been deleted by the user %s at %s hours" %(self._title, self._user.getName(), nowutc()))
 
-        ContextManager.get('mailHelper').sendMails()
         return True
 
 
@@ -353,10 +349,23 @@ class GetRoomsByUser( ServiceBase ):
 
     def _checkParams(self):
         self._user = self._params['usr']
+        self._limit = self._params['limit']
+        self._offset = self._params['offset']
+        self._excl = self._params['excl'] if self._params.has_key('excl') else None
 
     def _getAnswer( self ):
-        return fossilize(DBHelpers().getRoomsByUser(self._user))
+        return fossilize(DBHelpers().getRoomsByUser(self._user, self._offset,
+                                                    self._limit, self._excl))
 
+
+class GetNumberOfRoomsByUser( ServiceBase ):
+
+    def _checkParams(self):
+        self._user = self._params['usr']
+        self._excl = self._params['excl'] if self._params.has_key('excl') else None
+
+    def _getAnswer(self):
+        return fossilize(DBHelpers().getNumberOfRoomsByUser(self._user, self._excl))
 
 
 class AddConference2Room( ServiceBase, Observable ):
@@ -367,7 +376,6 @@ class AddConference2Room( ServiceBase, Observable ):
 
     def _getAnswer( self ):
         rooms=[]
-        ContextManager.getdefault('mailHelper', MailHelper())
         try:
             for roomID in self._rooms:
                 try:
@@ -386,8 +394,6 @@ class AddConference2Room( ServiceBase, Observable ):
         except NoReportError, e:
             Logger.get('ext.im').exception("Error adding chat rooms. User: %s. Chat room: %s" %(self._aw.getUser().getFullName(), roomID))
             raise ServiceError(message = _('There was an error trying to add the chat rooms. Please refresh your browser and try again'))
-
-        ContextManager.get('mailHelper').sendMails()
         return rooms
 
 
@@ -470,7 +476,8 @@ class AddLogs2Material( ServiceBase ):
         resource.setDescription("Chat logs for the chat room %s" %self._chatroom.getTitle())
         resource.setName(resource.getFileName())
 
-        self._conf.getLogHandler().logAction({"subject":"Added file %s%s" % (self._file["fileName"],'')},"Files",self._aw.getUser())
+        log_info = {"subject":"Added file %s%s" % (self._file["fileName"],'')}
+        self._conf.getLogHandler().logAction(log_info, log.ModuleNames.MATERIAL)
 
         # forcedFileId - in case there is a conflict, use the file that is
         # already stored
@@ -493,6 +500,7 @@ methodMap = {
     "XMPP.deleteRoom": DeleteChatroom,
     "XMPP.getRoomPreferences": GetRoomPreferences,
     "XMPP.getRoomsByUser": GetRoomsByUser,
+    "XMPP.getNumberOfRoomsByUser": GetNumberOfRoomsByUser,
     "XMPP.addConference2Room": AddConference2Room,
     "XMPP.attachLogs": AddLogs2Material
 }

@@ -1,74 +1,70 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
+from flask import request
 
 import tempfile
 import os
-import shutil
-import stat
-from copy import copy
 import MaKaC.webinterface.locators as locators
 import MaKaC.webinterface.webFactoryRegistry as webFactoryRegistry
 import MaKaC.webinterface.urlHandlers as urlHandlers
+from MaKaC.common import log
 from MaKaC.webinterface.rh.base import RH
-from MaKaC.errors import MaKaCError
-from MaKaC.common.Configuration import Config
-from MaKaC.conference import LocalFile,Material,Link,Category,Conference
-import MaKaC.webinterface.materialFactories as materialFactories
+from MaKaC.errors import MaKaCError, NotFoundError
+from indico.core.config import Config
+from MaKaC.conference import LocalFile, Link, Category
 from MaKaC.export import fileConverter
-from MaKaC.conference import Conference,Session,Contribution,SubContribution
+from MaKaC.conference import Conference, Session, Contribution, SubContribution
 from MaKaC.i18n import _
 from MaKaC.user import AvatarHolder, GroupHolder
 
-from MaKaC.common.logger import Logger
+from indico.core.logger import Logger
+from MaKaC.common.timezoneUtils import nowutc
 
-class RHCustomizable( RH ):
+from indico.util import json
+from indico.util.contextManager import ContextManager
 
-    def __init__( self, req ):
-        RH.__init__( self, req )
+BYTES_1MB = 1024 * 1024
+
+
+class RHCustomizable(RH):
+
+    def __init__(self, req=None):
+        RH.__init__(self)
         self._wf = ""
 
     def getWebFactory( self ):
         if self._wf == "":
-           wr = webFactoryRegistry.WebFactoryRegistry()
-           self._wf = wr.getFactory( self._conf )
+            wr = webFactoryRegistry.WebFactoryRegistry()
+            self._wf = wr.getFactory( self._conf )
         return self._wf
 
 
 class RHConferenceSite( RHCustomizable ):
 
-    def _setMenuStatus(self,params):
-        if params.has_key("menuStatus"):
-            self._getSession().setVar("menuStatus",params["menuStatus"])
- #       wr = webFactoryRegistry.WebFactoryRegistry()
- #       self._wf = wr.getFactory( self._conf )
- #       if self._wf is not None:
- #           self._getSession().setVar("menuStatus","close")
-
     def _checkParams( self, params ):
         l = locators.WebLocator()
         l.setConference( params )
         self._conf = self._target = l.getObject()
-        self._setMenuStatus(params)
+        ContextManager.set("currentConference", self._conf)
 
-    def _getLoginURL( self ):
-        url = self.getRequestURL()
+    def _getLoginURL(self, return_url=None):
+        url = return_url or self.getRequestURL()
         if url == "":
             url = urlHandlers.UHConferenceDisplay.getURL( self._conf )
         wr = webFactoryRegistry.WebFactoryRegistry()
@@ -91,7 +87,6 @@ class RHSessionBase( RHConferenceSite ):
         l.setSession( params )
         self._session = self._target = l.getObject()
         self._conf = self._session.getConference()
-        self._setMenuStatus(params)
 
 class RHSessionSlotBase( RHConferenceSite ):
 
@@ -101,7 +96,6 @@ class RHSessionSlotBase( RHConferenceSite ):
         self._slot = self._target = l.getObject()
         self._session = self._slot.getSession()
         self._conf = self._session.getConference()
-        self._setMenuStatus(params)
 
 
 class RHContributionBase( RHConferenceSite ):
@@ -111,7 +105,6 @@ class RHContributionBase( RHConferenceSite ):
         l.setContribution( params )
         self._contrib = self._target = l.getObject()
         self._conf = self._contrib.getConference()
-        self._setMenuStatus(params)
 
 class RHSubContributionBase( RHConferenceSite ):
 
@@ -121,35 +114,35 @@ class RHSubContributionBase( RHConferenceSite ):
         self._subContrib = self._target = l.getObject()
         self._contrib = self._subContrib.getParent()
         self._conf = self._contrib.getConference()
-        self._setMenuStatus(params)
 
 
-class RHMaterialBase( RHConferenceSite ):
+class RHMaterialBase(RHConferenceSite):
 
-    def _checkParams( self, params ):
+    def _checkParams(self, params):
         l = locators.WebLocator()
-        l.setMaterial( params )
+        l.setMaterial(params)
         self._material = self._target = l.getObject()
         if self._material is None:
-            raise MaKaCError( _("The material you are trying to access does not exist or was removed"))
+            raise NotFoundError(_("The material you are trying to access does not exist or was removed").format(
+                                "<strong>{}</strong>".format(params['confId'])),
+                                title=_("Resource not found"))
+
         self._conf = self._material.getConference()
-        if self._conf == None:
-            self._categ=self._material.getCategory()
-        self._setMenuStatus(params)
+        if self._conf is None:
+            self._categ = self._material.getCategory()
 
 
-class RHFileBase( RHConferenceSite ):
+class RHFileBase(RHConferenceSite):
 
-    def _checkParams( self, params ):
+    def _checkParams(self, params):
         l = locators.WebLocator()
-        l.setResource( params )
+        l.setResource(params)
         self._file = self._target = l.getObject()
-        if not isinstance(self._file, LocalFile):
-            raise MaKaCError("No file found, %s found instead"%type(self._file))
+#        if not isinstance(self._file, LocalFile):
+#            raise MaKaCError("No file found, %s found instead"%type(self._file))
         self._conf = self._file.getConference()
-        if self._conf == None:
+        if self._conf is None:
             self._categ = self._file.getCategory()
-        self._setMenuStatus(params)
 
 
 class RHAlarmBase( RHConferenceSite ):
@@ -159,7 +152,6 @@ class RHAlarmBase( RHConferenceSite ):
         l.setAlarm( params )
         self._alarm = self._target = l.getObject()
         self._conf = self._alarm.getConference()
-        self._setMenuStatus(params)
 
 
 class RHLinkBase( RHConferenceSite ):
@@ -171,7 +163,6 @@ class RHLinkBase( RHConferenceSite ):
         self._conf = self._link.getConference()
         if self._conf == None:
             self._categ=self._link.getCategory()
-        self._setMenuStatus(params)
 
 
 class RHTrackBase( RHConferenceSite ):
@@ -184,7 +175,6 @@ class RHTrackBase( RHConferenceSite ):
         self._subTrack = None
         if params.has_key("subTrackId"):
             self._subTrack = self._track.getSubTrackById(params["subTrackId"])
-        self._setMenuStatus(params)
 
 
 class RHAbstractBase( RHConferenceSite ):
@@ -196,56 +186,61 @@ class RHAbstractBase( RHConferenceSite ):
         if self._abstract is None:
             raise MaKaCError( _("The abstract you are trying to access does not exist"))
         self._conf = self._abstract.getOwner().getOwner()
-        self._setMenuStatus(params)
 
-class RHSubmitMaterialBase:
+class RHSubmitMaterialBase(object):
 
-    _allowedMatsConference=["paper", "slides", "poster", "minutes"]
-    _allowedMatsforReviewing=["reviewing"]
-    _allowedMatsForMeetings = [ "paper", "slides", "poster", "minutes", "agenda", "video", "pictures", "text", "more information", "document", "list of actions", "drawings", "proceedings", "live broadcast" ]
-    _allowedMatsForSE = [ "paper", "slides", "poster", "minutes", "agenda", "pictures", "text", "more information", "document", "list of actions", "drawings", "proceedings", "live broadcast", "video", "streaming video", "downloadable video" ]
-    _allowedMatsCategory = [ "paper", "slides", "poster", "minutes", "agenda", "video", "pictures", "text", "more information", "document", "list of actions", "drawings", "proceedings", "live broadcast" ]
-
-    def __init__(self, target, rh = None):
-        self._target=target
-        self._callerRH = rh
+    def __init__(self):
+        self._tempFiles = {}
         self._repositoryIds = None
+        self._errorList = []
+        self._cfg = Config.getInstance()
 
     def _getNewTempFile( self ):
         cfg = Config.getInstance()
         tempPath = cfg.getUploadedFilesTempDir()
-        tempFileName = tempfile.mkstemp( suffix="Indico.tmp", dir = tempPath )[1]
+        tempFileName = tempfile.mkstemp(suffix="Indico.tmp", dir=tempPath)[1]
         return tempFileName
 
     #XXX: improve routine to avoid saving in temporary file
-    def _saveFileToTemp( self, fd ):
-        fileName = self._getNewTempFile()
-        f = open( fileName, "wb" )
-        f.write( fd.read() )
-        f.close()
-        return fileName
+    def _saveFileToTemp(self, fs):
+        if fs not in self._tempFiles:
+            fileName = self._getNewTempFile()
+            fs.save(fileName)
+            self._tempFiles[fs] = fileName
+            self._tempFilesToDelete.append(fileName)
+        return self._tempFiles[fs]
+
+    def _checkProtection(self):
+        self._loggedIn = True
+        if self._getUser() == None and (isinstance(self._target, Category) or not self._target.getConference().canKeyModify(self._aw)):
+            self._loggedIn = False
+        elif self._getUser() and isinstance(self._target, Conference) and self._target.getAccessController().canUserSubmit(self._getUser()):
+            self._loggedIn = True
+        else:
+            super(RHSubmitMaterialBase, self)._checkProtection()
 
     def _checkParams(self,params):
 
-        filesToDelete = []
+        self._params = params
         self._action = ""
         self._overwrite = False
         #if request has already been handled (DB conflict), then we keep the existing files list
 
         self._files = []
         self._links = []
-        self._topdf=params.has_key("topdf")
+        self._topdf = "topdf" in params
 
-        self._displayName = params.get("displayName","").strip()
-        self._uploadType = params.get("uploadType","")
-        self._materialId = params.get("materialId","")
-        self._description = params.get("description","")
+        self._displayName = params.get("displayName", "").strip()
+        self._uploadType = params.get("uploadType", "")
+        self._materialId = params.get("materialId", "")
+        self._description = params.get("description", "")
         self._statusSelection = int(params.get("statusSelection", 1))
         self._visibility = int(params.get("visibility", 0))
-        self._password = params.get("password","")
+        self._password = params.get("password", "")
+        self._doNotSanitizeFields.append("password")
 
-        from MaKaC.services.interface.rpc import json
-        self._userList = json.decode(params.get("userList", "[]"))
+        self._userList = json.loads(params.get("userList", "[]"))
+        maxUploadFilesTotalSize = float(self._cfg.getMaxUploadFilesTotalSize())
 
         if self._uploadType == "file":
             if isinstance(params["file"], list):
@@ -258,13 +253,19 @@ class RHSubmitMaterialBase:
             for fileUpload in files:
                 if type(fileUpload) != str and fileUpload.filename.strip() != "":
                     fDict = {}
-                    fDict["filePath"] = self._saveFileToTemp(fileUpload.file)
 
-                    if self._callerRH != None:
-                        self._callerRH._tempFilesToDelete.append(fDict["filePath"])
+                    fDict["fileName"] = fileUpload.filename.encode("utf-8")
+                    estimSize = request.content_length
 
-                    fDict["fileName"] = fileUpload.filename
-                    fDict["size"] = int(os.stat(fDict["filePath"])[stat.ST_SIZE])
+                    if maxUploadFilesTotalSize and estimSize > (maxUploadFilesTotalSize * BYTES_1MB):
+                        # if file is too big, do not save it in disk
+                        fDict["filePath"] = ''
+                        fDict["size"] = estimSize
+                    else:
+                        fDict["filePath"] = self._saveFileToTemp(fileUpload)
+                        fDict["size"] = os.path.getsize(fDict["filePath"])
+
+                    self._setErrorList(fDict)
                     self._files.append(fDict)
 
         elif self._uploadType == "link":
@@ -273,34 +274,34 @@ class RHSubmitMaterialBase:
                 self._displayName = ""
                 self._description = ""
             else:
-                urls =  [params["url"]]
+                urls = [params["url"]]
 
             matType = params.get("materialType", "")
             for url in urls:
+                if not url.strip():
+                    continue
                 link = {}
                 link["url"] = url
                 link["matType"] = matType
                 self._links.append(link)
 
 
-    def _getErrorList(self):
-        res=[]
-
+    def _setErrorList(self, fileEntry):
+        maxUploadFilesTotalSize = float(self._cfg.getMaxUploadFilesTotalSize())
         if self._uploadType == "file":
-            if not self._files:
-                res.append(_("""A file must be submitted."""))
-            for fileEntry in self._files:
-                if hasattr(fileEntry, "filePath") and not fileEntry["filePath"].strip():
-                    res.append(_("""A valid file to be submitted must be specified."""))
-                if hasattr(fileEntry, "size") and fileEntry["size"] < 10:
-                    res.append(_("""The file %s seems to be empty""") % fileEntry["fileName"])
+            if "filePath" in fileEntry and not fileEntry["filePath"].strip():
+                self._errorList.append(_("""A valid file to be submitted must be specified. """))
+            if "size" in fileEntry:
+                if fileEntry["size"] < 10:
+                    self._errorList.append(_("""The file %s seems to be empty """) % fileEntry["fileName"])
+                elif maxUploadFilesTotalSize and fileEntry["size"] > (maxUploadFilesTotalSize*1024*1024):
+                    self._errorList.append(_("The file size of %s exceeds the upload limit (%s Mb)") % (fileEntry["fileName"], maxUploadFilesTotalSize))
         elif self._uploadType == "link":
             if not self._links[0]["url"].strip():
-                res.append(_("""A valid URL must be specified."""))
+                self._errorList.append(_("""A valid URL must be specified."""))
 
         if self._materialId=="":
-            res.append(_("""A material ID must be selected."""))
-        return res
+            self._errorList.append(_("""A material ID must be selected."""))
 
     def _getMaterial(self, forceCreate = True):
         """
@@ -337,7 +338,7 @@ class RHSubmitMaterialBase:
         from MaKaC.common.fossilize import fossilize
         from MaKaC.fossils.conference import ILocalFileExtendedFossil, ILinkFossil
 
-        Logger.get('requestHandler').debug('Adding %s - request %s ' % (self._uploadType, id(self._callerRH._req)))
+        Logger.get('requestHandler').debug('Adding %s - request %s' % (self._uploadType, request))
 
         mat, newlyCreated = self._getMaterial()
 
@@ -361,7 +362,8 @@ class RHSubmitMaterialBase:
                         resource.setName(self._displayName)
 
                     if not type(self._target) is Category:
-                        self._target.getConference().getLogHandler().logAction({"subject":"Added file %s%s" % (fileEntry["fileName"], text)}, "Files", user)
+                        log_info = {"subject":"Added file %s%s" % (fileEntry["fileName"], text)}
+                        self._target.getConference().getLogHandler().logAction(log_info, log.ModuleNames.MATERIAL)
                     resources.append(resource)
                     # in case of db conflict we do not want to send the file to conversion again, nor re-store the file
 
@@ -377,7 +379,8 @@ class RHSubmitMaterialBase:
                         resource.setName(self._displayName)
 
                     if not type(self._target) is Category:
-                        self._target.getConference().getLogHandler().logAction({"subject":"Added link %s%s" % (resource.getURL(), text)}, "Files", user)
+                        log_info = {"subject":"Added link %s%s" % (resource.getURL(), text)}
+                        self._target.getConference().getLogHandler().logAction(log_info, log.ModuleNames.MATERIAL)
                     resources.append(resource)
 
             status = "OK"
@@ -391,15 +394,18 @@ class RHSubmitMaterialBase:
         # already stored
         repoIDs = []
         for i, resource in enumerate(resources):
-            if self._repositoryIds is None:
-                mat.addResource(resource, forcedFileId=None)
-            else:
+            if self._repositoryIds:
                 mat.addResource(resource, forcedFileId=self._repositoryIds[i])
+            else:
+                mat.addResource(resource, forcedFileId=None)
 
             #apply conversion
-            if self._topdf and fileConverter.CDSConvFileConverter.hasAvailableConversionsFor(os.path.splitext(resource.getFileName())[1].strip().lower()):
-                #Logger.get('conv').debug('Queueing %s for conversion' % resource.getFilePath())
-                fileConverter.CDSConvFileConverter.convert(resource.getFilePath(), "pdf", mat)
+            if self._topdf and not isinstance(resource, Link):
+                file_ext = os.path.splitext(resource.getFileName())[1].strip().lower()
+                if fileConverter.CDSConvFileConverter.hasAvailableConversionsFor(file_ext):
+                    # Logger.get('conv').debug('Queueing %s for conversion' % resource.getFilePath())
+                    fileConverter.CDSConvFileConverter.convert(resource.getFilePath(), 'pdf', mat)
+                    resource.setPDFConversionRequestDate(nowutc())
 
             # store the repo id, for files
             if isinstance(resource, LocalFile) and self._repositoryIds is None:
@@ -428,11 +434,20 @@ class RHSubmitMaterialBase:
         return mat, status, fossilize(info, {"MaKaC.conference.Link": ILinkFossil,
                                              "MaKaC.conference.LocalFile": ILocalFileExtendedFossil})
 
-    def _process(self, rh, params):
-
+    def _process(self):
         # We will need to pickle the data back into JSON
 
-        user = rh.getAW().getUser()
+        user = self.getAW().getUser()
+
+        if not self._loggedIn:
+            return json.dumps({
+                'status': 'ERROR',
+                'info': {
+                    'type': 'noReport',
+                    'title': '',
+                    'explanation': _('You are currently not authenticated. Please log in again.')
+                }
+            }, textarea=True)
 
         try:
             owner = self._target
@@ -452,25 +467,21 @@ class RHSubmitMaterialBase:
             owner = None
             text = ""
 
-        errorList=self._getErrorList()
-
         try:
-            if len(errorList) > 0:
-                status = "ERROR"
-                info = errorList
+            if len(self._errorList) > 0:
+                raise Exception('Operation aborted')
             else:
                 mat, status, info = self._addMaterialType(text, user)
 
                 if status == "OK":
                     for entry in info:
-                        entry['material'] = mat.getId();
+                        entry['material'] = mat.getId()
         except Exception, e:
             status = "ERROR"
-            info = errorList + ["%s: %s" % (e.__class__.__name__, str(e))]
+            if 'file' in self._params:
+                del self._params['file']
+            info = {'message': self._errorList or " %s: %s" % (e.__class__.__name__, str(e)),
+                    'code': '0',
+                    'requestInfo': self._params}
             Logger.get('requestHandler').exception('Error uploading file')
-
-        # hackish, because of mime types. Konqueror, for instance, would assume text if there were no tags,
-        # and would try to open it
-        from MaKaC.services.interface.rpc import json
-        return "<html><head></head><body>"+json.encode({'status': status, 'info': info})+"</body></html>"
-
+        return json.dumps({'status': status, 'info': info}, textarea=True)

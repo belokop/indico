@@ -1,10 +1,14 @@
-<% declareTemplate(newTemplateStyle=True) %>
+span.RRWarningMessage {
+    color: #D01F3C;
+    font-weight: bold;
+}
 
 span.RRNoteTitle {
     font-weight: bold;
     font-style: italic;
     text-decoration: underline;
 }
+
 span.RRNoteText {
     font-style: italic;
 }
@@ -42,7 +46,7 @@ ul.RROptionList li.RRInnerQuestion {
     font-weight: bold;
 }
 
-div.RRFormSection label {
+div.RRFormSection label, ul.RROptionList label {
     font-weight: normal;
 }
 
@@ -71,4 +75,8 @@ span.RRContributionName {
 
 span.RRSpeakers {
 	overflow: auto;
+}
+
+#contributionsDiv {
+    padding-left: 20px;
 }

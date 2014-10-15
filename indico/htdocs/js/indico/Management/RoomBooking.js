@@ -1,3 +1,26 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
+function roomListNothing(data, func) {
+    each(data, function() {
+        func(true);
+    });
+}
+
 type("RoomBookingWidget", ["IWidget"],
 
      {
@@ -21,7 +44,7 @@ type("RoomBookingWidget", ["IWidget"],
                         this.eventFavorites.indexOf(e2) !== null) {
                  return 1;
              } else {
-                 return SortCriteria.Integer(e1, e2);
+                 return SortCriteria.DashSeparated(e1, e2);
              }
          },
 
@@ -38,14 +61,14 @@ type("RoomBookingWidget", ["IWidget"],
 
          draw: function() {
 
-             var rbActive = Indico.Settings.RoomBookingModuleActive
+             var rbActive = Indico.Settings.RoomBookingModuleActive;
 
              this.inheritText = this.parentInfo?Html.span(
                  {},
-                 $T('Inherit from parent: '),
+                 $T('Inherit from parent {0}: ').format(this.parentName),
                  Html.span({},
-                           this.parentInfo.get('room') + " (" +
-                           this.parentInfo.get('location') + ")")):'';
+                           any(this.parentInfo.get('room'), $T('No room defined')) + " (" +
+                           any(this.parentInfo.get('location'), $T('No location defined')) + ")")):'';
 
                  return Html.div(
                          'roomWidget',
@@ -74,7 +97,6 @@ type("RoomBookingWidget", ["IWidget"],
              if (this.oldInfo) {
                  this.info.update(this.oldInfo.getAll());
              }
-
              $B(this.locationChooser, this.info.accessor('location'));
              $B(this.roomChooser, this.info.accessor('room'));
              $B(this.addressArea, this.info.accessor('address'));
@@ -124,11 +146,12 @@ type("RoomBookingWidget", ["IWidget"],
 
          }
      },
-     function(locations, info, parent, inheritDefault, eventFavorites, defaultLocation) {
+     function(locations, info, parent, inheritDefault, eventFavorites, defaultLocation, parentName) {
          var self = this;
-         var rbActive = Indico.Settings.RoomBookingModuleActive
+         var rbActive = Indico.Settings.RoomBookingModuleActive;
 
          this.defaultLocation = defaultLocation;
+         this.parentName = parentName || '';
          this.locationChooser = new FlexibleSelect(locations, 177);
 
          if ( rbActive ) {
@@ -142,10 +165,8 @@ type("RoomBookingWidget", ["IWidget"],
                  function(key, elem){
                      return self._favoriteDecorator(key, elem);
                  });
-         }
-         else {
-             this.roomChooser = Html.input('text', {className: "roomTextField",
-                                                    name: "_roomName"});
+         } else {
+            this.roomChooser = Html.input('text', { className: "roomTextField", name: "_roomName" });
          }
 
          this.addressArea = new RealtimeTextArea({});
@@ -167,11 +188,12 @@ type("RoomBookingWidget", ["IWidget"],
                  if (value) {
                      self.inheritText.dom.className = 'enhanced';
                      self.locationChooser.disable();
-                     self.roomChooser.disable();
+                     if ( rbActive ) {
+                        self.roomChooser.disable();
+                     }
                      self.addressArea.disable();
 
                      self.oldInfo = $O(self.info.getAll());
-
                      self.locationChooser.set(self.parentInfo.get('location'));
                      self.roomChooser.set(self.parentInfo.get('room'));
 
@@ -184,7 +206,9 @@ type("RoomBookingWidget", ["IWidget"],
                  } else {
                      self.inheritText.dom.className = '';
                      self.locationChooser.enable();
-                     self.roomChooser.enable();
+                     if ( rbActive ) {
+                        self.roomChooser.enable();
+                     }
                      self.addressArea.enable();
 
                      self._startBind();
@@ -193,15 +217,17 @@ type("RoomBookingWidget", ["IWidget"],
          }
 
          this.locationChooser.observe(function(value){
-             if (rbActive && value !== '' && locations !== null) {
-                 if (locations[value]) {
-                     self.roomChooser.setLoading(true);
-                     self._loadRooms(value);
-                 } else {
-                     self.roomChooser.setOptionList({});
-                 }
-                 self.roomChooser.set('');
-             }
+            if (rbActive) { // existing location
+                if (value !== '' && locations !== null && locations[value]) {
+                    self.roomChooser.setLoading(true);
+                    self._loadRooms(value);
+                    self.locationChooser.set(locations[value]);
+                } else { // custom location
+                    self.roomChooser.setOptionList({});
+                    self.locationChooser.set(value || ''); // if undef, set to empty string
+                }
+                self.roomChooser.set(''); // reset room on location change
+            }
          });
 
          this._startBind();
@@ -268,13 +294,10 @@ type("RoomBookingReservationWidget", ["RoomBookingWidget"],
                 if(end.length == 7)
                     end = "0" + end;
 
-                if(this.sTime > start && this.sTime < end ||
-                   this.eTime > start && this.eTime < end ||
-                   this.sTime <= start && this.eTime >= end ||
-                   this.sTime >= start && this.eTime <= end)
-                    return true;
-                else
-                    return false;
+                return (this.sTime > start && this.sTime < end) ||
+                       (this.eTime > start && this.eTime < end) ||
+                       (this.sTime <= start && this.eTime >= end) ||
+                       (this.sTime >= start && this.eTime <= end);
             },
 
             _isInsideBooking: function(elem) {
@@ -317,12 +340,12 @@ type("RoomBookingReservationWidget", ["RoomBookingWidget"],
                 var li;
                 if( this.bookedRooms.get(elem) ){
                     if( this.timetableData) {
-                        conflict = this._findConflict(key);
+                        var conflict = this._findConflict(key);
                         if( !conflict ){
                             if(this._isInsideBooking(elem))
                                 li = Html.li('bottomLine bookedItem', elem);
                             else{
-                                var infoDiv = Html.div({}, "This room is booked for this conference during");
+                                var infoDiv = Html.div({}, $T("This room is booked for this conference during"));
                                 for(var resvId in this.bookedRooms.get(elem)){
                                     var resv = this.bookedRooms.get(elem)[resvId];
                                     infoDiv.append(Html.br());
@@ -372,9 +395,9 @@ type("RoomBookingReservationWidget", ["RoomBookingWidget"],
                  this.dateTime = info;
              }
         },
-        function(locations, info, parent, inheritDefault, eventFavorites, defaultLocation, bookedRooms, timetableData, dateTime, editedEvent){
+        function(locations, info, parent, inheritDefault, eventFavorites, defaultLocation, bookedRooms, timetableData, dateTime, editedEvent, parentName){
 
-            this.RoomBookingWidget(locations, info, parent, inheritDefault, [], defaultLocation)
+            this.RoomBookingWidget(locations, info, parent, inheritDefault, [], defaultLocation, parentName);
             this.bookedRooms = $D(bookedRooms || {} );
             this.dateTime = dateTime;
             this.timetableData = timetableData;
@@ -385,33 +408,32 @@ type("RoomBookingReservationWidget", ["RoomBookingWidget"],
 type("RoomBookingVerticalReservationWidget", ["RoomBookingReservationWidget"],
         {
             draw: function() {
-                var rbActive = Indico.Settings.RoomBookingModuleActive
+                var rbActive = Indico.Settings.RoomBookingModuleActive;
 
-                this.inheritText = this.parentInfo?Html.span(
-                    {},
-                    $T('Inherit from parent: '),
-                    Html.span({},
-                              this.parentInfo.get('room') + " (" +
-                              this.parentInfo.get('location') + ")")):'';
-                    return Html.div(
-                            'roomWidget',
-                                 Html.div({style:{paddingTop:'5px'}},
-                                     Html.div('roomVerticalWidgetTitle', $T("Room")),
-                                     Html.div({style: {cssFloat:'left'}},
-                                                         rbActive ?
-                                                         this.roomChooser.draw() :
-                                                         this.roomChooser)),
-                                 Html.div({style:{paddingTop:'5px', clear:'left'}},
-                                    Html.div('roomVerticalWidgetTitle', $T("Location")),
-                                    Html.div({style: {cssFloat:'left'}}, this.locationChooser.draw())),
-                                Html.div({style:{paddingTop:'5px', clear:'left'}},
-                                         this.parentInfo?this.inheritCheckbox:'', this.inheritText)
-                                );
+                this.inheritText = this.parentInfo
+                    ? Html.span({}, $T('Inherit from parent {0}: ').format(this.parentName),
+                        Html.span({}, this.parentInfo.get('room') + " (" + this.parentInfo.get('location') + ")"))
+                    : '';
+                return Html.div(
+                        'roomWidget',
+                        Html.div({style:{paddingTop:'5px', clear:'left'}},
+                            Html.div('roomVerticalWidgetTitle', $T("Location")),
+                            Html.div({style: {cssFloat:'left'}}, this.locationChooser.draw())),
+                        Html.div({style:{paddingTop:'5px'}},
+                            Html.div('roomVerticalWidgetTitle', $T("Room")),
+                            Html.div({style: {cssFloat:'left'}}, rbActive
+                                     ? this.roomChooser.draw()
+                                     : this.roomChooser)),
+                        Html.div({style:{paddingTop:'5px', clear:'left'}}, this.parentInfo
+                                 ? this.inheritCheckbox
+                                 : '',
+                                 this.inheritText)
+                );
             }
 
         },
-        function(locations, info, parent, inheritDefault, eventFavorites, defaultLocation, bookedRooms, timetableData, dateTime, editedEvent){
-            this.RoomBookingReservationWidget(locations, info, parent, inheritDefault, eventFavorites, defaultLocation, bookedRooms, timetableData, dateTime, editedEvent);
+        function(locations, info, parent, inheritDefault, eventFavorites, defaultLocation, bookedRooms, timetableData, dateTime, editedEvent, parentName){
+            this.RoomBookingReservationWidget(locations, info, parent, inheritDefault, eventFavorites, defaultLocation, bookedRooms, timetableData, dateTime, editedEvent, parentName);
         });
 
 
@@ -432,16 +454,90 @@ type("RoomListWidget", ["ListWidget"],
             return Html.div({style:{display: 'inline'}},
                             Html.span({},
                                     Html.div({style: {cssFloat: "right", paddingRight: "10px"}},removeButton),
-                                    $B(Html.span(), room.key)
+                                    $B(Html.span(), self.useValue ? roomData : room.key)
                                     ));
         }
     },
 
-    function(style, removeProcess) {
+    function(style, removeProcess, useValue) {
         this.removeProcess = removeProcess;
+        this.useValue = useValue || false;
         if (!exists(style)) {
             style = "UIPeopleList";
         }
         this.ListWidget(style);
     }
+);
+
+/**
+ * Creates a form field with a list of rooms.
+ * Rooms can be added from an initial list of rooms or from a 'Add Room' button.
+ */
+type("RoomListField", ["IWidget"], {
+
+    getRoom: function() {
+        return $L(this.roomList);
+    },
+
+    clear: function() {
+        this.roomList.clearList();
+    },
+
+    draw: function() {
+
+        var self = this;
+
+        var chooserDiv = Html.div({style:{marginTop: pixels(10)}});
+        var callback = function(){
+            chooserDiv.set(roomChooser.draw(),addRoomButton);
+        };
+
+        if(this.allowNew) {
+            var roomChooser = new SelectRemoteWidget('roomBooking.locationsAndRooms.listWithGuids', {}, callback, null, null, null, false);
+            var addRoomButton = Html.input("button", {style:{marginRight: pixels(5)}}, $T('Add Room') );
+            addRoomButton.observeClick(function(){
+                var selectedValue = roomChooser.select.get();
+                self.newProcess(selectedValue, function(result){
+                    if (result) {
+                        var roomName = $('>option:selected', roomChooser.select.dom).text();
+                        self.roomList.set(selectedValue, roomName);
+                    }
+                });
+            });
+        }
+
+        return Widget.block([Html.div(this.roomDivStyle,this.roomList.draw()), chooserDiv]);
+    }
+},
+    /*
+     * @param {String} roomDivStyle A CSS class for the div that will sourround the room list.
+     * @param {String} roomListStyle A CSS class for the room list. It will be passed to the inner roomListWidget.
+     * @param {list} initialRooms A list of  room that will appear initially.
+     * @param {Boolean} allowNew If True, a 'Add Room' button will be present.
+     * @param {Function} newProcess A function that will be called when a new room is added to the list.
+     * @param {Function} removeProcess A function that will be called when a room is removed.
+     */
+    function(roomDivStyle, roomListStyle, initialRooms, allowNew, newProcess, removeProcess) {
+
+        var self = this;
+        this.roomList = new RoomListWidget(roomListStyle, function(roomToRemove, setResult) {
+            return removeProcess(roomToRemove, function(result) {
+                setResult(result);
+                if(result) {
+                    self.roomList.set(roomToRemove, null);
+                }
+            });
+        }, true);
+        this.roomDivStyle = any(roomDivStyle, "UIPeopleListDiv");
+
+        if (exists(initialRooms)) {
+            each (initialRooms,function(room, guid){
+                self.roomList.set(guid, room);
+            });
+        }
+
+        this.allowNew = any(allowNew, false);
+        this.newProcess = any(newProcess, roomListNothing);
+
+     }
 );

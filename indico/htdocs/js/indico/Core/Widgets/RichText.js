@@ -1,14 +1,31 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 var executeOnload = false;
 var __globalEditorTable = {};
-var languages = {'en_US' : 'en', 'fr_FR' : 'fr'};
-var userLanguage = 'en_US';
+var languages = {'en_GB' : 'en', 'fr_FR' : 'fr'};
+var userLanguage = 'en_GB';
 
 /*jsonRpc(Indico.Urls.JsonRpcService, "user.session.language.get",{}, function(result, error)
         {
             if (!error)
                 userLanguage = result;
             else
-                userLanguage = 'en_US';
+                userLanguage = 'en_GB';
         });*/
 
 type("RichTextEditor", ["IWidget", "Accessor"],
@@ -24,9 +41,8 @@ type("RichTextEditor", ["IWidget", "Accessor"],
                      self.text ,
                      self.callbacks,
                      self.width,
-                     self.height,
-                     self.toolbarSet);
-             },50);
+                     self.height);
+             },5);
              return this.div;
          },
 
@@ -67,14 +83,18 @@ type("RichTextEditor", ["IWidget", "Accessor"],
 
          getEditor: function() {
              return CKEDITOR.instances["text" + this.divId];
+         },
+
+         onChange: function(callback) {
+             this.getEditor().on('change', callback);
          }
+
      },
-     function(width, height, toolbarSet) {
+     function(width, height) {
          this.onLoadList = new WatchList();
          this.callbacks = new WatchList();
          this.width = width;
          this.height = height;
-         this.toolbarSet = toolbarSet?toolbarSet:'IndicoMinimum';
 
          this.divId = Html.generateId();
      });
@@ -90,8 +110,8 @@ type("ParsedRichTextEditor", ["RichTextEditor"],
             }
         },
 
-        function(width, height, toolbarSet, sanitizationLevel) {
-            this.RichTextEditor(width, height, toolbarSet);
+        function(width, height, sanitizationLevel) {
+            this.RichTextEditor(width, height);
             this.sanitizationLevel = sanitizationLevel?sanitizationLevel:2;
         });
 
@@ -103,7 +123,7 @@ type("RichTextWidget", ["IWidget", "Accessor"],
              return Html.div({},
                              this.plain.draw(),
                              this.richDiv,
-                             Widget.link(this.switchLink));
+                             this.hideSwitchLink?null:Widget.link(this.switchLink));
          },
 
          observe: function(callback) {
@@ -164,16 +184,23 @@ type("RichTextWidget", ["IWidget", "Accessor"],
 
          destroy: function() {
              this.rich.destroy();
+         },
+
+         onChange: function(callback) {
+             this.plain.onChange(callback);
+             if(this.loaded){
+                 this.rich.onChange(callback);
+             }
          }
      },
-     function(width, height, initialText, mode, toolbarSet) {
+     function(width, height, initialText, mode, hideSwitchLink) {
 
          var textAreaParams = { style: {} };
          textAreaParams.style.width = pixels(width);
          textAreaParams.style.height = pixels(height);
 
          this.plain = new RealtimeTextArea(textAreaParams);
-         this.rich = new RichTextEditor(width, height, toolbarSet);
+         this.rich = new RichTextEditor(width, height);
          this.richDiv = Html.div({});
          this.currentText = any(initialText, '');
          this.loaded = false;
@@ -201,7 +228,7 @@ type("RichTextWidget", ["IWidget", "Accessor"],
                  self.synchronizeRich();
              }
          };
-
+         this.hideSwitchLink=any(hideSwitchLink,false);
          var self = this;
          this.switchLink = new Chooser(
              {
@@ -233,16 +260,16 @@ type("RichTextWidget", ["IWidget", "Accessor"],
 
 type("ParsedRichTextWidget",['RichTextWidget'],
         {
-            clean: function(){
-                if(this.activeAccessor == this.rich)
-                    return this.rich.clean();
-                else if(this.activeAccessor == this.plain)
-                    return cleanText(this.plain.get(),this.plain);
-            }
+         clean: function(){
+             if(this.activeAccessor == this.rich)
+                 return this.rich.clean();
+             else if(this.activeAccessor == this.plain)
+                 return cleanText(this.plain.get(),this.plain);
+         }
         },
-        function(width, height, initialText, mode, toolbarSet) {
-            this.RichTextWidget(width, height, initialText, mode, toolbarSet);
-            this.rich = new ParsedRichTextEditor(width, height, toolbarSet);
+        function(width, height, initialText, mode, hideSwitchLink) {
+            this.RichTextWidget(width, height, initialText, mode, hideSwitchLink);
+            this.rich = new ParsedRichTextEditor(width, height);
 
             var self = this;
 
@@ -267,9 +294,7 @@ type("RichTextInlineEditWidget", ["InlineEditWidget"],
         {
             _handleEditMode: function(value) {
 
-                this.description = new RichTextWidget(600, 400,
-                                                      '','rich',
-                                                      'IndicoMinimal');
+                this.description = new RichTextWidget(600, 400, '','rich');
                 this.description.set(value);
                 return this.description.draw();
             },
@@ -290,10 +315,10 @@ type("RichTextInlineEditWidget", ["InlineEditWidget"],
                     } else {
                         doc = $E(iframeId).dom.contentDocument;
                     }
-                    if (value == "") {
-                        value = '<em>No description</em>';
+                    if (value == "" && self.noValueText) {
+                        value = '<em>' + self.noValueText + '</em>';
                     }
-                    doc.body.innerHTML = '<link href="css/Default.css" type="text/css" rel="stylesheet">' + (Util.Validation.isHtml(value)?value:escapeHTML(value));
+                    doc.body.innerHTML = '<link href="' + Indico.Urls.Base + '/css/Default.css" type="text/css" rel="stylesheet">' + (Util.Validation.isHtml(value)?value:escapeHTML(value));
                 };
 
                 if (Browser.IE) {
@@ -314,9 +339,10 @@ type("RichTextInlineEditWidget", ["InlineEditWidget"],
                 return this.description.get();
             }
         },
-        function(method, attributes, initValue, width, height) {
+        function(method, attributes, initValue, width, height, noValueText) {
             this.width = width ? width:600;
             this.height = height ? height:100;
+            this.noValueText = noValueText;
             this.InlineEditWidget(method, attributes, initValue);
         });
 
@@ -325,7 +351,7 @@ type("ParsedRichTextInlineEditWidget", ["RichTextInlineEditWidget"],
         {
             _handleEditMode: function(value) {
 
-                this.description = new ParsedRichTextWidget(600, 400,'','rich','IndicoMinimal');
+                this.description = new ParsedRichTextWidget(600, 400, '', 'rich');
                 this.description.set(value);
                 return this.description.draw();
             },
@@ -352,18 +378,17 @@ type("ParsedRichTextInlineEditWidget", ["RichTextInlineEditWidget"],
 
             }
         },
-        function(method, attributes, initValue, width, height) {
-            this.RichTextInlineEditWidget(method, attributes, initValue, width, height)
+        function(method, attributes, initValue, width, height, noValueText) {
+            this.RichTextInlineEditWidget(method, attributes, initValue, width, height, noValueText);
         });
 
 
-function initializeEditor( wrapper, editorId, text, callbacks, width, height, toolbarSet ){
+function initializeEditor( wrapper, editorId, text, callbacks, width, height ){
     // "wrapper" is the actual Indico API object that represents an editor
 
     try {
 
-        CKEDITOR.replace(editorId, {language : userLanguage, width : width, height : height - 75, 'toolbar': toolbarSet});
-
+        CKEDITOR.replace(editorId, {language : userLanguage, width : width, height : height - 75});
         var cki = CKEDITOR.instances[editorId];
 
         cki.setData(text);
@@ -387,7 +412,7 @@ function initializeEditor( wrapper, editorId, text, callbacks, width, height, to
     catch (error) {
         setTimeout(function() {
             initializeEditor(wrapper, editorId, text, callbacks, width, height);
-        },50);
+        },5);
     }
 
 }
@@ -395,7 +420,7 @@ function initializeEditor( wrapper, editorId, text, callbacks, width, height, to
 function cleanText(text, target){
     try{
         var self = target;
-        killProgress = IndicoUI.Dialogs.Util.progress($T('Saving...'));
+        var killProgress = IndicoUI.Dialogs.Util.progress($T('Saving...'));
         var parsingResult = escapeHarmfulHTML(text);
         if( parsingResult[1] > 0) {
 
@@ -426,7 +451,7 @@ function cleanText(text, target){
                 each(parsingResult[2], function(value){
                     ul.append(Html.li('', value));
                 });
-                var popupErrorList = new AlertPopup(Html.span('warningTitle', "List of forbidden elements"), ul);
+                var popupErrorList = new AlertPopup('List of forbidden elements', ul.dom);
                 popupErrorList.open();
             });
 
@@ -434,26 +459,7 @@ function cleanText(text, target){
             var popup = new ConfirmPopup($T("Warning!"), Html.div({style: {width:pixels(300), textAlign:'justify'}},
                                          $T("Your data contains some potentially harmful " + security +
                                          ", which cannot be stored in the database. Use the automatic Indico cleaner or clean the text manually (see the list of forbidden elements that you are using "), showErrorList, ")."),
-                                         cleaningFunction);
-            popup.draw = function(){
-                var self = this;
-
-                var okButton = Html.input('button', {style:{marginRight: pixels(3)}}, $T('Clean automatically'));
-                okButton.observeClick(function(){
-                    self.close();
-                    self.handler(true);
-                });
-
-                var cancelButton = Html.input('button', {style:{marginLeft: pixels(3)}}, $T('Clean manually'));
-                cancelButton.observeClick(function(){
-                    self.close();
-                    self.handler(false);
-                });
-
-                return this.ExclusivePopupWithButtons.prototype.draw.call(this,
-                        this.content,
-                        Html.div({}, okButton, cancelButton));
-            }
+                                         cleaningFunction, 'Clean automatically', 'Clean manually');
             popup.open();
             return false;
         }

@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 from MaKaC.epayment import BaseEPayMod, BaseTransaction
 import MaKaC.webinterface.urlHandlers as urlHandlers
@@ -64,11 +63,11 @@ class PayPalMod(BaseEPayMod):
     def setBusiness(self,business):
         self._business= business
 
-    def getFormHTML(self,prix,Currency,conf,registrant,lang = "en_US", secure=False):
+    def getFormHTML(self,prix,Currency,conf,registrant,lang = "en_GB", secure=False):
         url_return=localUrlHandlers.UHPayConfirmPayPal.getURL(registrant)
         url_cancel_return=localUrlHandlers.UHPayCancelPayPal.getURL(registrant)
         url_notify=localUrlHandlers.UHPayParamsPayPal.getURL(registrant)
-        s=""" <form action="%s" method="POST">
+        s=""" <form action="%s" method="POST" id="%s">
                         <input type="hidden" name="cmd" value="_xclick">
                         <input type="hidden" name="business" value="%s">
                         <input type="hidden" name="item_name" value="%s">
@@ -78,10 +77,9 @@ class PayPalMod(BaseEPayMod):
                         <input type="hidden" name="return" value="%s">
                         <input type="hidden" name="cancel_return" value="%s">
                         <input type="hidden" name="notify_url" value="%s">
-                        <td align="center"><input type="submit" value="%s" ></td>
                    </form>
-                       """%(self.getUrl(),self.getBusiness(), "%s: registration for %s"%(registrant.getFullName(),strip_ml_tags(conf.getTitle())),prix,Currency,\
-                            url_return,url_cancel_return,url_notify,"Proceed to %s"%self.getTitle())
+                       """%(self.getUrl(),self.getId(),self.getBusiness(), "%s: registration for %s"%(registrant.getFullName(),strip_ml_tags(conf.getTitle())),prix,Currency,\
+                            url_return,url_cancel_return,url_notify)
         #s=cgi.escape(s)
         return s
 

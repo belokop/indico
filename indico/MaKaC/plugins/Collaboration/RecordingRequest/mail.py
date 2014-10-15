@@ -1,29 +1,29 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is par{t of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is par{t of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 from MaKaC.webinterface.mail import GenericNotification
 
 from MaKaC.common.info import HelperMaKaCInfo
 from MaKaC.plugins.Collaboration.collaborationTools import MailTools
-from MaKaC.plugins.Collaboration.RecordingRequest.common import typeOfEvents, \
-    postingUrgency, recordingPurpose, intendedAudience, subjectMatter, lectureOptions, \
-    getTalks
+from MaKaC.plugins.Collaboration.RecordingRequest.common import \
+    postingUrgency, getTalks
+from indico.core.config import Config
+from indico.util.string import safe_upper
 
 
 class RecordingRequestNotificationBase(GenericNotification):
@@ -39,7 +39,7 @@ class RecordingRequestNotificationBase(GenericNotification):
 
         self._modifLink = str(booking.getModificationURL())
 
-        self.setFromAddr("Indico Mailer<%s>"%HelperMaKaCInfo.getMaKaCInfoInstance().getSupportEmail())
+        self.setFromAddr("Indico Mailer <%s>"%Config.getInstance().getSupportEmail())
         self.setContentType("text/html")
 
     def _getRequestDetails(self, typeOfMail):
@@ -74,33 +74,6 @@ Request details:<br />
         </td>
     </tr>
     <tr>
-        <td colspan="2">
-            <strong>Comments about talk selection</strong><br />
-            %s
-        </td>
-    </tr>
-    <tr>
-        <td colspan="2">
-            <strong>Have all the speakers given permission to have their talks recorded?</strong>  %s
-        </td>
-    </tr>
-    <tr>
-        <td style="vertical-align: top; white-space : nowrap;">
-            <strong>Lecture options:</strong>
-        </td>
-        <td style="vertical-align: top">
-            %s
-        </td>
-    </tr>
-    <tr>
-        <td style="vertical-align: top; white-space : nowrap;">
-            <strong>Type of event:</strong>
-        </td>
-        <td style="vertical-align: top">
-            %s
-        </td>
-    </tr>
-    <tr>
         <td style="vertical-align: top; white-space : nowrap;">
             <strong>Posting urgency:</strong>
         </td>
@@ -125,30 +98,6 @@ Request details:<br />
         </td>
     </tr>
     <tr>
-        <td style="vertical-align: top; white-space : nowrap;">
-            <strong>Recording purpose(s):</strong>
-        </td>
-        <td style="vertical-align: top">
-            %s
-        </td>
-    </tr>
-    <tr>
-        <td style="vertical-align: top; white-space : nowrap;">
-            <strong>Intended audience(s):</strong>
-        </td>
-        <td style="vertical-align: top; white-space : nowrap;">
-            %s
-        </td>
-    </tr>
-    <tr>
-        <td style="vertical-align: top; white-space : nowrap;">
-            <strong>Subject matter(s):</strong>
-        </td>
-        <td style="vertical-align: top">
-            %s
-        </td>
-    </tr>
-    <tr>
         <td colspan="2">
             <strong>Additional comments:</strong><br />
             %s
@@ -167,16 +116,9 @@ Request details:<br />
        MailTools.bookingCreationDate(self._booking),
        MailTools.bookingModificationDate(self._booking, typeOfMail),
        self._getTalksShortMessage(),
-       self._getTalkSelectionComments(),
-       bp["permission"],
-       dict(lectureOptions)[bp["lectureOptions"]],
-       dict(typeOfEvents)[bp['lectureStyle']],
        dict(postingUrgency)[bp['postingUrgency']],
        str(bp['numRemoteViewers']),
        str(bp['numAttendees']),
-       self._getPurposes(),
-       self._getAudiences(),
-       self._getMatters(),
        self._getComments(),
        self._getTalks())
 
@@ -221,56 +163,11 @@ Request details:<br />
             else:
                 return """The user chose "Choose talks". The list of chosen talks can be found at the end of this e-mail."""
 
-    def _getTalkSelectionComments(self):
-        if self._isLecture:
-            return """(This event is a lecture. Therefore, it has no talk selection comments)"""
-        else:
-            comments = None
-            if self._bp["talkSelectionComments"]:
-                comments = self._bp["talkSelectionComments"].strip()
-            if comments:
-                return comments
-            return "(User didn't write any comments)"
-
     def _getComments(self):
         comments = self._bp["otherComments"].strip()
         if comments:
             return comments
         return "(User didn't write any comments)"
-
-    def _getLectureOptions(self):
-        options = self._bp['lectureOptions']
-        lodict = dict(lectureOptions)
-        if options:
-            return MailTools.listToStr([lodict[k] for k in options])
-        else:
-            return "No lecture options were selected"
-
-    def _getPurposes(self):
-        purposes = self._bp['recordingPurpose']
-        rpdict = dict(recordingPurpose)
-        if purposes:
-            return MailTools.listToStr([rpdict[k] for k in purposes])
-        else:
-            return "No purposes were selected"
-
-    def _getAudiences(self):
-        audiences = self._bp['intendedAudience']
-        iadict = dict(intendedAudience)
-        if audiences:
-            return MailTools.listToStr([iadict[k] for k in audiences])
-        else:
-            return "No audiences were selected"
-
-    def _getMatters(self):
-        matters = self._bp['subjectMatter']
-        smdict = dict(subjectMatter)
-        if matters:
-            return MailTools.listToStr([smdict[k] for k in matters])
-        else:
-            return "No audiences were selected"
-
-
 
 class RecordingRequestAdminNotificationBase(RecordingRequestNotificationBase):
     """ Base class to build an email notification to Admins
@@ -286,7 +183,6 @@ class RecordingRequestManagerNotificationBase(RecordingRequestNotificationBase):
     def __init__(self, booking):
         RecordingRequestNotificationBase.__init__(self, booking)
         self.setToList(MailTools.getManagersEmailList(self._conference, 'RecordingRequest'))
-
 
 class NewRequestNotification(RecordingRequestAdminNotificationBase):
     """ Template to build an email notification to the recording responsible
@@ -474,8 +370,8 @@ class RequestAcceptedNotificationAdmin(RecordingRequestAdminNotificationBase):
                         % (self._conference.getTitle(), str(self._conference.getId())))
 
         userInfo = ""
-        if user :
-            userInfo = " by %s %s"%(user.getFirstName(), user.getFamilyName().upper())
+        if user:
+            userInfo = " by %s %s" % (user.getFirstName(), safe_upper(user.getFamilyName()))
         self.setBody("""Dear Recording Manager,<br />
 <br />
 A recording request for the event: "%s" has been accepted in <a href="%s">%s</a>"""%(self._conference.getTitle(),

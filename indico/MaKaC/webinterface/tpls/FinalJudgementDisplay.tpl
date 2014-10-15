@@ -1,45 +1,38 @@
-<% from MaKaC.paperReviewing import ConferencePaperReview %>
-        <table cellspacing="0" cellpadding="2" width="100%">
-            <tr>
-                <td class="dataCaptionTD" style="width: 25%;padding-right: 1px">
-                    <span class="titleCellFormat" style="font-size: 12px;"><strong><%= _("Final Judgement:")%></strong></span>
-                </td>
-                <td style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;">
-                    <%= Review.getRefereeJudgement().getJudgement() %>,
-                    <em><%= _(" submitted on ") %><%= Review.getRefereeJudgement().getAdjustedSubmissionDate().strftime(format) %></em>
-                </td>
-           </tr>
-           <% if Review.getRefereeJudgement().getComments(): %>
-           <tr>
-                <td class="dataCaptionTD" style="width: 25%;padding-right: 1px">
-                    <span class="titleCellFormat" style="font-size: 12px;"><%= _("Comments:")%></span>
-                </td>
-                <td style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;">
-                    <%= Review.getRefereeJudgement().getComments() %>
-                </td>
-           </tr>
-           <% end %>
-           <% if Review.getRefereeJudgement().getAnswers(): %>
-           <tr>
-                <td class="dataCaptionTD" style="width: 25%;padding-right: 1px">
-                    <span class="titleCellFormat" style="font-size: 12px;"><%= _("Approved questions:")%></span>
-                </td>
-                <td style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;">
-                    <% for a in Review.getRefereeJudgement().getAnswers(): %>
-                        <%= a %>
-                        <br/>
-                    <% end %>
-                </td>
-          </tr>
-          <% end %>
-          <% if ShowReferee: %>
-          <tr>
-                <td class="dataCaptionTD" style="width: 25%;padding-right: 1px">
-                    <span class="titleCellFormat" style="font-size: 12px;"><%= _("Referee:")%></span>
-                </td>
-                <td style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;">
-                    <%= Review.getRefereeJudgement().getAuthor().getFullName() %>
-                </td>
-         </tr>
-         <% end %>
-        </table>
+<%page args="Review=None, ShowReferee=None, format=None, showTitle=True"/>
+
+<div class="historyReviewJudgment">
+    <table>
+        <tr>
+            % if showTitle:
+            <td class="dataCaptionTD" style="white-space: nowrap; width: 50px">
+                <span class="titleCellFormat" style="font-size: 12px; font-weight: bold">${ _("Referee:")}</span>
+            </td>
+            % endif
+            <td>
+                <div class="contributionReviewingStatus ${getStatusClass(Review.getJudgement())}" style="margin-top: 0">
+                    ${getStatusText(Review.getJudgement())}
+                </div>
+                <div>
+                ${ _("submitted on") } <span style="font-style: italic">${ Review.getAdjustedSubmissionDate().strftime(format) }</span>
+                    % if ShowReferee:
+                       ${ _("by") } <span style="font-style: italic">${ Review.getAuthor().getStraightFullName()}</span>
+                    % endif
+                </div>
+                % if Review.getComments():
+                    <div class="historyReviewJugmentComments">
+                        <span style= "font-weight: bold">${_("Comments")}</span><br/>
+                        ${ Review.getComments() | h, html_breaks}
+                    </div>
+                % endif
+                % if Review.getAnswers():
+                    <div class="historyReviewJugmentComments">
+                        <span style= "font-weight: bold">${_("Answers")}</span>
+                        % for a in Review.getAnswers():
+                            <br/>${ a }
+                        % endfor
+                    </div>
+                % endif
+            </td>
+       </tr>
+    </table>
+</div>

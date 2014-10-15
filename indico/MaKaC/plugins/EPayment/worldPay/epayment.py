@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 from MaKaC.epayment import BaseEPayMod, BaseTransaction
 import MaKaC.webinterface.urlHandlers as urlHandlers
@@ -104,7 +103,7 @@ class WorldPayMod( BaseEPayMod ):
         self.setTextCallBackSuccess(data.get("APResponse", "epayment"))
         self.setTextCallBackCancelled(data.get("CPResponse", "epayment"))
 
-    def getFormHTML(self,prix,Currency,conf,registrant,lang = "en_US", secure=False):
+    def getFormHTML(self,prix,Currency,conf,registrant,lang = "en_GB", secure=False):
         """build the registration form to be send to worldPay"""
         url_confirm=localUrlHandlers.UHPayConfirmWorldPay.getURL()
         url_cancel_return=localUrlHandlers.UHPayCancelWorldPay.getURL(registrant)
@@ -113,8 +112,7 @@ class WorldPayMod( BaseEPayMod ):
         if isinstance(self._url, urlHandlers.URLHandler):
             url = self._url.getURL()
         #raise "%s"%(str(["", registrant.getCountry(), registrant.getPhone(), registrant.getEmail()]))
-        s="""<form action="%s" method=POST>
-             <td align="center"><input type=submit value="Proceed to %s"/></td>
+        s="""<form action="%s" method=POST id="%s">
              <input type=hidden name="instId" value="%s" />
              <input type=hidden name="cartId" value="%s"/>
              <input type=hidden name="amount" value="%s" />
@@ -133,7 +131,7 @@ class WorldPayMod( BaseEPayMod ):
             <input type=hidden name="tel" value="%s" />
             <input type=hidden name="email" value="%s"/>
             </form>
-        """%(url, self.getTitle(), self._instId, registrant.getId(), "%.2f"%prix, Currency, self._description, url_confirm, self._conf.getId(), registrant.getId(), self._testMode, registrant.getFirstName(),registrant.getSurName(),\
+        """%(url, self.getId(), self._instId, registrant.getId(), "%.2f"%prix, Currency, self._description, url_confirm, self._conf.getId(), registrant.getId(), self._testMode, registrant.getFirstName(),registrant.getSurName(),\
                 registrant.getAddress(),"", registrant.getCountry(), registrant.getPhone(), registrant.getEmail())
         return s
 

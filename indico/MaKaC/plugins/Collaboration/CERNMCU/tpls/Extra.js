@@ -8,9 +8,9 @@ var disableCustomId = function() {
 
 var pf = null; //place where to keep a ParticipantListField object to access later
 
-<% if RoomsWithH323IP: %>
-var existingRoomData = <%= jsonEncode(fossilize(RoomsWithH323IP)) %>;
-<% end %>
+% if RoomsWithH323IP:
+var existingRoomData = ${ jsonEncode(fossilize(RoomsWithH323IP)) };
+% endif
 
 type("WithProtocolLinePopup", ["ExclusivePopupWithButtons"], {
 
@@ -59,28 +59,8 @@ type("PersonDataPopup", ["WithProtocolLinePopup"],
         draw: function() {
             var self = this;
             var personData = self.personData;
-            var closePopup = function(){self.close();};
 
             var protocolLine = this._getProtocolLine(personData);
-
-            var saveButton = Html.button({style:{marginLeft:pixels(5)}}, "Save");
-            saveButton.observeClick(function(){
-                if (self.parameterManager.check()) {
-                    personData.set('participantType', 'by_address');
-                    self.action(personData, closePopup);
-                }
-            });
-
-            var cancelButton = Html.button({style:{marginLeft:pixels(5)}}, "Cancel");
-            cancelButton.observeClick(function(){
-                if (self.cancelAction) {
-                    self.cancelAction(closePopup);
-                } else {
-                    closePopup();
-                }
-            });
-
-            var buttonDiv = Html.div({}, saveButton, cancelButton)
 
             var content = IndicoUtil.createFormFromMap([
                 ['Title', $B(Html.select({}, Html.option({}, ""), Html.option({}, "Mr."), Html.option({}, "Mrs."), Html.option({}, "Ms."), Html.option({}, "Dr."), Html.option({}, "Prof.")), personData.accessor('title'))],
@@ -91,8 +71,28 @@ type("PersonDataPopup", ["WithProtocolLinePopup"],
                 protocolLine
             ]);
 
-            return this.WithProtocolLinePopup.prototype.draw.call(this, content, buttonDiv);
-        } // end of draw
+            return this.WithProtocolLinePopup.prototype.draw.call(this, content);
+        },
+
+        _getButtons: function() {
+            var self = this;
+            var closePopup = $.proxy(self.close, self);
+            return [
+                [$T('Save'), function() {
+                    if (self.parameterManager.check()) {
+                        self.personData.set('participantType', 'by_address');
+                        self.action(self.personData, closePopup);
+                    }
+                }],
+                [$T('Cancel'), function() {
+                    if (self.cancelAction) {
+                        self.cancelAction(closePopup);
+                    } else {
+                        closePopup();
+                    }
+                }]
+            ];
+        }
     },
 
     function(title, personData, action, cancelAction) {
@@ -119,24 +119,8 @@ type("RoomDataPopup", ["WithProtocolLinePopup"],
         draw: function() {
             var self = this;
             var roomData = self.roomData;
-            var closePopup = function(){self.close();};
 
             var protocolLine = this._getProtocolLine(roomData);
-
-            var saveButton = Html.button({style:{marginLeft:pixels(5)}}, "Save");
-            saveButton.observeClick(function(){
-                if (self.parameterManager.check()) {
-                    roomData.set('participantType', 'by_address');
-                    self.action(roomData, closePopup);
-                }
-            });
-
-            var cancelButton = Html.button({style:{marginLeft:pixels(5)}}, "Cancel");
-            cancelButton.observeClick(function(){
-                closePopup();
-            });
-
-            var buttonDiv = Html.div({}, saveButton, cancelButton)
 
             var content = IndicoUtil.createFormFromMap([
                 ['Room Name', $B(self.parameterManager.add(Html.edit({style: {width: '300px'}}), 'text', false), roomData.accessor('name'))],
@@ -145,8 +129,24 @@ type("RoomDataPopup", ["WithProtocolLinePopup"],
                 protocolLine
             ]);
 
-            return this.WithProtocolLinePopup.prototype.draw.call(this, content, buttonDiv);
-        } // end of draw
+            return this.WithProtocolLinePopup.prototype.draw.call(this, content);
+        },
+
+        _getButtons: function() {
+            var self = this;
+            var closePopup = $.proxy(self.close, self);
+            return [
+                [$T('Save'), function() {
+                    if (self.parameterManager.check()) {
+                        self.roomData.set('participantType', 'by_address');
+                        self.action(self.roomData, closePopup);
+                    }
+                }],
+                [$T('Cancel'), function() {
+                    closePopup();
+                }]
+            ];
+        }
     },
 
     function(title, roomData, action) {
@@ -180,43 +180,21 @@ type("H323RoomPopup", ["ExclusivePopupWithButtons"],
             var roomData = self.roomData;
             var closePopup = function(){self.close();};
 
-            var saveButton = new DisabledButton(Html.input("button", {disabled:true}, $T("Save") ));
-            saveButton.observeClick(function(){
-                var selectedList = roomList.getSelectedList();
-                each(selectedList, function(room){
-                    room.set('participantType', 'by_address');
-                });
-                self.action(selectedList, closePopup);
-            });
-            saveButton.disable();
-
-            var tooltip;
-
-            saveButton.observeEvent('mouseover', function(event){
-                if (!saveButton.isEnabled()) {
-                    tooltip = IndicoUI.Widgets.Generic.errorTooltip(event.clientX, event.clientY,
-                            $T("You must select at least one item from the list"), "tooltipError");
-                }
-            });
-
-            saveButton.observeEvent('mouseout', function(event){
-                Dom.List.remove(document.body, tooltip);
-            });
-
-            var cancelButton = Html.button({style:{marginLeft:pixels(5)}}, $T("Cancel"));
-            cancelButton.observeClick(function(){
-                closePopup();
+            self.saveButton = self.buttons.eq(0);
+            self.saveButton.disabledButtonWithTooltip({
+                tooltip: $T('You must select at least one item from the list'),
+                disabled: true
             });
 
             var selectedObserver = function(selectedList) {
                 if (selectedList.isEmpty()) {
-                    saveButton.disable();
+                    self.saveButton.disabledButtonWithTooltip('disable');
                 } else {
-                    saveButton.enable();
+                    self.saveButton.disabledButtonWithTooltip('enable');
                 }
             };
 
-            var roomList = new H323RoomList(selectedObserver);
+            self.roomList = new H323RoomList(selectedObserver);
             var addedParticipants = self.participantListField.getParticipants();
             each(self.rooms, function(room){
                 var alreadyAdded = false;
@@ -233,16 +211,29 @@ type("H323RoomPopup", ["ExclusivePopupWithButtons"],
                 if (alreadyAdded) {
                     roomWO.set('unselectable', true);
                 }
-                roomList.set(room.name, roomWO);
-
+                self.roomList.set(room.name, roomWO);
             });
 
-            var buttonDiv = Html.div({}, saveButton.draw(), cancelButton)
-
             return this.ExclusivePopupWithButtons.prototype.draw.call(this,
-                Html.div("CERNMCU_H323RoomList_Div", roomList.draw()),
-                buttonDiv);
-        } // end of draw
+                Html.div("CERNMCU_H323RoomList_Div", self.roomList.draw()));
+        },
+
+        _getButtons: function() {
+            var self = this;
+            var closePopup = $.proxy(self.close, self);
+            return [
+                [$T('Save'), function() {
+                    var selectedList = self.roomList.getSelectedList();
+                    each(selectedList, function(room){
+                        room.set('participantType', 'by_address');
+                    });
+                    self.action(selectedList, closePopup);
+                }],
+                [$T('Cancel'), function() {
+                    closePopup();
+                }]
+            ];
+        }
     },
     function(title, rooms, participantListField, action) {
         this.rooms = rooms;
@@ -367,7 +358,7 @@ type("ParticipantListWidget", ["ListWidget"],
 type("ParticipantListField", ["IWidget"],
     {
         _highlightNewParticipant: function(id) {
-            IndicoUI.Effect.highLightBackground(this.participantList.getId() + '_' + id);
+            IndicoUI.Effect.highLightBackground($E(this.participantList.getId() + '_' + id));
         },
 
         _addNewParticipant : function(participant, type) {
@@ -385,7 +376,7 @@ type("ParticipantListField", ["IWidget"],
             var self = this;
 
             var addNewPersonButton = Html.button({style:{marginRight: pixels(5)}}, $T('Add New Participant'));
-            var addExistingPersonButton = Html.button({style:{marginRight: pixels(5)}}, $T('Add Existing User') );
+            var addExistingPersonButton = Html.button({style:{marginRight: pixels(5)}}, $T('Add Indico User') );
             var addNewRoomButton = Html.button({style:{marginRight: pixels(5)}}, $T('Add New Room'));
 
             addNewPersonButton.observeClick(function(){
@@ -425,7 +416,7 @@ type("ParticipantListField", ["IWidget"],
                         openNewPopup();
                     }
                 }
-                var popup = new ChooseUsersPopup($T("Add existing person"), true, null, false, true, null, false, true, handler);
+                var popup = new ChooseUsersPopup($T("Add Indico User"), true, null, false, true, null, false, true, false, handler);
                 popup.execute();
             });
 
@@ -438,7 +429,7 @@ type("ParticipantListField", ["IWidget"],
                 popup.open();
             });
 
-            <% if RoomsWithH323IP: %>
+            % if RoomsWithH323IP:
 
                 var addExistingRoomButton = Html.button({style:{marginRight: pixels(5)}}, $T('Add Existing Rooms'));
 
@@ -453,16 +444,15 @@ type("ParticipantListField", ["IWidget"],
                     popup.open();
                 });
 
-            <% end %>
+            % endif
 
-            <% if RoomsWithH323IP: %>
+            % if RoomsWithH323IP:
                 var buttonDiv1 = Html.div({}, addExistingRoomButton, addNewRoomButton);
                 var buttonDiv2 = Html.div({}, addExistingPersonButton, addNewPersonButton);
                 var buttonDiv = Html.div({style:{marginTop: pixels(10)}}, buttonDiv1, buttonDiv2);
-            <% end %>
-            <% else: %>
+            % else:
                 var buttonDiv = Html.div({}, Html.div({}, addExistingPersonButton, addNewPersonButton, addNewRoomButton));
-            <% end %>
+            % endif
 
             return this.IWidget.prototype.draw.call(this,
                 Widget.block([Html.div("CERNMCUParticipantsDiv", this.participantList.draw()), buttonDiv])
@@ -493,7 +483,7 @@ type("CERNMCUBuildParticipantsInfo", ["IWidget"], {
             {
                 plugin: 'CERNMCU',
                 service: 'ConnectParticipant',
-                conference: '<%= ConferenceId %>',
+                conference: '${ ConferenceId }',
                 booking: self.booking.id,
                 participantId: participant.get("participantId")
             },
@@ -519,7 +509,7 @@ type("CERNMCUBuildParticipantsInfo", ["IWidget"], {
             {
                 plugin: 'CERNMCU',
                 service: 'DisconnectParticipant',
-                conference: '<%= ConferenceId %>',
+                conference: '${ ConferenceId }',
                 booking: self.booking.id,
                 participantId: participant.get("participantId")
             },
@@ -539,24 +529,22 @@ type("CERNMCUBuildParticipantsInfo", ["IWidget"], {
 
     draw: function(){
 
-        var participantList = Html.ul('CERNMCUParticipantsListDisplay');
-
         var self = this;
+
+        var participantList = $('<div/>');
 
         each(this.participants, function(participant) {
             // participant is a WatchObject
 
-            var participantLine = Html.li();
+            var participantLine = $('<div class="CERNMCUParticipantsListDisplay"/>');
 
             if (participant.get("type") === 'person') {
-                participantLine.append(Html.img({alt: "Person", title: "Person", src: imageSrc("user"),
-                                                 style: {verticalAlign: 'middle', marginRight: pixels(5)}}));
+                participantLine.append($('<div class="icon icon-user" aria-hidden="true"/>').prop("title", $T("User")));
             } else {
-                participantLine.append(Html.img({alt: "Room", title: "Room", src: imageSrc("room"),
-                                                 style: {verticalAlign: 'middle', marginRight: pixels(5)}}));
+                participantLine.append($('<div class="icon icon-location" aria-hidden="true"/>').prop("title", $T("Location")));
             }
 
-            participantText = Html.span();
+            participantText = $("<div/>");
             participantText.append(participant.get("displayName") + ' (IP: ' + participant.get("ip"));
             if (participant.get("participantType") === 'ad_hoc') {
                 participantText.append(', ' + $T('ad-hoc'));
@@ -564,36 +552,35 @@ type("CERNMCUBuildParticipantsInfo", ["IWidget"], {
                 participantText.append(', ' + $T('Pre-configured'));
             }
             participantText.append(', ');
-            participantText.append($B(Html.span(), participant.accessor("callState")));
+            participantText.append(participant.get("callState"));
             participantText.append(')');
 
             participantLine.append(participantText);
 
-            var playButton = $B(Html.span(), participant.accessor("callState"), function(state){
-                if (state === "connected" || !self.booking.canBeStarted ) {
-                    return IndicoUI.Buttons.playButton(true, true);
-                } else {
-                    return Widget.link(command(function(){
-                        self.__connectParticipant(participant);
-                    } , IndicoUI.Buttons.playButton(false, true)));
-                }
-            });
-            participantLine.append(playButton);
+            var toolbar = $('<div class="toolbar thinner"/>');
+            var group = $('<div class="group"/>');
 
-            var stopButton = $B(Html.span(), participant.accessor("callState"), function(state){
-                if (state === "disconnected" || state === "dormant" || !self.booking.canBeStopped) {
-                    return IndicoUI.Buttons.stopButton(true, true);
-                } else {
-                    return Widget.link(command(function(){
-                        self.__disconnectParticipant(participant);
-                    } , IndicoUI.Buttons.stopButton(false, true)));
-                }
-            });
-            participantLine.append(stopButton);
+            if (participant.get("callState") === "connected" || !self.booking.canBeStarted ) {
+                $('<a class="i-button icon-play disabled " href="#"/>').qtip({content:$T("This participant cannot be started")}).appendTo(group);
+            } else {
+                $('<a class="i-button icon-play" href="#"/>').prop("title", $T("Start")).on('click', function(){
+                    self.__connectParticipant(participant);
+                }).appendTo(group);
+            }
 
+            if (participant.get("callState") === "disconnected" || participant.get("callState") === "dormant" || !self.booking.canBeStopped) {
+                $('<a class="i-button icon-stop disabled" href="#"/>').qtip({content:$T("This participant cannot be stopped")}).appendTo(group);
+            } else {
+                $('<a class="i-button icon-stop" href="#"/>').prop("title", $T("Stop")).on('click', function(){
+                    self.__disconnectParticipant(participant);
+                }).appendTo(group);
+            }
+
+            toolbar.append(group);
+            participantLine.append(toolbar);
             participantList.append(participantLine);
         });
-        return this.IWidget.prototype.draw.call(this, participantList);
+        return this.IWidget.prototype.draw.call(this, participantList.get(0));
     }
 },
     function(booking){
@@ -613,12 +600,10 @@ type("CERNMCUBuildParticipantsInfo", ["IWidget"], {
  */
 var CERNMCUPINHelpPopup = function(event) {
     IndicoUI.Widgets.Generic.tooltip(this, event,
-        '<div style="padding:3px; width: 300px;"">' +
             $T('If you want to <strong>protect<\/strong> your MCU conference with a PIN, write it here. ' +
             'The PIN has to be <strong>numeric<\/strong> (only digits, no letters). ' +
             'Users will have to input the PIN in order to access the conference. ' +
-            'Otherwise, leave empty.') +
-        '<\/div>');
+            'Otherwise, leave empty.'));
 };
 
 /**
@@ -626,10 +611,8 @@ var CERNMCUPINHelpPopup = function(event) {
  */
 var CERNMCUCustomIDHelpPopup = function(event) {
     IndicoUI.Widgets.Generic.tooltip(this, event,
-        '<div style="padding:3px; width: 250px;"">' +
             $T('If for some reason you want to choose yourself the MCU ID of this conference, type it here. ' +
-            'The MCU ID has to be a <strong>5-digit number.</strong>') +
-        '<\/div>');
+            'The MCU ID has to be a <strong>5-digit number.</strong>'));
 };
 
 /**
@@ -637,10 +620,8 @@ var CERNMCUCustomIDHelpPopup = function(event) {
  */
 var CERNMCUDisplayPinHelpPopup = function(event) {
     IndicoUI.Widgets.Generic.tooltip(this, event,
-            '<div style="padding:3px; width: 300px;"">' +
                 $T("The MCU conference's PIN will be displayed in the event page. " +
-                   '<strong>Any person that can see the event page will see the PIN.</strong> Please use this option carefully.') +
-            '<\/div>');
+                   '<strong>Any person that can see the event page will see the PIN.</strong> Please use this option carefully.'));
 };
 
 

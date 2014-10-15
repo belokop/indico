@@ -1,29 +1,28 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is par{t of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is par{t of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 from MaKaC.plugins.Collaboration.base import CSErrorBase
 from MaKaC.plugins.Collaboration.RecordingManager.exceptions import RecordingManagerException
 from MaKaC.webinterface.common.contribFilters import PosterFilterField
-from MaKaC.conference import ConferenceHolder, Contribution
-from MaKaC.common.logger import Logger
-from MaKaC.errors import MaKaCError
+from MaKaC.conference import ConferenceHolder
+from indico.core.logger import Logger
+from MaKaC.errors import MaKaCError, NoReportError
 try:
     import MySQLdb
 except ImportError:
@@ -36,13 +35,15 @@ from MaKaC.common.output import outputGenerator, XSLTransformer
 from MaKaC.conference import Link
 from MaKaC import conference
 
-from urllib import urlencode
+from urllib import urlencode, quote_plus
 from urllib2 import Request, urlopen, HTTPError
 import re
 import os
 import sys
 from MaKaC.plugins.Collaboration.RecordingManager.micala import MicalaCommunication
 from MaKaC.i18n import _
+
+from indico.util.string import truncate
 
 def getTalks(conference, sort = False):
     """
@@ -66,6 +67,7 @@ def getTalks(conference, sort = False):
         speaker_str = ", ".join(["%s %s"%(speaker.getFirstName(), speaker.getFamilyName()) for speaker in speaker_list])
 
     event_info = {}
+    event_info["contId"] = ""
     event_info["speakers"]   = speaker_str
     event_info["type"]       = "conference"
     event_info["IndicoID"]   = generateIndicoID(conference = conference.getId(),
@@ -73,7 +75,7 @@ def getTalks(conference, sort = False):
                                               contribution    = None,
                                               subcontribution = None)
     event_info["title"]      = conference.getTitle()
-    event_info["titleshort"] = truncateString(event_info["title"], 40)
+    event_info["titleshort"] = truncate(event_info["title"], 40)
     # this always comes first, so just pretend it's 0 seconds past the epoch
     event_info["date"]       = int(time.mktime(conference.getAdjustedStartDate().timetuple()))
 
@@ -87,7 +89,6 @@ def getTalks(conference, sort = False):
     filter = PosterFilterField(conference, False, False)
     for contribution in conference.getContributionList():
         if filter.satisfies(contribution):
-
             talks.append(contribution)
             speaker_str = ""
             speaker_list = contribution.getSpeakerList()
@@ -95,6 +96,7 @@ def getTalks(conference, sort = False):
                 speaker_str = ", ".join(["%s %s"%(speaker.getFirstName(), speaker.getFamilyName()) for speaker in speaker_list])
 
             event_info = {}
+            event_info["contId"] = contribution.getId()
             event_info["speakers"]   = speaker_str
             event_info["type"]       = "contribution"
             event_info["IndicoID"]   = generateIndicoID(conference = conference.getId(),
@@ -102,7 +104,7 @@ def getTalks(conference, sort = False):
                                               contribution    = contribution.getId(),
                                               subcontribution = None)
             event_info["title"]      = contribution.getTitle()
-            event_info["titleshort"] = truncateString(event_info["title"], title_length)
+            event_info["titleshort"] = truncate(event_info["title"], title_length)
             # Sometimes contributions are not scheduled, so they have no start date.
             # In this case assign it the value None, and it will be displayed
             # at the end of the list with the time value "not scheduled"
@@ -119,6 +121,7 @@ def getTalks(conference, sort = False):
             for subcontribution in contribution.getSubContributionList():
                 ctr_sc += 1
                 event_info = {}
+                event_info["contId"] = contribution.getId()
                 speaker_str = ""
                 speaker_list = subcontribution.getSpeakerList()
 
@@ -132,7 +135,7 @@ def getTalks(conference, sort = False):
                                               contribution    = contribution.getId(),
                                               subcontribution = subcontribution.getId())
                 event_info["title"]      = subcontribution.getTitle()
-                event_info["titleshort"] = truncateString(event_info["title"], title_length)
+                event_info["titleshort"] = truncate(event_info["title"], title_length)
                 # Subcontribution objects don't have start dates,
                 # so get the owner contribution's start date
                 # and add the counter ctr_sc so they appear in order
@@ -148,6 +151,7 @@ def getTalks(conference, sort = False):
 
     for session in conference.getSessionList():
         event_info = {}
+        event_info["contId"] = ""
         event_info["speakers"] = ""
         event_info["type"]     = "session"
         event_info["IndicoID"] = generateIndicoID(conference = conference.getId(),
@@ -155,7 +159,7 @@ def getTalks(conference, sort = False):
                                                   contribution    = None,
                                                   subcontribution = None)
         event_info["title"]      = session.getTitle()
-        event_info["titleshort"] = truncateString(event_info["title"], title_length)
+        event_info["titleshort"] = truncate(event_info["title"], title_length)
         # Get start time as seconds since the epoch so we can sort
         if session.getAdjustedStartDate() is not None:
             event_info["date"]   = int(time.mktime(session.getAdjustedStartDate().timetuple()))
@@ -244,15 +248,6 @@ def startTimeCompare(a, b):
             return 0
     else:  #a < b
         return -1
-
-def truncateString(string, length):
-    '''Truncates given string to the desired length and if it
-    was longer than that, sticks ellipses on the end'''
-
-    if len(string) < length:
-        return string
-    else:
-        return string[:length] + "..."
 
 def formatDate(date_str):
     '''Given number of seconds since the epoch, convert for display in the main Recording Manager interface.'''
@@ -351,14 +346,14 @@ def getOrphans():
         try:
             cursor = connection.cursor(cursorclass=MySQLdb.cursors.DictCursor)
             # Query Lectures table for all records in which IndicoID is blank or NULL
-            cursor.execute("""SELECT L.idLecture AS idLecture, L.LOID AS LOID, L.IndicoID AS IndicoID, M.Hostname AS Hostname, V.RoomName AS RoomName, L.Duration AS Duration
-                FROM Lectures L, LectureLatestStatus LS, Status S, Machines M, Venues V
+            cursor.execute("""SELECT L.idLecture AS idLecture, L.LOID AS LOID, L.IndicoID AS IndicoID, M.hostname AS Hostname, V.roomName AS RoomName, L.duration AS Duration
+                FROM lectures L, lectureLatestStatus LS, status S, machines M, venues V
                 WHERE LS.idLecture = L.idLecture
                 AND LS.idTask = %s
                 AND LS.idStatus = S.idStatus
                 AND S.idMachine = M.idMachine
                 AND M.idVenue = V.idVenue
-                AND (NOT L.IndicoID OR L.IndicoID IS NULL)
+                AND L.IndicoID IS NULL
                 ORDER BY L.LOID""",
                 (idTaskRecording,))
             connection.commit()
@@ -391,9 +386,9 @@ def parseIndicoID(IndicoID):
     # Note: older conferences may be a string like this: a034286 instead of just a
     # number
     pConference      = re.compile('(\w*\d+)$')
-    pSession         = re.compile('(\w*\d+)s(\d+)$')
-    pContribution    = re.compile('(\w*\d+)c(\d+)$')
-    pSubcontribution = re.compile('(\w*\d+)c(\d+)sc(\d+)$')
+    pSession         = re.compile('(\w*\d+)s(\d+|s\d+)$')
+    pContribution    = re.compile('(\w*\d+)c(\d+|s\d+t\d+)$')
+    pSubcontribution = re.compile('(\w*\d+)c(\d+|s\d+t\d+)sc(\d+)$')
 
     # perform the matches (match searches from the beginning of the string,
     # unlike search, which matches anywhere in the string)
@@ -561,7 +556,7 @@ def createCDSRecord(aw, IndicoID, LODBID, lectureTitle, lectureSpeakers, content
     # generate the basic XML from which we will produce MARC XML for CDS and lecture.xml for micala
     basexml = getBasicXMLRepresentation(aw, IndicoID, contentType, videoFormat, languages)
 
-    from MaKaC.common import Config
+    from indico.core.config import Config
 
     marcxml = ""
 
@@ -604,13 +599,17 @@ def createCDSRecord(aw, IndicoID, LODBID, lectureTitle, lectureSpeakers, content
         "mode": "-ir"
     })
     headers = {"User-Agent": "invenio_webupload"}
-    req = Request(CollaborationTools.getOptionValue("RecordingManager", "CDSUploadURL"), data, headers)
+    url = CollaborationTools.getOptionValue("RecordingManager", "CDSUploadURL")
+    if '%s' in url:
+        callback_url = CollaborationTools.getOptionValue("RecordingManager", "CDSUploadCallbackURL")
+        url = url % quote_plus(callback_url % IndicoID)
+    req = Request(url, data, headers)
 #    Logger.get('RecMan').debug("req = %s" % str(req))
 
     try:
         f = urlopen(req)
         cds_response = f.read()
-#        cds_response = "testing" # uncomment for debugging
+        # cds_response = "testing" # uncomment for debugging
         # Successful operations should result in a one-line message that looks like this:
         # [INFO] Some message here
         # anything else means there was an error
@@ -619,8 +618,7 @@ def createCDSRecord(aw, IndicoID, LODBID, lectureTitle, lectureSpeakers, content
             result += _("CDS webupload response: %s\n") % cds_response
     except HTTPError, e:
         flagSuccess = False
-        result += _("CDS returned an error when submitting to %s: %s\n") % \
-            (CollaborationTools.getOptionValue("RecordingManager", "CDSUploadURL"), e)
+        result += _("CDS returned an error when submitting to %s: %s\n") % (url, e)
     except Exception, e:
         flagSuccess = False
         result += _("Unknown error occured when submitting CDS record: %s.\n") % e
@@ -686,7 +684,7 @@ def submitMicalaMetadata(aw, IndicoID, contentType, LODBID, LOID, videoFormat, l
 
     basexml = getBasicXMLRepresentation(aw, IndicoID, contentType, videoFormat, languages)
 
-    from MaKaC.common import Config
+    from indico.core.config import Config
 
     micalaxml = ""
 
@@ -737,14 +735,15 @@ def submitMicalaMetadata(aw, IndicoID, contentType, LODBID, LOID, videoFormat, l
             if request_result == 'no data':
                 result += _("micala web upload returned an unknown error when submitting to ") + "%s\n" % \
                     (CollaborationTools.getOptionValue("RecordingManager", "micalaUploadURL"))
-#            Logger.get('RecMan').debug("micala result = %s" % str(request_result))
+            # Logger.get('RecMan').debug("micala result = %s" % str(request_result))
         except HTTPError, e:
             flagSuccess = False
             result += _("micala web upload returned an error when submitting to ") + "%s: %s\n" % \
                 (CollaborationTools.getOptionValue("RecordingManager", "micalaUploadURL"), e)
         except Exception, e:
             flagSuccess = False
-            result += _("Unknown error occured when submitting micala metadata: ") + e + "\n"
+            Logger.get('RecMan').exception('Error submitting metadata')
+            result += _("Unknown error occured when submitting micala metadata: %s\n") % str(e)
 
     # Update the micala database showing the task has started, but only if
     # the submission actually succeeded.
@@ -829,12 +828,15 @@ def createIndicoLink(IndicoID, CDSID):
 
 #    Logger.get('RecMan').debug("in createIndicoLink()")
     # From IndicoID, get info
-    talkInfo = parseIndicoID(IndicoID)
+    try:
+        talkInfo = parseIndicoID(IndicoID)
+    except NoReportError:
+        return False
     obj = talkInfo["object"]
 
     # Only one link per talk allowed.
     if doesExistIndicoLink(obj):
-        pass
+        return True # consider it a success anyway
     else:
 #        Logger.get('RecMan').info("creating a new link in Indico for talk %s, CDS record %s" % (IndicoID, CDSID))
 
@@ -851,6 +853,7 @@ def createIndicoLink(IndicoID, CDSID):
         material.addResource(videoLink)
         material.setMainResource(videoLink)
         obj.addMaterial(material)
+        return True
 
 def doesExistIndicoLink(obj):
     """This function will be called with a conference, session, contribution or subcontribution object.

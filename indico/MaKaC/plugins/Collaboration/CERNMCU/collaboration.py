@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 from MaKaC.common.timezoneUtils import nowutc, setAdjustedDate, getAdjustedDate
 from MaKaC.plugins.Collaboration.base import CSBookingBase
@@ -30,9 +29,8 @@ from MaKaC.i18n import _
 
 from xmlrpclib import Fault
 from datetime import timedelta
-from MaKaC.common.logger import Logger
+from indico.core.logger import Logger
 from MaKaC.common.Counter import Counter
-from MaKaC.services.interface.rpc.json import unicodeToUtf8
 import socket
 import re
 from MaKaC.common.fossilize import fossilize
@@ -40,6 +38,7 @@ from MaKaC.common.fossilize import fossilize
 from MaKaC.plugins.Collaboration.CERNMCU.fossils import ICSBookingIndexingFossil
 from MaKaC.common.fossilize import fossilizes
 from MaKaC.plugins.Collaboration.fossils import ICSBookingBaseConfModifFossil
+from indico.util.string import unicode_struct_to_utf8
 
 
 class CSBooking(CSBookingBase): #already Fossilizable
@@ -89,6 +88,18 @@ class CSBooking(CSBookingBase): #already Fossilizable
 
         self._created = False
         self._creationTriesCounter = 0
+
+    def canBeStarted(self):
+        if self.isHappeningNow():
+            return self._numberOfDisconnectedParticipants > 0
+        else:
+            return False
+
+    def canBeStopped(self):
+        if self.isHappeningNow():
+            return self._numberOfConnectedParticipants > 0
+        else:
+            return False
 
     def getMCUStartTime(self):
         return MCUTime(self.getAdjustedStartDate(getCERNMCUOptionValueByName("MCUTZ")))
@@ -192,13 +203,30 @@ class CSBooking(CSBookingBase): #already Fossilizable
         self._p_changed = 1
 
     def updateNumberOfConnectedParticipants(self):
-        self._numberOfConnectedParticipants = 0
-        self._numberOfDisconnectedParticipants = 0
+        connected, disconnected = 0, 0
         for participant in self.getParticipantList():
             if participant.getCallState() == "connected":
-                self._numberOfConnectedParticipants = self._numberOfConnectedParticipants + 1
+                connected += 1
             else:
-                self._numberOfDisconnectedParticipants = self._numberOfDisconnectedParticipants + 1
+                disconnected += 1
+
+        # we do these checks since we don't want to write in the DB
+        # unless we are sure the values changed
+        # (avoids DB writes in display pages)
+
+        if connected != self._numberOfConnectedParticipants:
+            self._numberOfConnectedParticipants = connected
+
+        if disconnected != self._numberOfDisconnectedParticipants:
+            self._numberOfDisconnectedParticipants = disconnected
+
+            if self._numberOfConnectedParticipants == 0:
+                if self._numberOfDisconnectedParticipants == 0:
+                    self._play_status = None
+                else:
+                    self._play_status = False
+            else:
+                self._play_status = True
 
     ## overriding methods
     def _getTitle(self):
@@ -297,7 +325,7 @@ class CSBooking(CSBookingBase): #already Fossilizable
                                          description = unicodeSlice(self._bookingParams["description"], 0, 31),
                                         )
             Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling conference.create with params: %s""" % (self._conf.getId(), self.getId(), str(paramsForLog(params))))
-            answer = unicodeToUtf8(mcu.conference.create(params))
+            answer = unicode_struct_to_utf8(mcu.conference.create(params))
             Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling conference.create. Got answer: %s""" % (self._conf.getId(), self.getId(), str(answer)))
 
             for p in self._participants.itervalues():
@@ -305,12 +333,11 @@ class CSBooking(CSBookingBase): #already Fossilizable
                 if not result is True:
                     return result
 
-            self._statusMessage = "Booking created"
-            self._statusClass = "statusMessageOK"
             self._bookingParams["id"] = numericId
             self._oldName = self._bookingParams["name"]
             self._created = True
-            self.checkCanStart()
+
+            self.updateNumberOfConnectedParticipants()
 
         except Fault, e:
             Logger.get('CERNMCU').warning("""Evt:%s, calling conference.create. Got error: %s""" % (self._conf.getId(), str(e)))
@@ -349,7 +376,7 @@ class CSBooking(CSBookingBase): #already Fossilizable
                     "Evt: %s, booking: %s, calling conference.modify with params: %s" %
                     (self._conf.getId(), self.getId(), str(paramsForLog(params))))
 
-                answer = unicodeToUtf8(mcu.conference.modify(params))
+                answer = unicode_struct_to_utf8(mcu.conference.modify(params))
 
                 Logger.get('CERNMCU').debug(
                     "Evt: %s, booking: %s, calling conference.modify. Got answer: %s" %
@@ -420,7 +447,7 @@ class CSBooking(CSBookingBase): #already Fossilizable
                             return result
 
                 self._created = True
-                self.checkCanStart()
+                self.updateNumberOfConnectedParticipants()
 
             except Fault, e:
                 Logger.get('CERNMCU').warning("""Evt:%s, booking:%s, calling conference.modify. Got error: %s""" % (self._conf.getId(), self.getId(), str(e)))
@@ -432,15 +459,14 @@ class CSBooking(CSBookingBase): #already Fossilizable
         else: #not yet created because of errors: try to recreate
             self._create()
 
-
     def _start(self):
         self._checkStatus()
-        if self._canBeStarted:
+        if self.canBeStarted():
             for p in self.getParticipantList(returnSorted = True):
                 self._connectParticipant(p)
 
-            self._statusMessage = "Conference started!"
-            self.checkCanStart(changeMessage = False)
+            # True = started
+        self.updateNumberOfConnectedParticipants()
 
     def _connectParticipant(self, participant):
         """
@@ -450,6 +476,7 @@ class CSBooking(CSBookingBase): #already Fossilizable
         """
 
         try:
+            self.updateNumberOfConnectedParticipants()
             mcu = MCU.getInstance()
             if (participant.getCallState() == "disconnected" or participant.getCallState() == "dormant") and participant.getParticipantType() != "ad_hoc":
                 params = MCUParams(conferenceName = self._bookingParams["name"],
@@ -457,10 +484,11 @@ class CSBooking(CSBookingBase): #already Fossilizable
                                    participantType = participant.getParticipantType(),
                                    participantProtocol = participant.getParticipantProtocol())
                 Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling participant.connect with params: %s""" % (self._conf.getId(), self.getId(), str(paramsForLog(params))))
-                answer = unicodeToUtf8(mcu.participant.connect(params))
+                answer = unicode_struct_to_utf8(mcu.participant.connect(params))
                 Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling participant.connect. Got answer: %s""" % (self._conf.getId(), self.getId(), str(answer)))
 
                 participant.setCallState("connected")
+                self.updateNumberOfConnectedParticipants()
 
         except Fault, e:
             Logger.get('CERNMCU').warning("""Evt:%s, booking:%s, calling participant.connect. Got error: %s""" % (self._conf.getId(), self.getId(), str(e)))
@@ -473,23 +501,24 @@ class CSBooking(CSBookingBase): #already Fossilizable
 
     def startSingleParticipant(self, participant):
         self._checkStatus()
-        if self._canBeStarted:
+        if self.canBeStarted():
             result = self._connectParticipant(participant)
-            self.checkCanStart(changeMessage = False)
             return result
+        self.updateNumberOfConnectedParticipants()
 
     def _stop(self):
         self._checkStatus()
-        if self._canBeStopped:
+        if self.canBeStopped():
             for p in self.getParticipantList(returnSorted = True):
                 self._disconnectParticipant(p)
 
-            self.checkCanStart()
-            self._statusMessage = "Conference stopped"
-            self._statusClass = "statusMessageOther"
+            # False = stopped
+
+        self.updateNumberOfConnectedParticipants()
 
     def _disconnectParticipant(self, participant):
         try:
+            self.updateNumberOfConnectedParticipants()
             mcu = MCU.getInstance()
 
             if participant.getCallState() == "connected":
@@ -499,7 +528,7 @@ class CSBooking(CSBookingBase): #already Fossilizable
                                    participantProtocol = participant.getParticipantProtocol())
 
                 Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling participant.disconnect with params: %s""" % (self._conf.getId(), self.getId(), str(paramsForLog(params))))
-                answer = unicodeToUtf8(mcu.participant.disconnect(params))
+                answer = unicode_struct_to_utf8(mcu.participant.disconnect(params))
                 Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling participant.disconnect. Got answer: %s""" % (self._conf.getId(), self.getId(), str(answer)))
 
                 participant.setCallState("disconnected")
@@ -508,6 +537,8 @@ class CSBooking(CSBookingBase): #already Fossilizable
             if not participant.isCreatedByIndico():
                 # not a local...
                 del self._participants[participant.getId()]
+
+            self.updateNumberOfConnectedParticipants()
 
         except Fault, e:
             Logger.get('CERNMCU').warning("""Evt:%s, booking:%s, calling participant.disconnect. Got error: %s""" % (self._conf.getId(), self.getId(), str(e)))
@@ -520,19 +551,18 @@ class CSBooking(CSBookingBase): #already Fossilizable
 
     def stopSingleParticipant(self, participant):
         self._checkStatus()
-        if self._canBeStopped:
+        if self.canBeStopped():
             result = self._disconnectParticipant(participant)
-            self.checkCanStart(changeMessage = False)
             return result
 
     def _notifyOnView(self):
-        self.checkCanStart()
+        pass
 
     def _checkStatus(self):
         if self._created:
+            self.updateNumberOfConnectedParticipants()
             self.queryConference()
             self._cleanupAdHocParticipants()
-            self.checkCanStart()
 
     def _delete(self):
         if self._created:
@@ -542,7 +572,7 @@ class CSBooking(CSBookingBase): #already Fossilizable
                 mcu = MCU.getInstance()
                 params = MCUParams(conferenceName = name)
                 Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling conference.destroy with params: %s""" % (self._conf.getId(), self.getId(), str(paramsForLog(params))))
-                answer = unicodeToUtf8(mcu.conference.destroy(params))
+                answer = unicode_struct_to_utf8(mcu.conference.destroy(params))
                 Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling conference.destroy. Got answer: %s""" % (self._conf.getId(), self.getId(), str(answer)))
 
                 self._created = False
@@ -573,16 +603,13 @@ class CSBooking(CSBookingBase): #already Fossilizable
                                                 participantProtocol = participant.getParticipantProtocol()
                                                 )
             Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling participant.add with params: %s""" % (self._conf.getId(), self.getId(), str(paramsForLog(params))))
-            answer = unicodeToUtf8(mcu.participant.add(params))
+            answer = unicode_struct_to_utf8(mcu.participant.add(params))
             Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling participant.add. Got answer: %s""" % (self._conf.getId(), self.getId(), str(answer)))
 
 
-            self.checkCanStart()
             if self._numberOfConnectedParticipants > 0:
                 #we have to connect the new participant
                 self._connectParticipant(participant)
-                self.checkCanStart(changeMessage = False)
-
 
             return True
 
@@ -628,7 +655,7 @@ class CSBooking(CSBookingBase): #already Fossilizable
                 "Evt: %s, booking: %s, calling participant.modify with params: %s" %
                 (self._conf.getId(), self.getId(), str(paramsForLog(params))))
 
-            answer = unicodeToUtf8(mcu.participant.modify(params))
+            answer = unicode_struct_to_utf8(mcu.participant.modify(params))
 
             Logger.get('CERNMCU').info(
                 "Evt:%s, booking:%s, calling participant.modify. Got answer: %s" %
@@ -654,32 +681,12 @@ class CSBooking(CSBookingBase): #already Fossilizable
                                participantType = participantType,
                                participantProtocol = participantProtocol)
             Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling participant.remove with params: %s""" % (self._conf.getId(), self.getId(), str(paramsForLog(params))))
-            answer = unicodeToUtf8(mcu.participant.remove(params))
+            answer = unicode_struct_to_utf8(mcu.participant.remove(params))
             Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling participant.remove. Got answer: %s""" % (self._conf.getId(), self.getId(), str(answer)))
             return True
         except Fault, e:
             Logger.get('CERNMCU').warning("""Evt:%s, calling participant.remove. Got error: %s""" % (self._conf.getId(), str(e)))
             return self.handleFault('remove', e)
-
-    def checkCanStart(self, changeMessage = True):
-        if self._created:
-            now = nowutc()
-            self._canBeNotifiedOfEventDateChanges = CSBooking._canBeNotifiedOfEventDateChanges
-            self.updateNumberOfConnectedParticipants()
-            if self.getStartDate() < now and self.getEndDate() > now:
-                self._canBeStarted = self._numberOfDisconnectedParticipants > 0
-                self._canBeStopped = self._numberOfConnectedParticipants > 0
-                if changeMessage:
-                    self._statusMessage = "Ready to start!"
-                    self._statusClass = "statusMessageOK"
-            else:
-                self._canBeStarted = False
-                self._canBeStopped = False
-                if now > self.getEndDate() and changeMessage:
-                    self._statusMessage = "Already took place"
-                    self._statusClass = "statusMessageOther"
-                    self._needsToBeNotifiedOfDateChanges = False
-                    self._canBeNotifiedOfEventDateChanges = False
 
     def _cleanupAdHocParticipants(self):
         """
@@ -827,7 +834,7 @@ class CSBooking(CSBookingBase): #already Fossilizable
                     "Evt:%s, booking:%s, calling conference.enumerate with params: %s"
                     % (self._conf.getId(), self.getId(), str(paramsForLog(params))))
 
-                answer = unicodeToUtf8(mcu.conference.enumerate(params))
+                answer = unicode_struct_to_utf8(mcu.conference.enumerate(params))
                 #un-comment to print all the garbage about other conferences received
                 # Logger.get('CERNMCU').debug(
                 #    "Evt:%s, booking:%s, calling conference.enumerate. Got answer: %s" %
@@ -862,7 +869,7 @@ class CSBooking(CSBookingBase): #already Fossilizable
 
         except Fault, e:
             Logger.get('CERNMCU').warning("""Evt:%s, booking:%s, calling participants.enumerate. Got error: %s""" % (self._conf.getId(), self.getId(), str(e)))
-            raise e
+            raise
         except socket.error, e:
             handleSocketError(e)
 
@@ -890,7 +897,7 @@ class CSBooking(CSBookingBase): #already Fossilizable
                     params = MCUParams()
 
                 Logger.get('CERNMCU').info("""Evt:%s, booking:%s, calling participants.enumerate with params: %s""" % (self._conf.getId(), self.getId(), str(paramsForLog(params))))
-                answer = unicodeToUtf8(mcu.participant.enumerate(params))
+                answer = unicode_struct_to_utf8(mcu.participant.enumerate(params))
                 #un-comment to print all the garbage received about other participants
                 #Logger.get('CERNMCU').debug("""Evt:%s, booking:%s, calling participants.enumerate. Got answer: %s""" % (self._conf.getId(), self.getId(), str(answer)))
 
@@ -920,7 +927,7 @@ class CSBooking(CSBookingBase): #already Fossilizable
 
         except Fault, e:
             Logger.get('CERNMCU').warning("""Evt:%s, booking:%s, calling participants.enumerate. Got error: %s""" % (self._conf.getId(), self.getId(), str(e)))
-            raise e
+            raise
         except socket.error, e:
             handleSocketError(e)
 

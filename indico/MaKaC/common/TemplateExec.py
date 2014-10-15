@@ -1,190 +1,274 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
-from MaKaC.user import Avatar
-import sys, os, StringIO, traceback
-import MaKaC
-from MaKaC.common.Configuration import Config
-from MaKaC.services.interface.rpc.common import ServiceAccessError
-from MaKaC.errors import MaKaCError, AccessError
+from flask import session, g, request, render_template
+from flask import current_app as app
+import pkg_resources
+import os.path
+import re
+import posixpath
+from indico.core.config import Config
 from MaKaC.common.utils import formatDateTime, formatDate, formatTime
-import MaKaC.common.info as info
-from MaKaC.common.logger import Logger
+from MaKaC.user import Avatar
+from mako.lookup import TemplateLookup
+import mako.exceptions as exceptions
+import MaKaC
+from MaKaC.plugins.base import PluginsHolder
+import xml.sax.saxutils
 
-ERROR_PATH = Config.getInstance().getTempDir()
+from indico.util.date_time import format_number, format_datetime, format_date, format_time
+from indico.util.i18n import ngettext
+from indico.util.contextManager import ContextManager
+from indico.util.mdx_latex import latex_escape
+from indico.util.string import safe_upper
+from indico.web.flask.util import url_for, url_rule_to_js
 
-class TemplateExecException( Exception ):
 
-    def __init__( self, value ):
-        self.value = value
-        if hasattr(value, 'template_tracebacks'):
-            self.template_tracebacks = value.template_tracebacks
-        if hasattr(value, 'problematic_templates'):
-            self.problematic_templates = value.problematic_templates
+# The main template directory
+TEMPLATE_DIR = Config.getInstance().getTPLDir()
+FILTER_IMPORTS = [
+    'from indico.util.json import dumps as j',
+    'from indico.util.string import encode_if_unicode',
+    'from indico.util.string import html_line_breaks as html_breaks',
+    'from indico.util.string import remove_tags',
+    'from indico.util.string import render_markdown as m'
+]
 
-    def __str__(self):
-        s = str( type(self.value).__name__) + ": " + str(self.value )
-        if s[-1] != "}":
 
-            if hasattr(self, 'problematic_templates'):
-                s += """ - - - -> {Python code generated from templates is available in %s.tpl.error.py""" % (os.path.join(ERROR_PATH, self.problematic_templates[0]))
+class IndicoTemplateLookup(TemplateLookup):
 
-                for template_name in self.problematic_templates[1:]:
-                    s += ", %s.py" % (os.path.join(ERROR_PATH, template_name))
-                s += " file(s)}"
+    def getPluginTPlDir(self, pTypeName, pluginName, tplName):
+        pType = PluginsHolder().getPluginType(pTypeName)
+        if pType == None:
+            raise Exception(_("The plugin type does not exist"))
+        if pluginName != None:
+            plugin = pType.getPlugin(pluginName)
+            if plugin == None:
+                raise Exception(_("The plugin does not exist"))
+            return posixpath.normpath(pkg_resources.resource_filename(plugin.getModule().__name__, 'tpls/{0}'.format(tplName)))
+        return posixpath.normpath(pkg_resources.resource_filename(pType.getModule().__name__, 'tpls/{0}'.format(tplName)))
 
-        return s
 
-def includeTpl( tplFileName, *args, **kwargs ):
-    """
-    Use:
-    <% includeTpl( 'TemplateName', paramA = 2, paramB = 3 ) %>
-    """
+    def get_template(self, uri, module=None):
+        """Return a :class:`.Template` object corresponding to the given
+        URL.
 
-    # Resurrect dictionary from globals - ugly hack.
-    # In the recurrent exec, we still need an old dictCopy.
-    # This old dictCopy is resurrected from the global scope.
-    objDict = globals()['_dictCopy'].copy()
-    codeOut = objDict['_tpl_out']
-    for k, v in kwargs.iteritems():
-        objDict[k] = v
-    objDict["isIncluded"] = True
+        Note the "relativeto" argument is not supported here at the moment.
 
-    from MaKaC.webinterface import wcomponents
-    result = wcomponents.WTemplated(tplFileName).getHTML(objDict)
-    codeOut.write(result)
+        """
 
-def contextHelp( helpId ):
-    """
-    Allows you to put [?], the context help marker.
-    Help content is defined in <div id="helpId"></div>.
-    """
-    includeTpl( 'ContextHelp', helpId = helpId, imgSrc = Config.getInstance().getSystemIconURL( "help" ) )
+        try:
+            if self.filesystem_checks:
+                return self._check(uri, self._collection[uri])
+            else:
+                return self._collection[uri]
+        except KeyError:
 
-def inlineContextHelp( helpContent ):
+            if uri[0] == "/" and os.path.isfile(uri):
+                return self._load(uri, uri)
+
+            # Case 1: Used with Template.forModule
+            if module != None and hasattr(module,"_dir"):
+                srcfile = posixpath.normpath(posixpath.join(module._dir, uri))
+                if os.path.isfile(srcfile):
+                    return self._load(srcfile, srcfile)
+
+            # Case 2: We look through the dirs in the TemplateLookup
+            u = re.sub(r'^\/+', '', uri)
+            for dir in self.directories:
+                srcfile = posixpath.normpath(posixpath.join(dir, u))
+                if os.path.isfile(srcfile):
+                    return self._load(srcfile, uri)
+            else:
+            #Case 3: we look into the plugins
+                uri_split = u.split("/")
+                if len(uri_split) == 2:
+                    srcfile = self.getPluginTPlDir(uri_split[0],None, uri_split[1])
+                    if os.path.isfile(srcfile):
+                        return self._load(srcfile, uri)
+                if len(uri_split) == 3:
+                    srcfile = self.getPluginTPlDir(*uri_split)
+                    if os.path.isfile(srcfile):
+                        return self._load(srcfile, uri)
+
+                # We do not find anything, so we raise the Exception
+                raise exceptions.TopLevelLookupException('Can\'t locate template for uri {0!r}'.format(uri))
+
+
+def _define_lookup():
+    # TODO: disable_unicode shouldn't be used
+    # since unicode is disabled, template waits for
+    # byte strings provided by default_filters
+    # i.e converting SQLAlchemy model unicode properties to byte strings
+    return IndicoTemplateLookup(directories=[TEMPLATE_DIR],
+                                module_directory=os.path.join(Config.getInstance().getTempDir(), "mako_modules"),
+                                disable_unicode=True,
+                                input_encoding='utf-8',
+                                default_filters=['encode_if_unicode', 'str'],
+                                filesystem_checks=True,
+                                imports=FILTER_IMPORTS,
+                                cache_enabled=not ContextManager.get('offlineMode'))
+
+
+mako = _define_lookup()
+
+
+def render(tplPath, params={}, module=None):
+    """Render the template."""
+    template = mako.get_template(tplPath, module)
+    registerHelpers(params)
+
+    # This parameter is needed when a template which is stored
+    # outside of the main tpls directory (e.g. plugins) wants
+    # to include another template from the main directory.
+    # Usage example: <%include file="${TPLS}/SomeTemplate.tpl"/>
+    params['TPLS'] = TEMPLATE_DIR
+
+    return template.render(**params)
+
+
+def inlineContextHelp(helpContent):
     """
     Allows you to put [?], the context help marker.
     Help content passed as argument helpContent.
     """
-    includeTpl( 'InlineContextHelp', helpContent = helpContent, imgSrc = Config.getInstance().getSystemIconURL( "help" ) )
+    from MaKaC.webinterface.wcomponents import WTemplated
+    params = {"helpContent" : helpContent,
+              "imgSrc" : Config.getInstance().getSystemIconURL("help")}
+    return WTemplated('InlineContextHelp').getHTML(params)
 
-def escapeAttrVal( s ):
+
+def contextHelp(helpId):
     """
-    Just escapes the apostrophes, new lines, etc.
+    Allows you to put [?], the context help marker.
+    Help content is defined in <div id="helpId"></div>.
     """
+    from MaKaC.webinterface.wcomponents import WTemplated
+    params = {"helpId" : helpId,
+              "imgSrc" : Config.getInstance().getSystemIconURL("help")}
+    return WTemplated('ContextHelp').getHTML(params)
+
+
+def escapeAttrVal(s):
+    """Just escapes the apostrophes, new lines, etc."""
 #    if s == None:
 #        return None
-#    s = s.replace( "'", r"\'" )
+#    s = s.replace("'", r"\'")
 #    s = s.strip()
-    from xml.sax.saxutils import quoteattr
-    s = quoteattr( s )[1:-1]
-    s = s.replace( "'", "`" )
-    s = s.replace( "\"", "`" )
-    s = s.replace( "\n", "" )
-    s = s.replace( "\r", "" )
-    s = s.replace( "&#13;", " " )
-    s = s.replace( "&#10;", " " )
+    s = xml.sax.saxutils.quoteattr(s)[1:-1]
+    s = s.replace("'", "`")
+    s = s.replace("\"", "`")
+    s = s.replace("\n", "")
+    s = s.replace("\r", "")
+    s = s.replace("&#13;", " ")
+    s = s.replace("&#10;", " ")
     return s
 
-def verbose( s, default = "" ):
+
+def verbose(s, default=""):
     """
     Purpose: avoid showing "None" to user; show default value instead.
     """
-    if isinstance( s, bool ) and s != None:
+    if isinstance(s, bool) and s != None:
         if s:
             return "yes"
         else:
             return "no"
-
     return s or default
 
-def verbose_dt( dt, default = "" ):
+
+def verbose_dt(dt, default=""):
+    """Return verbose date representation."""
     if dt == None:
         return default
-    return ( "%s_%2s:%2s" % ( formatDate(dt.date()).replace(' ','_'), dt.hour, dt.minute ) ).replace( ' ', '0' ).replace( '_', ' ' )
+    return ("%s_%2s:%2s" % (formatDate(dt.date()).replace(' ', '_'),
+                            dt.hour,
+                            dt.minute)).replace(' ', '0').replace('_', ' ')
 
-def verbose_t( t, default = "" ):
+
+def verbose_t(t, default=""):
+    """Return verbose time representation."""
     if t == None:
         return default
-    return ( "%2d:%2d" % ( t.hour, t.minute ) ).replace( ' ', '0' )
+    return ("%2d:%2d" % (t.hour, t.minute)).replace(' ', '0')
 
-def escape( s ):
+
+def escape(s):
     """HTML escape"""
-    from xml.sax.saxutils import escape
-    return escape( s )
+    return xml.sax.saxutils.escape(s)
 
-def jsBoolean ( b ):
+
+def jsBoolean(b):
+    """Return Javascript version of a boolean value."""
     if b:
         return 'true'
     else:
         return 'false'
 
-def quoteattr( s ):
+
+def quoteattr(s):
     """quotes escape"""
-    from xml.sax.saxutils import quoteattr
-    return quoteattr( s )
+    return xml.sax.saxutils.quoteattr(s)
 
-def roomClass( room ):
-    if room.isReservable:
-        roomClass = "basicRoom"
-    if not room.isReservable:
-        roomClass = "privateRoom"
-    if room.isReservable and room.resvsNeedConfirmation:
-        roomClass = "moderatedRoom"
-    return roomClass
 
-def dequote( s ):
-    if ( s.startswith( '"' ) or s.startswith( "'" ) ) and ( s.endswith( '"' ) or s.endswith( "'" ) ):
+def dequote(s):
+    """Remove surrounding quotes from a string (if there are any)."""
+    if ((s.startswith('"') or s.startswith("'"))
+            and (s.endswith('"') or s.endswith("'"))):
         return s[1:-1]
     return s
 
-def linkify( s ):
-    urlIxStart = s.find( 'http://' )
+
+def linkify(s):
+    urlIxStart = s.find('http://')
     if urlIxStart == -1:
         return s
-    urlIxEnd = s.find( ' ', urlIxStart + 1 )
-    s = s[0:urlIxStart] + '<a href="' + s[urlIxStart:urlIxEnd] + '">' + s[urlIxStart:urlIxEnd] + "</a> " + s[urlIxEnd:]
+    urlIxEnd = s.find(' ', urlIxStart + 1)
+    s = (s[0:urlIxStart] + '<a href="' + s[urlIxStart:urlIxEnd] + '">'
+            + s[urlIxStart:urlIxEnd] + "</a> " + s[urlIxEnd:])
     return s
+
 
 def deepstr(obj):
     """ obj is any kind of object
-        This method will loop through the object and turn objects into strings through their __str__ method.
-        If a list or a dictionary is found during the loop, a recursive call is made.
-        However this method does not support objects that are not lists or dictionaries.
+        This method will loop through the object and turn objects into
+        strings through their __str__ method. If a list or a dictionary
+        is found during the loop, a recursive call is made. However this
+        method does not support objects that are not lists or dictionaries.
         Author: David Martin Clavo
     """
 
     # stringfy objects inside a list
-    if isinstance(obj,list):
+    if isinstance(obj, list):
         for i in range(0, len(obj)):
             obj[i] = deepstr(obj[i])
 
     #stringfy objects inside a dictionary
-    if isinstance(obj,dict):
-        for k,v in obj.items():
-            del obj[k] #wAvatare delete the old key
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            del obj[k] #we delete the old key
             obj[deepstr(k)] = deepstr(v)
 
     return str(obj)
 
-def beautify(obj, classNames = {"UlClassName": "optionList", "KeyClassName": "optionKey"}, level = 0):
+def beautify(obj, classNames={"UlClassName": "optionList",
+                              "KeyClassName": "optionKey"}, level=0):
     """ Turns list or dicts into beautiful <ul> HTML lists, recursively.
         -obj: an object that can be a list, a dict, with lists or dicts inside
         -classNames: a dictionary specifying class names. Example:
@@ -195,24 +279,24 @@ def beautify(obj, classNames = {"UlClassName": "optionList", "KeyClassName": "op
         -level: the level of recursivity.
     """
     from MaKaC.webinterface import wcomponents
-    if isinstance(obj,list):
+    if isinstance(obj, list):
         return wcomponents.WBeautifulHTMLList(obj, classNames, level + 1).getHTML()
-    elif isinstance(obj,dict):
+    elif isinstance(obj, dict):
         return wcomponents.WBeautifulHTMLDict(obj, classNames, level + 1).getHTML()
     elif isinstance(obj, Avatar):
         return obj.getStraightFullName()
     else:
         return str(obj)
 
-def systemIcon( s ):
-    return Config.getInstance().getSystemIconURL( s )
+def systemIcon(s):
+    return Config.getInstance().getSystemIconURL(s)
 
-def iconFileName( s ):
+def iconFileName(s):
     return Config.getInstance().getSystemIconFileName(s)
 
 def truncateTitle(title, maxSize=30):
     if len(title) > maxSize:
-        return title[:maxSize]+'...'
+        return title[:maxSize] + '...'
     else:
         return title
 
@@ -228,430 +312,114 @@ def escapeHTMLForJS(s):
         (carriage return) -> \r
         (backspace) -> \b
         (form feed) -> \f
-
-        TODO: try to optimize this (or check if it's optimum already).
-        translate() doesn't work, because we are replacing characters by couples of characters.
-        explore use of regular expressions, or maybe split the string and then join it manually, or just replace them by
-        looping through the string and using an if...elif... etc.
     """
-    res = s.replace("\\", "\\\\").replace("\'", "\\\'").replace("\"", "\\\"").replace("&", "\\&").replace("/", "\\/").replace("\n","\\n").replace("\t","\\t").replace("\r","\\r").replace("\b","\\b").replace("\f","\\f")
-    return res
+    return s.replace("\\", "\\\\")\
+            .replace("\'", "\\\'")\
+            .replace("\"", "\\\"")\
+            .replace("&", "\\&")\
+            .replace("/", "\\/")\
+            .replace("\n", "\\n")\
+            .replace("\t", "\\t")\
+            .replace("\r", "\\r")\
+            .replace("\b", "\\b")\
+            .replace("\f", "\\f")
 
 
-class TemplateExec:
+def registerHelpers(objDict):
     """
-    Enables template execution.
-
-    Template is a string mixing any text (HTML, e-mail, etc.)
-    with Python code.
-
-    WARNING: certain restrictions apply. See in the end.
-
-    Every Python expression put between <%= %> will be EVALUATED
-    and result will be put in place of expression.
-
-    Every Python statements put between <% %> will be EXECUTED.
-    Standard output (stdout) will be put in place of these statements.
-    (so you can do <% print %>)
-
-    Every strings put between %()s will be SUBSTITUTED with the
-    corresponding value from given dictionary.
-
-    Examples of templates:
-
-    # Example 1:
-    <tr><td> <%= 2 + 5 %> </td> </tr>
-
-    # Example 2:
-    Hello <%= person.fistName %>!
-    Your reservation for <%= period.startDT %> -- <%= period.endDT %> is confirmed.
-
-    # Example 3:
-    <html>
-    <head>
-        <title> %(title)s </title>
-    </head>
-    <body>
-        <h1> <%= room.name.capitalize() %> </h1>
-
-        <% import os %> <!-- Not necessary here - just to show you can do this -->
-        Let's skip odd columns.
-        <table>
-            <% for row in xrange( 0, 2 ): %>
-                <tr>
-                <% for column in xrange( 0, 6 ): %>
-                    <% if column % 2 == 0: %>
-                        <td style="background-color:lightgray"> Row = <%= row %>, Column = <%= column %> </td>
-                    <% end %>
-                <% end %>
-                </tr>
-            <% end %>  <!-- rows -->
-        </table>
-        <% include( 'Foot' ) %>  <!-- includes another template -->
-    </body>
-    </html>
-
-    Template is execution context => objects live through the hole template,
-    and not only in their <% %> tag.
-
-    You can include another templates via includeTpl( 'TemplateName' ).
-    The child templates inherit execution context, so all parent objects
-    are available to it.
-
-    Restrictions:
-    1) There must be no ":" in Python code, in any form, except as block start.
-       => you CAN NOT use strings like "foo:goo"
-       => you CAN NOT initialize dictionaries dic = { a: 2, b: 3 }
-       => you can write statements like: for i in xrange( 0, 10 ):
-    2) You CAN NOT put blok in the same line as statement:
-       => BAD:
-          if a == 2: break
-          Use instead:
-          if a == 2:
-              break
-
-    These limitations are consequence of Python syntax-by-indentation rules.
+    Adds helper methods to the dictionary.
+    Does it only if symbol does not exist - backward compatibility.
     """
-
-    @staticmethod
-    def executeTemplate( tpl, objDict, tplFilename ):
-        """
-        Behaviour:
-        1. Executes <% python code %>
-               a) another template may be included
-        1. Evaluates <%= python expression %>
-        2. Substitutes %(key)s with objDict[key] value
-
-        See class description for more info.
-
-        Returns resulting string.
-
-        tpl - template string
-        objDict - context dictionary; insert objects and strings there.
-        """
-        # IMPLEMENTATION
-        # General idea is to convert template into Python code and then execute it.
-        # With includeTpl(), these may go recurrent.
-        #global recurrenceLevel
-        #recurrenceLevel += 1
-
-        pythonCode = "import sys\n"   # Template is converted into Python code
-        lastIx = 0        # Index of last Python code in template
-        indentLevel = 0   # Indentation level
-
-        # Copy the dictionary, since it will be modified.
-        # We do not want to mess up with the oryginal dict.
-        dictCopy = objDict.copy()
-
-        TemplateExec.__registerHelpers( dictCopy )
-
-        # Adding dictionary to itself...
-        # Justification:
-        # In child template, we will also need it.
-        # This is the simpliest way to pass it to the child eval.
-        #if not globals().has_key( '_dictCopy' ):
-        oldDictCopy = globals().get('_dictCopy')
-        globals()['_dictCopy'] = dictCopy
-        globals()['_objDict'] = objDict
-
-        while True:
-            ixSt, ixEnd, type, statement = TemplateExec.__nextPythonCode( tpl, lastIx )
-
-            # Human text between Python codes: convert to Python code (print)
-            humanText = tpl[lastIx:ixSt]
-            if len( humanText.strip() ) > 0:
-                humanText = TemplateExec.__neutralizeLastChar( humanText )
-                pythonCode += '\n%s_tpl_out.write( """%s""" )' % ( TemplateExec.__indent( indentLevel ), humanText )
-
-            if TemplateExec.__isBlockEnd( statement ):
-                indentLevel -= 1
-
-            # Deal with Python code
-            if statement == None:
-                break
-
-            if type == 'Expression':
-                pythonCode += '\n%s_tpl_out.write( str( %s ) )' % ( TemplateExec.__indent( indentLevel ), statement )
-            elif type == 'IndentBlock':
-                for line in statement.split('\n'):
-                    pythonCode += "\n%s%s" % (TemplateExec.__indent( indentLevel ), line)
-            elif not TemplateExec.__isBlockEnd( statement ):
-                pythonCode += "\n%s%s" % ( TemplateExec.__indent( indentLevel ),  statement )
-                # Try to find all trailing ':'  <== OVERSIMPLIFIED
-                indentLevel += statement.count( ':' )
-            lastIx = ixEnd + 2  # Move after this Python code
-
-        try:
-            newTpl = TemplateExec.__executePythonCode( pythonCode, dictCopy, tplFilename )
-        except TemplateExecException, e:
-            try: open( ERROR_PATH + "/" + tplFilename + ".tpl.py", "w" ).write( pythonCode )
-            except: pass
-            Logger.get('tplexec').exception('Template error')
-            raise
-        ## In case that included templates raise AccessError due to offlineRequest macro.
-        except (AccessError, ServiceAccessError), e:
-            raise AccessError( e )
-        except Exception, e:
-            try: open( ERROR_PATH + "/" + tplFilename + ".tpl.error.py", "w" ).write( pythonCode )
-            except: pass
-
-            raise TemplateExecException( e )
-        #except:
-        #    raise pythonCode
-
-
-        #recurrenceLevel -= 1
-
-        #if recurrenceLevel == 0 and globals().has_key( '_dictCopy' ):
-            ## Clean up - we do not want to mess up with global scope
-            #global _dictCopy
-            #del _dictCopy
-            #del recurrenceLevel
-
-        globals()['_dictCopy'] = oldDictCopy
-
-        return newTpl
-
-    # PRIVATE ================================================================
-
-    @staticmethod
-    def __saveDebugInfo(e, tplFilename):
-        if hasattr(e, 'template_tracebacks'):
-            e.template_tracebacks.append(traceback.format_tb(sys.exc_info()[2]))
+    if not 'contextHelp' in objDict:
+        objDict['contextHelp'] = contextHelp
+    if not 'inlineContextHelp' in objDict:
+        objDict['inlineContextHelp'] = inlineContextHelp
+    if not 'escapeAttrVal' in objDict:
+        objDict['escapeAttrVal'] = escapeAttrVal
+    if not 'escape' in objDict:
+        objDict['escape'] = escape
+    if not 'quoteattr' in objDict:
+        objDict['quoteattr'] = quoteattr
+    if not 'verbose' in objDict:
+        objDict['verbose'] = verbose
+    if not 'verbose_dt' in objDict:
+        objDict['verbose_dt'] = verbose_dt
+    if not 'verbose_t' in objDict:
+        objDict['verbose_t'] = verbose_t
+    if not 'dequote' in objDict:
+        objDict['dequote'] = dequote
+    if not 'formatTime' in objDict:
+        objDict['formatTime'] = formatTime
+    if not 'formatDate' in objDict:
+        objDict['formatDate'] = formatDate
+    if not 'format_datetime' in objDict:
+        objDict['format_datetime'] = format_datetime
+    if not 'format_date' in objDict:
+        objDict['format_date'] = format_date
+    if not 'format_time' in objDict:
+        objDict['format_time'] = format_time
+    if not 'systemIcon' in objDict:
+        objDict['systemIcon'] = systemIcon
+    if not 'formatDateTime' in objDict:
+        objDict['formatDateTime'] = formatDateTime
+    if not 'linkify' in objDict:
+        objDict['linkify'] = linkify
+    if not 'truncateTitle' in objDict:
+        objDict['truncateTitle'] = truncateTitle
+    if not 'urlHandlers' in objDict:
+        objDict['urlHandlers'] = MaKaC.webinterface.urlHandlers
+    if not 'Config' in objDict:
+        objDict['Config'] = MaKaC.common.Configuration.Config
+    if not 'jsBoolean' in objDict:
+        objDict['jsBoolean'] = jsBoolean
+    if not 'jsonDescriptor' in objDict:
+        from MaKaC.services.interface.rpc.offline import jsonDescriptor
+        objDict['jsonDescriptor'] = jsonDescriptor
+    if not 'jsonDescriptorType' in objDict:
+        from MaKaC.services.interface.rpc.offline import jsonDescriptorType
+        objDict['jsonDescriptorType'] = jsonDescriptorType
+    if not 'jsonEncode' in objDict:
+        from MaKaC.services.interface.rpc.json import encode as jsonEncode
+        objDict['jsonEncode'] = jsonEncode
+    if not 'roomInfo' in objDict:
+        from MaKaC.services.interface.rpc.offline import roomInfo
+        objDict['roomInfo'] = roomInfo
+    if not 'roomBookingActive' in objDict:
+        objDict['roomBookingActive'] = Config.getInstance().getIsRoomBookingActive()
+    if not 'user' in objDict:
+        if not '__rh__' in objDict or not objDict['__rh__']:
+            objDict['user'] = "ERROR: Assign self._rh = rh in your WTemplated.__init__( self, rh ) method."
         else:
-            e.template_tracebacks = [traceback.format_tb(sys.exc_info()[2])]
-
-        if hasattr(e, 'problematic_templates'):
-            e.problematic_templates.append(tplFilename)
-        else:
-            e.problematic_templates = [tplFilename]
-
-    @staticmethod
-    def __executePythonCode( pythonCode, objDict, tplFilename ):
-        global recurrenceLevel
-        # Execute the pythonCode -------------------------
-        # create file-like string to capture output
-        codeOut = StringIO.StringIO()
-        oldCodeOut = objDict.get('_tpl_out')
-        objDict['_tpl_out'] = codeOut
-
-        try:
-            exec pythonCode in objDict
-
-        except Exception, e:
-#            try: open( ERROR_PATH + "/" + tplFilename + ".tpl.py", "w" ).write( pythonCode )
-#            except: pass
-
-            Logger.get('tplexec').exception('Template execution error')
-            TemplateExec.__saveDebugInfo(e, tplFilename)
-
-            raise e
-
-        objDict['_tpl_out'] = oldCodeOut
-
-        newTpl = codeOut.getvalue()
-        codeOut.close()
-        return newTpl
-
-    @staticmethod
-    def __registerHelpers( objDict ):
-        """
-        Adds helper methods to the dictionary.
-        Does it only if symbol does not exist - backward compatibility.
-        """
-        if not 'includeTpl' in objDict:
-            objDict['includeTpl'] = includeTpl
-        if not 'contextHelp' in objDict:
-            objDict['contextHelp'] = contextHelp
-        if not 'inlineContextHelp' in objDict:
-            objDict['inlineContextHelp'] = inlineContextHelp
-        if not 'escapeAttrVal' in objDict:
-            objDict['escapeAttrVal'] = escapeAttrVal
-        if not 'escape' in objDict:
-            objDict['escape'] = escape
-        if not 'quoteattr' in objDict:
-            objDict['quoteattr'] = quoteattr
-        if not 'verbose' in objDict:
-            objDict['verbose'] = verbose
-        if not 'verbose_dt' in objDict:
-            objDict['verbose_dt'] = verbose_dt
-        if not 'verbose_t' in objDict:
-            objDict['verbose_t'] = verbose_t
-        if not 'dequote' in objDict:
-            objDict['dequote'] = dequote
-        if not 'formatTime' in objDict:
-            objDict['formatTime'] = formatTime
-        if not 'formatDate' in objDict:
-            objDict['formatDate'] = formatDate
-        if not 'systemIcon' in objDict:
-            objDict['systemIcon'] = systemIcon
-        if not 'formatDateTime' in objDict:
-            objDict['formatDateTime'] = formatDateTime
-        if not 'linkify' in objDict:
-            objDict['linkify'] = linkify
-        if not 'truncateTitle' in objDict:
-            objDict['truncateTitle'] = truncateTitle
-        if not 'urlHandlers' in objDict:
-            objDict['urlHandlers'] = MaKaC.webinterface.urlHandlers
-        if not 'Config' in objDict:
-            objDict['Config'] = MaKaC.common.Configuration.Config
-        if not 'jsBoolean' in objDict:
-            objDict['jsBoolean'] = jsBoolean
-        if not 'offlineRequest' in objDict:
-            from MaKaC.services.interface.rpc.offline import offlineRequest
-            objDict['offlineRequest'] = offlineRequest
-        if not 'jsonDescriptor' in objDict:
-            from MaKaC.services.interface.rpc.offline import jsonDescriptor
-            objDict['jsonDescriptor'] = jsonDescriptor
-        if not 'jsonDescriptorType' in objDict:
-            from MaKaC.services.interface.rpc.offline import jsonDescriptorType
-            objDict['jsonDescriptorType'] = jsonDescriptorType
-        if not 'jsonEncode' in objDict:
-            from MaKaC.services.interface.rpc.json import encode as jsonEncode
-            objDict['jsonEncode'] = jsonEncode
-        if not 'roomInfo' in objDict:
-            from MaKaC.services.interface.rpc.offline import roomInfo
-            objDict['roomInfo'] = roomInfo
-        if not 'macros' in objDict:
-            from MaKaC.webinterface.asyndico import macros
-            objDict['macros'] = macros
-        if not 'roomBookingActive' in objDict:
-            try:
-                minfo = info.HelperMaKaCInfo.getMaKaCInfoInstance()
-                objDict['roomBookingActive'] = minfo.getRoomBookingModuleActive()
-            except:
-                # if the connection to the database is not started, there is no need to set the variable and
-                # we avoid an error report.
-                # THIS IS NEEDED, when using JSContent. JSContent does not need connection to the database
-                # and this is causing an unexpected exception.
-                pass
-        if not 'user' in objDict:
-            if not '__rh__' in objDict or not objDict['__rh__']:
-                objDict['user'] = "ERROR: Assign self._rh = rh in your WTemplated.__init__( self, rh ) method."
-            else:
-                objDict['user'] = objDict['__rh__']._getUser()  # The '__rh__' is set by framework
-        if not 'rh' in objDict:
-            objDict['rh'] = objDict['__rh__']
-        if not roomClass in objDict:
-            objDict['roomClass'] = roomClass
-        if not 'systemIcon' in objDict:
-            objDict['systemIcon'] = systemIcon
-        if not 'iconFileName' in objDict:
-            objDict['iconFileName'] = iconFileName
-        if not 'escapeHTMLForJS' in objDict:
-            objDict['escapeHTMLForJS'] = escapeHTMLForJS
-        if not 'deepstr' in objDict:
-            objDict['deepstr'] = deepstr
-        if not 'beautify' in objDict:
-            objDict['beautify'] = beautify
-        # allow fossilization
-        if not 'fossilize' in objDict:
-            from MaKaC.common.fossilize import fossilize
-            objDict['fossilize'] = fossilize
-        #if not 'minfo' in objDict:
-        #    objDict['minfo'] = info.HelperMaKaCInfo.getMaKaCInfoInstance()
-
-
-    @staticmethod
-    def __neutralizeLastChar( s ):
-        """
-        Returns modified s so that it can be printed.
-        """
-        if s[-1] == '"':
-            s = s[0:-1] + chr( 92 ) + s[-1]
-        s = s.replace( r'%{', '\%{' )
-        return s
-
-    @staticmethod
-    def __indent( n ):
-        INDENTATION = "    "
-        return INDENTATION * n
-
-    @staticmethod
-    def __nextPythonCode( tpl, afterIx ):
-        """
-        Returns a tuple:
-        (
-            start index,
-            end index,
-            type,
-            string of the statement
-        )
-        """
-        ixSt = tpl.find( "<%", afterIx )
-        if ixSt == -1: return ( len( tpl ), None, None, None )
-
-        ixEnd = tpl.find( "%>", ixSt + 1 )
-        if ixEnd == -1: return ( len( tpl ), None, None, None )
-
-        isExpression, statement = (None, None)
-        if tpl[ixSt + 2] == '=':
-            type = 'Expression'
-            statement = tpl[ixSt + 3 : ixEnd].strip()
-        elif tpl[ixSt + 2] == '!':
-            type = 'IndentBlock'
-            statement = tpl[ixSt + 3 : ixEnd].strip()
-        else:
-            type = 'NonIndentBlock'
-            statement = tpl[ixSt + 2 : ixEnd].strip()
-
-
-        return ( ixSt, ixEnd, type, statement )
-
-    @staticmethod
-    def __isBlockEnd( statement ):
-        if statement == None: return False
-        statement = statement.strip().lower()
-        return len( statement ) == 0 or statement == 'end'
-
-
-
-# ============================================================================
-# ================================== TEST ====================================
-# ============================================================================
-
-
-from datetime import datetime
-class Test:
-    @staticmethod
-    def executeTemplate():
-        tpl = """
-<html>
-<head>
-    <title> <%= title %> </title>
-</head>
-<body>
-    <% forChild = "TTTTT" %>
-    <h1> <%= room.name.capitalize() %> </h1>
-    <% includeTpl( 'IncludeMe' ) %>
-
-    <% import os %> <!-- Not necessary here - just to show you can do this -->
-    Let's skip odd columns.
-    <table>
-        <% for row in xrange( 0, 2 ): %>
-            <tr>
-            <% for column in xrange( 0, 6 ): %>
-                <% if column % 2 == 0: %>
-                    <td style="background-color:lightgray"> Row = <%= row %>, Column = <%= column %> </td>
-                <% end %>
-            <% end %>
-            </tr>
-        <% end %>  <!-- rows -->
-    </table>
-    <% includeTpl( 'IncludeMe' ) %>
-</body>
-</html>
-"""
-
-        dic = {}
-        dic['title'] = "Templating example"
-        dic['room'] = Warning()
-        dic['room'].name = "Amphitheatre"
-
-        print TemplateExec.executeTemplate( tpl, dic, 'fname' )
-
-if __name__ == '__main__':
-    print "Start"
-    for i in xrange( 0, 1 ):
-        Test.executeTemplate()
-    print "End"
+            objDict['user'] = objDict['__rh__']._getUser()  # The '__rh__' is set by framework
+    if 'rh' not in objDict and '__rh__' in objDict:
+        objDict['rh'] = objDict['__rh__']
+    if not 'systemIcon' in objDict:
+        objDict['systemIcon'] = systemIcon
+    if not 'iconFileName' in objDict:
+        objDict['iconFileName'] = iconFileName
+    if not 'escapeHTMLForJS' in objDict:
+        objDict['escapeHTMLForJS'] = escapeHTMLForJS
+    if not 'deepstr' in objDict:
+        objDict['deepstr'] = deepstr
+    if not 'beautify' in objDict:
+        objDict['beautify'] = beautify
+    if not 'latex_escape' in objDict:
+        objDict['latex_escape'] = latex_escape
+    # allow fossilization
+    if not 'fossilize' in objDict:
+        from MaKaC.common.fossilize import fossilize
+        objDict['fossilize'] = fossilize
+    if not 'N_' in objDict:
+        objDict['N_'] = ngettext
+    if not 'format_number' in objDict:
+        objDict['format_number'] = format_number
+    objDict.setdefault('safe_upper', safe_upper)
+    # flask proxies
+    objDict['_session'] = session
+    objDict['_request'] = request
+    objDict['_g'] = g
+    objDict['_app'] = app
+    # flask utils
+    objDict['url_for'] = url_for
+    objDict['url_rule_to_js'] = url_rule_to_js
+    objDict['render_template'] = render_template

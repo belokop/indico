@@ -1,27 +1,6 @@
 {
     checkParams : function () {
         return {
-            "permission": ["radio", false, function(option, values){
-                var errors = [];
-                if (!exists(values["permission"])) {
-                    errors.push($T("Please answer if all the speakers given permission to have their talks webcasted."));
-                }
-                return errors;
-            }],
-            "lectureOptions": ["text", true, function(option, values){
-                var errors = [];
-                if (option == 'chooseOne') {
-                    errors.push($T("Please choose if slides and/or chalkboards will be used."));
-                }
-                return errors;
-            }],
-            "lectureStyle": ["text", true, function(option, values){
-                var errors = [];
-                if (option == 'chooseOne') {
-                    errors.push($T("Please choose a type of event."));
-                }
-                return errors;
-            }]
         }
     },
 
@@ -48,19 +27,24 @@
 
     clearForm : function () {
         var formNodes = IndicoUtil.findFormFields($E('WebcastRequestForm'));
-        IndicoUtil.setFormValues(formNodes, {'talkSelectionComments':'', 'otherComments':''})
+        IndicoUtil.setFormValues(formNodes, {'otherComments':''})
         if (!isLecture) {
-            $E('allTalksRB').dom.checked = true;
+            $('#allTalksRB').trigger('click');
             IndicoUI.Effect.disappear($E('contributionsDiv'));
         }
-
-        $E('permissionYesRB').dom.checked = false;
-        $E('permissionNoRB').dom.checked = false;
     },
 
     onLoad : function() {
 
-        WRUpdateContributionList();
+        WRUpdateContributionList('contributionList');
+
+        $('input[name=talks]:radio').change(function() {
+            if ($('#allTalksRB').attr('checked')) {
+                $('#not_capable_warning').show();
+            } else {
+                $('#not_capable_warning').hide();
+            }
+        });
 
         IndicoUtil.enableDisableForm($E("WRForm"), WRWebcastCapable);
 
@@ -72,6 +56,12 @@
 
         if(!singleBookings['WebcastRequest']) {
             callFunction('WebcastRequest', 'clearForm');
+        }
+    },
+
+    afterLoad : function() {
+        if ($("#chooseTalksRB").is(":checked")) {
+            $("#chooseTalksRB").trigger('change');
         }
     }
 }

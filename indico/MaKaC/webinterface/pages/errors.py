@@ -1,37 +1,36 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 """Some pages for dealing with generic application errors
 """
+from flask import session, request
 import traceback
 import sys
 from xml.sax.saxutils import quoteattr
 
 import MaKaC.webinterface.urlHandlers as urlHandlers
-from MaKaC.common import Config
-from MaKaC.conference import Category
+from indico.core.config import Config
 from MaKaC.webinterface.pages.base import WPDecorated
 from MaKaC.webinterface.wcomponents import WTemplated
 from MaKaC.webinterface.pages.main import WPMainBase
-from MaKaC.common.info import HelperMaKaCInfo
 from MaKaC.i18n import _
+from indico.util.i18n import i18nformat
 
 class WGenericError( WTemplated ):
 
@@ -48,16 +47,14 @@ class WGenericError( WTemplated ):
         ty, ex, tb = sys.exc_info()
         tracebackList = traceback.format_list( traceback.extract_tb( tb ) )
         rh = self._rh.__class__
-        url = str( self._rh.getRequestURL() )
+        url = request.url.encode('utf-8')
         params = []
         for (k,v) in self._rh.getRequestParams().items():
             if k.strip() != "password":
-                params.append( """%s = %s"""%(self.htmlText(k), \
-                                                self.htmlText(str(v))))
+                params.append("""%s = %s""" % (self.htmlText(k), self.htmlText(v)))
         headers = []
-        for (k,v) in self._rh.getRequestHTTPHeaders().items():
-            headers.append( """%s: %s"""%(self.htmlText(k),\
-                                            self.htmlText(str(v))))
+        for k, v in request.headers.iteritems():
+            headers.append("""%s: %s""" % (self.htmlText(k), self.htmlText(v)))
         userHTML = """-- none --"""
         vars["userEmail"] = ""
         av = self._rh.getAW().getUser()
@@ -66,7 +63,15 @@ class WGenericError( WTemplated ):
             vars["userEmail"] = quoteattr( av.getEmail() )
         vars["reportURL"] = quoteattr( str( urlHandlers.UHErrorReporting.getURL() ) )
         details = ""
-        if HelperMaKaCInfo.getMaKaCInfoInstance().isDebugActive():
+        show_details = Config.getInstance().getDebug()
+        if not show_details:
+            try:
+                show_details = session.user and session.user.isAdmin()
+            except Exception:
+                # We are handling some error so we cannot know if accessing the session user works
+                # If it fails we simply don't show details...
+                pass
+        if show_details:
             details = """
 <table class="errorDetailsBox">
     <tr>
@@ -130,7 +135,7 @@ class WGenericError( WTemplated ):
                     "exception type => %s" %str(ty), \
                     "traceback => \n%s"%"\n".join(tracebackList), \
                     "request handler => %s"%self._rh.__class__, \
-                    "url => %s"%str( self._rh.getRequestURL() ), \
+                    "url => %s" % request.url.encode('utf-8'),
                     "parameters => \n%s"%"\n".join(params), \
                     "headers => \n%s"%"\n".join(headers), \
                     "user => %s"%userStr ]
@@ -168,8 +173,16 @@ class WAccessError( WTemplated ):
 
     def getVars( self ):
         vars = WTemplated.getVars( self )
-        vars["area"]= _(""" _("Authorisation") - """)
+        vars["area"]= i18nformat(""" _("Authorisation") - """)
         vars["msg"] = _("The access to this page has been restricted by its owner and you are not authorised to view it")
+        if isinstance(self._rh._target, list):
+            #only objects with Access Controler (e.g. we do not want to check this for RB reservertion target): Conferences, Contribs...
+            contactInfo = [item.getAccessController().getAnyContactInfo() for item in self._rh._target if hasattr(item, 'getAccessController') ]
+            vars["contactInfo"] = ";".join(contactInfo)
+        elif self._rh._target is not None and hasattr(self._rh._target, 'getAccessController'): #only objects with Access Controler (e.g. we do not want to check this for RB reservertion target): Conferences, Contribs...
+            vars["contactInfo"] = self._rh._target.getAccessController().getAnyContactInfo()
+        else:
+            vars["contactInfo"] = ""
         return vars
 
 class WAccessKeyError( WTemplated ):
@@ -183,7 +196,7 @@ class WAccessKeyError( WTemplated ):
         vars = WTemplated.getVars( self )
         vars["loginURL"] = ""
         if self._rh._getUser() is None:
-            vars["loginURL"] = str(urlHandlers.UHSignIn.getURL(returnURL=self._rh.getCurrentURL()))
+            vars["loginURL"] = str(urlHandlers.UHSignIn.getURL(returnURL=request.url))
         if isinstance(self._rh._target,Conference):
             vars["type"] = "event"
             vars["url"] = quoteattr( str( urlHandlers.UHConfEnterAccessKey.getURL(self._rh._target) ) )
@@ -203,40 +216,45 @@ class WAccessKeyError( WTemplated ):
 class WPAccessError( WPDecorated ):
 
     def __init__( self, rh ):
-        WPDecorated. __init__( self, rh )
-
-    def _getBody( self, params ):
-        if self._rh._target and (self._rh._target.getAccessKey() != "" or ( (not type(self._rh._target) is Category) and self._rh._target.getConference().getAccessKey() != "")):
-            msg = ""
-            sess = self._rh._getSession()
-            keys = sess.getVar("accessKeys")
-            id = self._rh._target.getUniqueId()
-            if keys != None and keys.has_key(id):
-                msg = _("""<font color=red> _("Bad access key")!</font>""")
-            else:
-                msg = ""
-            wc = WAccessKeyError( self._rh, msg )
-        else:
-            wc = WAccessError( self._rh )
-        return wc.getHTML()
-
-class WHostnameError( WGenericError ):
-
-    def getVars( self ):
-        vars = WGenericError.getVars( self )
-        vars["msg"] = _("A problem has occurred while resolving your hostname. This can be due to proxy configuration and/or reverse DNS issues. If you believe this is not the case, please submit an error report. ")
-        vars["area"]= ""
-        return vars
-
-class WPHostnameResolveError( WPDecorated ):
-
-    def __init__( self, rh):
         WPDecorated.__init__( self, rh )
 
+    def _getBody( self, params ):
+        wc = WAccessError( self._rh )
+        return wc.getHTML()
+
+
+class WPKeyAccessError( WPDecorated ):
+
+    def __init__( self, rh ):
+        WPDecorated.__init__( self, rh )
 
     def _getBody( self, params ):
-        wc = WHostnameError( self._rh, params.get("showDetails", False) )
+        tgt = self._rh._target
+        msg = ""
+        keys = session.get("accessKeys", {})
+        if tgt.getUniqueId() in keys:
+            msg = i18nformat("""<font color=red> _("Bad access key")!</font>""")
+        else:
+            msg = ""
+        wc = WAccessKeyError( self._rh, msg )
         return wc.getHTML()
+
+
+class WPLaTeXError(WPDecorated):
+
+    def __init__(self, rh, error):
+        WPDecorated.__init__(self, rh)
+        self._error = error
+
+    def _getBody( self, params ):
+        wc = WTemplated('LaTeXError')
+        conf = self._error.params['conf']
+        return wc.getHTML({
+            'report_id': self._error.report_id,
+            'is_manager': conf.canModify(self._getAW()),
+            'log': open(self._error.log_file, 'r').read(),
+            'source_code': open(self._error.source_file, 'r').read()
+            })
 
 
 class WTimingError( WTemplated ):
@@ -299,7 +317,7 @@ class WModificationKeyError( WTemplated ):
         vars = WTemplated.getVars( self )
         vars["loginURL"] = ""
         if self._rh._getUser() is None:
-            vars["loginURL"] = str(urlHandlers.UHSignIn.getURL(returnURL=self._rh.getCurrentURL()))
+            vars["loginURL"] = str(urlHandlers.UHSignIn.getURL(returnURL=request.url))
         vars["msg"] = self._msg
         redirectURL = ""
         if hasattr(self._rh, "_redirectURL"):
@@ -317,11 +335,9 @@ class WPModificationError( WPDecorated ):
     def _getBody( self, params ):
         if hasattr(self._rh._target, "getModifKey") and \
             self._rh._target.getModifKey() != "":
-            sess = self._rh._getSession()
-            keys = sess.getVar("modifKeys")
-            id = self._rh._target.getId()
-            if keys != None and keys.has_key(id) and keys[id].strip()!="":
-                msg = _("""<font color=red> _("Wrong modification key!")</font>""")
+            keys = session.get("modifKeys", {})
+            if keys.get(self._rh._target.getId()):
+                msg = i18nformat("""<font color=red> _("Wrong modification key!")</font>""")
             else:
                 msg = ""
             wc = WModificationKeyError( self._rh, msg )
@@ -380,6 +396,9 @@ class WPNoReportError( WPDecorated ):
         self._msg = msg
         WPDecorated. __init__( self, rh)
 
+    def _getHeader(self):
+        return ""
+
     def _getBody( self, params ):
         wc = WNoReportError( self._msg )
         return wc.getHTML( params )
@@ -427,27 +446,6 @@ class WPFormValuesError( WPDecorated ):
         wc = WFormValuesError( self._rh, self._msg )
         return wc.getHTML()
 
-
-class WPHtmlScriptError(WPDecorated):
-
-    def __init__( self, rh, msg="" ):
-        self._msg = msg
-        WPDecorated. __init__( self, rh)
-
-    def _getBody( self, params ):
-        wc = WHtmlScriptError( self._rh, self._msg )
-        return wc.getHTML()
-
-class WHtmlScriptError( WGenericError ):
-
-    def __init__( self, rh, msg="" ):
-        self._rh = rh
-        self._msg = msg
-
-    def getVars( self ):
-        vars = WGenericError.getVars( self )
-        vars["msg"] = self._msg
-        return vars
 
 class WPRestrictedHTML( WPDecorated ):
 

@@ -1,98 +1,58 @@
-<!--
-Room Calendar is composed of day rows ( RoomBookingRoomCalendar*DayRow* )
-Day row is composed of of bars, showing particular reservations ( RoomBookingRoomCalendar*Bar* )
-Calendar 1-----* DayRow 1-----* Bar
--->
+% if with_conflicts:
+    % if conflicts:
+        <span class="errorMessage" style="text-align: left; margin-left:2px; display: inline-block">
+            ${ conflicts }&nbsp;${ _('conflict(s) with other bookings') }
+            <ul style="color: #777; list-style: none;">
+                <!-- Render each conflict... -->
+                <% c = 0  %>
+                % for dt in sorted(bars):
+                    % for roomBars in bars[dt]:
+                        % for bar in roomBars.bars:
+                            % if bar.type == Bar.CONFLICT:
+                                <li>
+                                    ${ formatDate(bar.startDT.date()) } ${ _('from') } ${ formatTime(bar.startDT.time()) } ${ _('to') } ${ formatTime(bar.endDT.time()) }, ${ _('booked for') } ${ bar.forReservation.bookedForName }
+                                </li>
+                                <% c += 1 %>
+                                % if c > 4:
+                                    <% break %>
+                                % endif
+                            % endif
+                        % endfor
+                    % endfor
+                % endfor
+            </ul>
+        </span>
+    % else:
+        <span id="noConflictsMessage" class="successMessage" style="padding-top: 15px; margin-left:2px; display: inline-block">
+            ${ _('No conflicts with confirmed bookings.') }
+        </span>
+    % endif
 
-<!-- Conflicts - Textual ============================================================ -->
-<% if withConflicts: %>
-    <br /><br />
-    <span class="formTitle" style="border-bottom-width: 0px">Conflicts</span><br /><br />
-    <p style="margin-left: 10px;">
-        <% if thereAreConflicts: %>
-            <span style="color: Red; font-weight: bold;"><%= conflictsNumber %>&nbsp;<%= _("conflict(s) with other bookings")%></span><br /><br />
-            <% includeTpl( 'RoomBookingConflicts' ) %>
-        <% end %>
-        <% if not thereAreConflicts: %>
-            <span style="color: Green">No conflicts with confirmed bookings, press the "<%= buttonText %>" button to save your booking.</span>
-        <% end %>
-    </p>
-<% end %>
+    % if blockConflicts == 'active':
+        <br/>
+        <span class="errorMessage" style="margin-left:2px; display: inline-block">
+            ${ _('Your booking conflicts with a blocking.') }
+        </span>
+        ${ inlineContextHelp('A blocking prevents all but selected people from booking a room during the blocked timeframe. To see details about the colliding blocking, move your cursor over the red date in the calendar below.') }
+    % elif blockConflicts == 'pending':
+        <br/>
+        <span class="warningMessage" style="margin-left:2px; display: inline-block">
+            ${ _('Your booking conflicts with a pending blocking. If you book anyway and the blocking is accepted, your booking will be rejected.') }
+        </span>
+    % endif
+% endif
 
-
-<!-- Room Calendar ================================================================== -->
-<br /><br />
-<span class="formTitle" style="border-bottom-width: 0px">Availability for <%= room.building %>-<%= room.floor %>-<%= room.roomNr %>
-    <% if room.name != str(room.building) + '-' + str(room.floor) + '-' + str(room.roomNr): %>
-        <small>(<%= room.name %>)</small>
-    <% end %></span>
-<% if not withConflicts: %>
-    <a href="<%= urlHandlers.UHRoomBookingRoomDetails.getURL( room, calendarMonths = True ) %>"<small>( <%= _("show 3 months preview")%>)</small></a>
-<% end %>
-
-<br /><br />
-
-<!-- Constant: pixels width of a single day -->
-<% DAY_WIDTH_PX = 30 * 12 * 2  %> <!-- OK for 800x600 display -->
-<% START_H = 6                 %> <!-- Assume day starts at START_H o'clock -->
-
-<div id="calendarContainer">
-
-<!-- LEGEND for schedule -->
-
-&nbsp;Key:<div class="barUnaval" style="display: inline; position:relative; font-size: 80%; margin-left: 8px; padding: 0px 5px 0px 5px;"> <%= _("Booking")%></div>
-<div class="barPreB" style="display: inline; position:relative; font-size: 80%; margin-left: 8px; padding: 0px 5px 0px 5px;"> <%= _("PRE-Booking")%></div>
-<div class="barCand" style="display: inline; position:relative; font-size: 80%; margin-left: 8px; padding: 0px 5px 0px 5px;"> <%= _("New Booking")%></div>
-<div class="barConf" style="display: inline; position:relative; font-size: 80%; margin-left: 8px; color: White; padding: 0px 5px 0px 5px;"> <%= _("Conflict")%></div>
-<div class="barPreC" style="display: inline; position:relative; font-size: 80%; margin-left: 8px; padding: 0px 5px 0px 5px;"> <%= _("Conflict with PRE-Booking")%></div>
-<div class="barPreConc" style="display: inline; position:relative; font-size: 80%; margin-left: 8px; padding: 0px 5px 0px 5px;"> <%= _("Concurrent&nbsp;PRE-Bookings")%></div>
-<br />
-<br />
-
-<table>
-
-    <!-- Schedule Header: hours -->
-    <% includeTpl( 'RoomBookingCalendarHeader', DAY_WIDTH_PX = DAY_WIDTH_PX, START_H = START_H, dayD = None ) %>
-
-
-    <!-- Render each day -->
-    <% for day in iterdays( calendarStartDT, calendarEndDT ): %>
-        <% includeTpl( 'RoomBookingRoomCalendarDayRow', room = room, dayDT = day.date(), bars = bars[day.date()], DAY_WIDTH_PX = DAY_WIDTH_PX, START_H = START_H ) %>
-    <% end %>
-
-</table>
-</div>
-
-<!--
-This script sets positions of small-hours and bars AFTER the
-page load (body onload event). This is probably the only
-cross-browser way to position relatively to parent element.
--->
+<div id="roomBookingCal"></div>
 <script type="text/javascript">
-        function room_booking_calendar_position()
-        {
-            // Take all divs from calendarContainer
-            cntDiv = document.getElementById( 'calendarContainer' )
-            barDivs = cntDiv.getElementsByTagName( "div" )
-            for ( j = 0; j < barDivs.length; ++j )
-            {
-                barDiv = barDivs[j]
-                if ( barDiv.id )
-                {
-                    // Skip not interesting divs
-                    if ( barDiv.id.indexOf( 'barDiv' ) == -1 )
-                        continue;
-                    // Get parent position
-                    dayDiv = barDiv.parentNode
-                    dayPos = findPos( dayDiv )
-                    dayX = dayPos[0]
-                    dayY = dayPos[1]
-                    // Set div position
-                    barDiv.style.left = dayX + parseInt( barDiv.style.left, 10 ) + "px"
-                    barDiv.style.top = dayY + "px"
-                }
-            }
+    var roomBookingCalendar = new RoomBookingCalendar(
+        ${ bars | n, j },
+        ${ day_attrs | n, j }
+    );
+    $E('roomBookingCal').set(roomBookingCalendar.draw());
+
+    $(document).ready(function(){
+        if (window.location.hash != '#conflicts') {
+            $('#noConflictsMessage').css('display', 'none');
         }
-        // add to body onload events
-        // add_load_event( room_booking_calendar_position );
+    });
 </script>

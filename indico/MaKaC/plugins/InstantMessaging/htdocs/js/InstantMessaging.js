@@ -31,92 +31,68 @@ var highlightChatroom = function(chatroom) {
  *
  * @param {Boolean} onlyOne If true, only 1 item can be selected at a time.
  */
-type ("ExistingChatroomsList", ["SelectableListWidget"],
+type ("ExistingChatroomsList", ["SelectableDynamicListWidget"],
     {
         _drawItem: function(pair) {
             var self = this;
             var elem = pair.get(); // elem is a WatchObject
             var selected = false;
             var id = Html.em({style: {paddingLeft: "5px", fontSize: '0.9em'}}, elem.get('id'));
-            var item = Html.div({},  elem.get('title') );
+            var item = Html.div({}, elem.get('title'));
 
             return item;
         },
-
-        getList: function() {
-            return this.getSelectedList();
-        }
-
     },
 
     /**
      * Constructor for FoundPeopleList
      */
-    function(chatrooms, observer) {
-        var self = this;
-        this.selected = new WatchList();
-
-        this.SelectableListWidget(observer, false, 'chatList');
-
-        // Sort by name and add to the list
-        var items = {};
-        each(chatrooms, function(item) {
-            items[item.title + item.id] = item;
-        });
-        var ks = keys(items);
-        ks.sort();
-
-        for (k in ks) {
-            this.set(k, $O(items[ks[k]]));
+    function(observer, conf) {
+        method = 'XMPP.getRoomsByUser',
+        args ={
+            usr: user,
+            limit: 10, // interval to load by.
+            excl: conf
         }
+
+        this.SelectableDynamicListWidget(observer, method, args, 'chatList', false);
     }
 );
 
 
-
-
 type("AddChatroomDialog", ["ExclusivePopupWithButtons", "PreLoadHandler"],
-         {
+        {
+            numChatrooms: 0,
+
              _preload: [
                  function(hook) {
                      var self = this;
-                      self.chatrooms = [];
-                     var killProgress = IndicoUI.Dialogs.Util.progress($T("Fetching information..."));
-                     indicoRequest(
-                        'XMPP.getRoomsByUser',
-                        {
-                            usr: user
-                        },
-                        function(result,error) {
-                            if (!error) {
-                                killProgress();
-                                //we don't want to display the chat rooms that are already in the conference
-                                if(result.length>0){
-                                    self.chatrooms = filter(result,function(chatroom){
-                                                         var notExists = true;
-                                                         each(chatroom.conferences, function(conf){
-                                                             if(conf == self.conf){
-                                                                 notExists = false;
-                                                             }
-                                                         });
-                                                         return notExists;
-                                                     });
-                                }
-                                self._processDialogState();
-                                hook.set(true);
-                            } else {
-                                killProgress();
-                                IndicoUtil.errorReport(error);
-                            }
-                        }
-                    );
+                     var killProgress = IndicoUI.Dialogs.Util.progress(
+                             $T("Fetching information..."));
+                     var requestParams = {
+                             usr: user,
+                             excl: self.conf
+                     };
+
+                     indicoRequest('XMPP.getNumberOfRoomsByUser', requestParams,
+                         function(result, error) {
+                             if (! error) {
+                                 killProgress();
+                                 self.numChatrooms = result;
+                                 self._processDialogState();
+                                 hook.set(true);
+                             } else {
+                                 killProgress();
+                                 IndicoUtil.errorReport(error);
+                             }
+                     });
                  }
              ],
 
              _processDialogState: function() {
                  var self = this;
 
-                 if (this.chatrooms.length === 0) {
+                 if (self.numChatrooms === 0) {
                      // draw instead the creation dialog
                      var dialog = createObject(
                          ChatroomPopup,
@@ -140,9 +116,9 @@ type("AddChatroomDialog", ["ExclusivePopupWithButtons", "PreLoadHandler"],
 
              existingSelectionObserver: function(selectedList) {
                  if(selectedList.isEmpty()){
-                     this.button.disable();
+                     this.saveButton.disabledButtonWithTooltip('disable');
                  } else {
-                     this.button.enable();
+                     this.saveButton.disabledButtonWithTooltip('enable');
                  }
              },
 
@@ -189,9 +165,9 @@ type("AddChatroomDialog", ["ExclusivePopupWithButtons", "PreLoadHandler"],
              draw: function() {
                  var self = this;
 
-                 var chatroomList = new ExistingChatroomsList(self.chatrooms, function(selectedList) {
+                 this.chatroomList = new ExistingChatroomsList(function(selectedList) {
                      self.existingSelectionObserver(selectedList);
-                 });
+                 }, self.conf);
                  var content = Html.div({},
                          $T("You may choose to:"),
                          Html.ul({},
@@ -204,31 +180,32 @@ type("AddChatroomDialog", ["ExclusivePopupWithButtons", "PreLoadHandler"],
                                  }, $T("Create a new chat room")))),
                              Html.li({},
                                  $T("Re-use one (or more) created by you"),
-                                 Html.div("chatListDiv",
-                                 chatroomList.draw()))));
+                                 Html.div({id: 'chatListDiv', className: 'chatListDiv'},
+                                 this.chatroomList.draw())
+                                 )));
 
-                 this.button = new DisabledButton(Html.input("button", {disabled:true}, $T("Add selected")));
-                 var tooltip;
-                 this.button.observeEvent('mouseover', function(event){
-                     if (!self.button.isEnabled()) {
-                         tooltip = IndicoUI.Widgets.Generic.errorTooltip(event.clientX, event.clientY, $T("To add a chat room, please select at least one"), "tooltipError");
-                     }
-                 });
-                 this.button.observeEvent('mouseout', function(event){
-                     Dom.List.remove(document.body, tooltip);
+                 this.saveButton = self.buttons.eq(0);
+                 this.saveButton.disabledButtonWithTooltip({
+                     tooltip: $T('To add a chat room, please select at least one'),
+                     disabled: true
                  });
 
-                 this.button.observeClick(function(){
-                         var ids = translate(chatroomList.getList().getAll(),
-                                             function(chatroom) {
-                                                 return chatroom.getAll().id;
-                                              });
+                 return this.ExclusivePopupWithButtons.prototype.draw.call(this, content);
+             },
+
+             _getButtons: function() {
+                 var self = this;
+                 return [
+                     [$T('Add selected'), function() {
+                         var ids = translate(self.chatroomList.getList().getAll(), function(chatroom) {
+                             return chatroom.getAll().id;
+                         });
                          self.addExisting(ids);
-                 });
-
-                 return this.ExclusivePopupWithButtons.prototype.draw.call(this, content, this.button.draw());
+                     }]
+                 ];
              }
          },
+
          function(conferenceId) {
              var self = this;
 
@@ -264,8 +241,7 @@ type ("ChatroomPopup", ["ExclusivePopupWithButtons"],
         },
 
         open: function() {
-            $E(document.body).append(this.draw());
-            this.isopen = true;
+            this.ExclusivePopupWithButtons.prototype.open.call(this);
             disableCustomId(defaultHost);
         },
 
@@ -301,7 +277,7 @@ type ("ChatroomPopup", ["ExclusivePopupWithButtons"],
             //replace all the invalid characters
             self.crName.set((conferenceName+eventDate).replace(/(\s)|\/|"|'|&|\\|:|<|>|@/g, "_"));
 
-            this.basicTabForm = Html.div({style:{textAlign: 'left'}},
+            this.basicTabForm = $("<div style='text-align: left;'></div>").append(
                 IndicoUtil.createFormFromMap([
                 [$T('Server used'), Html.div({}, Html.tr({}, createCHRadioButton, createCHRadioButtonLabel), Html.tr({}, defineCHRadioButton, defineCHRadioButtonLabel))],
                 [$T('Server'), defineCHText],
@@ -330,12 +306,12 @@ type ("ChatroomPopup", ["ExclusivePopupWithButtons"],
             showPwd.dom.name = "showPass";
 
             var passwordField = new ShowablePasswordField('roomPass', '', false, 'CHpass').draw();
-            this.advancedTabForm = Html.div({},
+            this.advancedTabForm = $("<div></div>").append(
                 IndicoUtil.createFormFromMap([
                     [$T('Password'), passwordField  ]]),
-                Html.div({className: 'chatAdvancedTabTitleLine', style: {marginTop:pixels(10)}},
-                        Html.div({className: 'chatAdvancedTabTitle'}, $T('Information displayed in the event page'))
-                        ),
+                $("<div class='chatAdvancedTabTitleLine' style='margin-top: 10px;'></div>").append(
+                   $("<div class='chatAdvancedTabTitle' style='margin-top: 10px;'></div>").append($T('Information displayed in the event page'))
+                 ),
                 IndicoUtil.createFormFromMap([
                     [Html.div({className: 'chatAdvancedTabCheckboxDiv', style: {marginTop:pixels(5)}},
                             Html.tr({},
@@ -350,27 +326,23 @@ type ("ChatroomPopup", ["ExclusivePopupWithButtons"],
                 ])
             );
 
-            // We construct the "save" button and what happens when it's pressed
-            var saveButton = Html.input('button', null, $T("Save"));
-            saveButton.observeClick(function(){
-                self.__save();
-            });
-
-            // We construct the "cancel" button and what happens when it's pressed (which is: just close the dialog)
-            var cancelButton = Html.input('button', {style:{marginLeft:pixels(5)}}, $T("Cancel"));
-            cancelButton.observeClick(function(){
-                self.close();
-            });
-
-            var buttonDiv = Html.div({}, saveButton, cancelButton);
-
             var width = 600;
             var height = 200
 
-            this.tabControl = new TabWidget([[$T("Basic"), this.basicTabForm], [$T("Advanced"), this.advancedTabForm]], width, height);
+            this.tabControl = new JTabWidget([[$T("Basic"), this.basicTabForm.get()], [$T("Advanced"), this.advancedTabForm]], width, height);
+            return this.ExclusivePopupWithButtons.prototype.draw.call(this, this.tabControl.draw());
+        },
 
-            return this.ExclusivePopupWithButtons.prototype.draw.call(this, this.tabControl.draw(), buttonDiv,
-                    {backgroundColor: "#FFFFFF"});
+        _getButtons: function() {
+            var self = this;
+            return [
+                [$T('Save'), function() {
+                    self.__save();
+                }],
+                [$T('Cancel'), function() {
+                    self.close();
+                }]
+            ];
         },
 
         postDraw: function() {
@@ -507,38 +479,27 @@ type ("ChatroomPopup", ["ExclusivePopupWithButtons"],
 );
 
 
-/**
- * Utility function to display a simple alert popup.
- * You can think of it as an "confirm" replacement.
- * It will have a title, a close button, an OK button and a Cancel button.
- * @param {Html or String} title The title of the error popup.
- * @param {Element} content Anything you want to put inside.
- * @param {function} handler A function that will be called with a boolean as argument:
- *                   true if the user pressers "ok", or false if the user presses "cancel"
- */
 type("LogPopup", ["ExclusivePopupWithButtons"],
     {
          draw: function() {
+             return this.ExclusivePopupWithButtons.prototype.draw.call(this, this.content);
+         },
+
+         _getButtons: function() {
              var self = this;
-
-             var okButton = Html.input('button', {style:{marginRight: pixels(3)}}, $T('OK'));
-             okButton.observeClick(function(){
-                 var result = self.handler(true);
-                 if (result){
-                     window.location = result;
+             return [
+                 [$T('OK'), function() {
+                     var result = self.handler(true);
+                     if (result){
+                         window.location = result;
+                         self.close();
+                     }
+                 }],
+                 [$T('Cancel'), function() {
+                     self.handler(false);
                      self.close();
-                 }
-             });
-
-             var cancelButton = Html.input('button', {style:{marginLeft: pixels(3)}}, $T('Cancel'));
-             cancelButton.observeClick(function(){
-                 self.handler(false);
-                 self.close();
-             });
-
-             return this.ExclusivePopupWithButtons.prototype.draw.call(this,
-                     this.content,
-                     Html.div({}, okButton, cancelButton));
+                 }]
+             ];
          }
     },
 
@@ -547,7 +508,7 @@ type("LogPopup", ["ExclusivePopupWithButtons"],
 
         this.content = content;
         this.handler = handler;
-        this.ExclusivePopupWithButtons(Html.div({style:{textAlign: 'center'}}, title), function(){
+        this.ExclusivePopupWithButtons(title, function(){
             self.handler(false);
             return true;
         });
@@ -604,7 +565,7 @@ var showInfo = function(chatroom) {
     var infoTbody = Html.tbody();
     if (chatroom.error && chatroom.errorDetails) {
         var errorCell = Html.td({colspan:2, colSpan:2});
-        errorCell.append(Html.span('collaborationWarning', chatroom.errorDetails));
+        errorCell.append(Html.span('chatWarning', chatroom.errorDetails));
         infoTbody.append(Html.tr({}, errorCell));
     }
 
@@ -796,9 +757,9 @@ var showLinkMenu = function(element, chatroom){
             var menuItems = {};
 
             each(links.get(chatroom.id).custom, function(linkType){
-                menuItems['Using ' + linkType.name] = linkType.link;
+                menuItems['using' + linkType.name] = {action: linkType.link, display: $T('Using ') + linkType.name};
             });
-            joinMenu = new PopupMenu(menuItems, [element], 'categoryDisplayPopupList');
+            joinMenu = new PopupMenu(menuItems, [element], 'categoryDisplayPopupList', true, false, null, null, true);
             var pos = element.getAbsolutePosition();
             joinMenu.open(pos.x - 5, pos.y + element.dom.offsetHeight + 2);
             return false;
@@ -863,7 +824,7 @@ var showLogOptions = function(element, chatroom){
 
             var form = createBaseForm();
 
-            menuItems[$T('See logs')] = new LogPopup($T('Select the dates to retrieve the logs'),
+            menuItems["seeLogs"] = {action: new LogPopup($T('Select the dates to retrieve the logs'),
                                                  form.content,
                                                  function(value){
                                                     if (value){
@@ -875,7 +836,7 @@ var showLogOptions = function(element, chatroom){
                                                                           form.forevent.get(),
                                                                           form.ownrange.get());
                                                      }
-                                                 });
+                                                 }), display: $T('See logs')};
             var parameterManager = new IndicoUtil.parameterManager();
 
             var form2 = createBaseForm();
@@ -890,7 +851,7 @@ var showLogOptions = function(element, chatroom){
                                        materialName)
                                       );
             var requestOk = false;
-            menuItems[$T('Attach logs to event material')] = new LogPopup($T('Select the name that logs will have in the material section'),
+            menuItems["attachLogs"] = {action: new LogPopup($T('Select the name that logs will have in the material section'),
                                                                       materialContent,
                                                                       function(value){
                                                                           if(value){
@@ -927,8 +888,8 @@ var showLogOptions = function(element, chatroom){
                                                                                }
                                                                               else return false;
                                                                            }
-                                                                      });
-            logsMenu = new PopupMenu(menuItems, [element], 'categoryDisplayPopupList');
+                                                                      }), display: $T('Attach logs to event material')};
+            logsMenu = new PopupMenu(menuItems, [element], 'categoryDisplayPopupList', true);
             var pos = element.getAbsolutePosition();
             logsMenu.open(pos.x - 5, pos.y + element.dom.offsetHeight + 2);
             return false;
@@ -943,26 +904,23 @@ var buildLogURL = function(chatroom, sdate, edate, selectAll, forEvent, ownRange
      * forEvent: we want to retrieve the logs for the current event
      * ownRange: we want to specify the range of dates
      */
-    url = links.get(chatroom.id).logs;
+    var url = links.get(chatroom.id).logs;
+    var urlData = {};
     if (selectAll){
-        return url;
+        // nothing
     }
-    else if (forEvent){
-        url += '&forEvent=true';
-        return url;
+    else if (forEvent) {
+        urlData.forEvent = 1;
     }
-    else if (ownRange){
-        if ( sdate && !edate){
-            url += '&sdate=' + sdate;
+    else if (ownRange) {
+        if (sdate){
+            urlData.sdate = sdate;
         }
-        else if ( !sdate && edate){
-            url += '&edate=' + edate;
-        }
-        else if (sdate && edate){
-            url += '&sdate=' + sdate + '&edate=' + edate;
+        if (edate){
+            urlData.edate = edate;
         }
     }
-    return url;
+    return build_url(url, urlData);
 }
 
 /**
@@ -1077,7 +1035,7 @@ var refreshTableHead = function() {
         var firstCell = Html.td();
         headRow.append(firstCell);
 
-        var emptyCell = Html.td({className: "collaborationTitleCell"});
+        var emptyCell = Html.td({className: "chatfTitleCell"});
         headRow.append(emptyCell);
 
         var lastCell = Html.td({width: "100%", colspan: 1, colSpan: 1})

@@ -1,22 +1,19 @@
-// -*- coding: utf-8 -*-
-//
-//
-// This file is part of Indico.
-// Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011 CERN.
-//
-// CDS Indico is free software; you can redistribute it and/or
-// modify it under the terms of the GNU General Public License as
-// published by the Free Software Foundation; either version 2 of the
-// License, or (at your option) any later version.
-//
-// CDS Indico is distributed in the hope that it will be useful, but
-// WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-// 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
 
 function activateAgentText(agentId) {
     return Html.div(
@@ -47,11 +44,11 @@ function agentRequest(method, agentId) {
 
 type("AgentModificationDialog", ["ExclusivePopupWithButtons"],
      {
-         _submit: function(info, pm, pmExtra, addMode) {
+         _submit: function(info, addMode) {
 
              var self = this;
 
-             if(pm.check() && pmExtra.check()) {
+             if(this.parameterManager.check() && this.pmExtra.check()) {
                  indicoRequest(
                      addMode?'livesync.addAgent':'livesync.editAgent',
                      info,
@@ -63,25 +60,25 @@ type("AgentModificationDialog", ["ExclusivePopupWithButtons"],
                          }
                      });
              } else {
-                 alert($T("Please fill in the missing parameters"));
+                 new AlertPopup($T("Warning"), $T("Please fill in the missing parameters")).open();
              }
          },
 
          draw: function() {
              var self = this;
 
-             var parameterManager = new IndicoUtil.parameterManager();
-             var pmExtra = new IndicoUtil.parameterManager();
+             this.parameterManager = new IndicoUtil.parameterManager();
+             this.pmExtra = new IndicoUtil.parameterManager();
 
              var selectType = Widget.select(this._availableTypes);
              var idField = new RealtimeTextBox();
 
              if (!this.fullyEditable) {
-                 selectType.disable();
+                 $(selectType.dom).attr('disabled', 'disabled');
                  idField.disable();
              } else {
-                 parameterManager.add(selectType, 'text', false);
-                 parameterManager.add(idField, 'text', false);
+                 this.parameterManager.add(selectType, 'text', false);
+                 this.parameterManager.add(idField, 'text', false);
              }
 
              var mainContent = IndicoUtil.createFormFromMap([
@@ -92,19 +89,12 @@ type("AgentModificationDialog", ["ExclusivePopupWithButtons"],
                   $B(idField,
                      this.info.accessor('id')).draw()],
                  [$T('Name'),
-                 $B(parameterManager.add(new RealtimeTextBox(), 'text', false),
+                 $B(this.parameterManager.add(new RealtimeTextBox(), 'text', false),
                     this.info.accessor('name')).draw()],
                  [$T('Description'),
-                  $B(parameterManager.add(new RealtimeTextArea({}), 'text', false),
+                  $B(this.parameterManager.add(new RealtimeTextArea({}), 'text', false),
                     this.info.accessor('description')).draw()]]
              );
-
-             var button = Html.input("button", {}, this.fullyEditable?$T("Add"):$T("Save"));
-             var buttonDiv = Html.div({}, button);
-
-             button.observeClick(function() {
-                 self._submit(self.info, parameterManager, pmExtra, self.fullyEditable);
-             });
 
              var specificOptions = bind.element(
                  Html.tbody({}),
@@ -114,24 +104,28 @@ type("AgentModificationDialog", ["ExclusivePopupWithButtons"],
                          {},
                          Html.td("popUpLabel", option.get()),
                          Html.td({},
-                                 $B(pmExtra.add(new RealtimeTextBox(), 'text', false),
+                                 $B(self.pmExtra.add(new RealtimeTextBox(), 'text', false),
                                     self.info.get('specific').accessor(option.key)).draw()));
                  });
 
              if (this.fullyEditable) {
                  selectType.observe(function(agentType) {
-                     pmExtra.clear();
+                     self.pmExtra.clear();
                      self.info.set('specific', $O())
                      self._resetForm(agentType);
                  });
              }
 
-             return this.ExclusivePopupWithButtons.prototype.draw.call(
-                 this, Html.div(
-                     {},
-                     mainContent,
-                     Html.table({}, specificOptions)),
-                 buttonDiv, {}, { padding : pixels(0) });
+             return this.ExclusivePopupWithButtons.prototype.draw.call(this, $('<div></div>').append(mainContent, $('<table></table>').append($(specificOptions.dom))));
+         },
+
+         _getButtons: function() {
+             var self = this;
+             return [
+                 [this.fullyEditable ? $T('Add') : $T('Save'), function() {
+                     self._submit(self.info, self.fullyEditable);
+                 }]
+             ];
          }
 
      });

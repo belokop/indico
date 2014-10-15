@@ -1,42 +1,40 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 import time, contextlib, dateutil
 
 from indico.ext.livesync import SyncManager, db
-from indico.tests.python.unit.util import IndicoTestFeature, IndicoTestCase
+from indico.tests.python.unit.util import IndicoTestFeature
 from indico.util.date_time import nowutc, int_timestamp
 from indico.ext.livesync.tasks import LiveSyncUpdateTask
 
 FAKE_SERVICE_PORT = 12380
 
 class LiveSync_Feature(IndicoTestFeature):
-    _requires = ['plugins.Plugins', 'util.ContextManager']
+    _requires = ['plugins.Plugins', 'util.ContextManager', 'db.Database']
 
     def start(self, obj):
         super(LiveSync_Feature, self).start(obj)
 
-        with obj._context('database'):
+        with obj._context('database') as conn:
             obj._ph.getPluginType('livesync').toggleActive()
-            db.updateDBStructures(obj._dbi._getConnObject().root._root,
-                                  granularity=1)
+            db.updateDBStructures(conn.root._root, granularity=1)
 
             obj._sm = SyncManager.getDBInstance()
 
@@ -44,16 +42,9 @@ class LiveSync_Feature(IndicoTestFeature):
         super(LiveSync_Feature, self).destroy(obj)
 
 
-class _TestSynchronization(IndicoTestCase):
+class _TestSynchronization(object):
 
     _requires = ['db.DummyUser', LiveSync_Feature, 'util.RequestEnvironment']
-
-    def setUp(self):
-        super(_TestSynchronization, self).setUp()
-
-    def tearDown(self):
-        super(_TestSynchronization, self).tearDown()
-        self._closeEnvironment()
 
     def _prettyActions(self, iter):
 
@@ -68,58 +59,65 @@ class _TestSynchronization(IndicoTestCase):
 
     def checkActions(self, fromTS, expected):
         res = self._prettyActions(
-            self._sm.getTrack().iterate(fromTS-1, func=(lambda x: x[1])))
+            self._sm.getTrack().iterate(fromTS - 1, func=(lambda x: x[1])))
 
-        self.assertEqual(res, expected)
+        self.assertEqual(expected, res)
 
 
-class _TestUpload(IndicoTestCase):
+class _TUpload(object):
 
     _requires = ['db.DummyUser', LiveSync_Feature, 'util.RequestEnvironment']
+    _slow = True
 
-    def tearDown(self):
-        super(_TestUpload, self).tearDown()
-        self._closeEnvironment()
-
-    @contextlib.contextmanager
-    def _generateTestResult(self):
-
+    def setUp(self):
+        super(_TUpload, self).setUp()
         global FAKE_SERVICE_PORT
 
         self._recordSet = dict()
+        self._fakeServer = self._server('', FAKE_SERVICE_PORT, self._recordSet)
 
-        fakeInvenio = self._server('', FAKE_SERVICE_PORT, self._recordSet)
+        self._fakeServer.start()
 
         agent = self._agent('test1', 'test1', 'test',
                             0, url = 'http://localhost:%s' % \
                             FAKE_SERVICE_PORT)
 
+
         with self._context('database', 'request'):
             self._sm.registerNewAgent(agent)
             agent.preActivate(0)
             agent.setActive(True)
+
+    def tearDown(self):
+        super(_TUpload, self).tearDown()
+
+        self._fakeServer.shutdown()
+        global FAKE_SERVICE_PORT
+        self._fakeServer.join()
+
+        # can't reuse the same port, as the OS won't have it free
+        FAKE_SERVICE_PORT += 1
+
+    @contextlib.contextmanager
+    def _generateTestResult(self):
+        with self._context('database', 'request'):
             # execute code
             yield
-
-        time.sleep(1)
-
-        fakeInvenio.start()
 
         # params won't be used
         task = LiveSyncUpdateTask(dateutil.rrule.MINUTELY)
 
-        try:
-            task.run()
-        finally:
-            fakeInvenio.shutdown()
-            fakeInvenio.join()
+        time.sleep(3)
 
-            # can't reuse the same port, as the OS won't have it free
-            FAKE_SERVICE_PORT += 1
+        with self._context('database', 'request'):
+            task.run()
+
+        if self._fakeServer.exception:
+            raise self._fakeServer.exception[1]
 
     def testSmallUpload(self):
         """
-        Tests uploading multiple records (small)
+        Test uploading multiple records (small)
         """
         with self._generateTestResult():
             conf1 = self._home.newConference(self._dummy)
@@ -130,13 +128,13 @@ class _TestUpload(IndicoTestCase):
         self.assertEqual(
             self._recordSet,
             {
-                'INDICO.0': {'title': 'Test Conference 1'},
-                'INDICO.1': {'title': 'Test Conference 2'}
+                'INDICO.0': {'title': 'Test Conference 1', 'deleted': False},
+                'INDICO.1': {'title': 'Test Conference 2', 'deleted': False}
                 })
 
     def testLargeUpload(self):
         """
-        Tests uploading multiple records (large)
+        Test uploading multiple records (large)
         """
         with self._generateTestResult():
             for nconf in range(0, 100):
@@ -146,6 +144,52 @@ class _TestUpload(IndicoTestCase):
         self.assertEqual(
             self._recordSet,
             dict(('INDICO.%s' % nconf,
-                  {'title': 'Test Conference %s' % nconf}) \
+                  {'title': 'Test Conference %s' % nconf, 'deleted': False}) \
                  for nconf in range(0, 100)))
 
+    def testDelete(self):
+        """
+        Tests deleting records
+        """
+        with self._generateTestResult():
+            conf1 = self._home.newConference(self._dummy)
+            conf1.setTitle('Test Conference 1')
+            conf2 = self._home.newConference(self._dummy)
+            conf2.setTitle('Test Conference 2')
+            self._home.removeConference(conf1, delete=True)
+
+        self.assertEqual(
+            self._recordSet,
+            {
+                'INDICO.0': {'title': None, 'deleted': True},
+                'INDICO.1': {'title': 'Test Conference 2', 'deleted': False}
+                })
+
+        with self._generateTestResult():
+            self._home.removeConference(conf2, delete=True)
+
+        self.assertEqual(
+            self._recordSet,
+            {
+                'INDICO.0': {'title': None, 'deleted': True},
+                'INDICO.1': {'title': None, 'deleted': True}
+                })
+
+    def testMetadataProblem(self):
+        """
+        Gracefully fail to generate metadata for one record
+        """
+        with self._generateTestResult():
+            categ = self._home.newSubCategory(1)
+            conf1 = categ.newConference(self._dummy)
+            conf1.setTitle('Test Conference 1')
+            contrib1 = conf1.newContribution()
+            conf2 = categ.newConference(self._dummy)
+            conf2.setTitle('Test Conference 2')
+            conf1._Conference__owners = []
+
+        from MaKaC.common.contextManager import ContextManager
+
+        self.assertEqual(
+            self._recordSet,
+            {'INDICO.1': {'title': 'Test Conference 2', 'deleted': False}})

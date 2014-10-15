@@ -1,26 +1,25 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
-import unittest, logging
-from indico.ext.livesync import PushSyncAgent, ActionWrapper, SyncManager, \
-     ActionWrapper
+import logging
+from indico.ext.livesync import PushSyncAgent, ActionWrapper, SyncManager
+from indico.tests.python.unit.util import IndicoTestCase
 
 
 class ObjectStub(object):
@@ -45,14 +44,15 @@ class TestAgent(PushSyncAgent):
         super(TestAgent, self).__init__(aid, name, description, updateTime)
         self._service = service
 
-    def _generateRecords(self, data, lastTS):
+    def _generateRecords(self, data, lastTS, dbi=None):
 
         data = list(data)
+
         data.reverse()
 
         return data
 
-    def _run(self, data, logger=None, monitor=None):
+    def _run(self, data, logger=None, monitor=None, dbi=None, task=None):
 
         ts = None
 
@@ -99,7 +99,7 @@ class RemoteServiceStub(object):
         return set(self._records.itervalues())
 
 
-class _TestAgentBehavior(unittest.TestCase):
+class _TestAgentBehavior(IndicoTestCase):
 
     def _initialize(self):
         self._srvc1 = RemoteServiceStub()
@@ -138,8 +138,8 @@ class TestPushAgentBehavior(_TestAgentBehavior):
 
     def testSimpleRecordCreation(self):
         currentTS = 0
-        a1 = ActionWrapper(currentTS, self._objs[1], ['add'])
-        a2 = ActionWrapper(currentTS, self._objs[2], ['add'])
+        a1 = ActionWrapper(currentTS, self._objs[1], ['add'], None)
+        a2 = ActionWrapper(currentTS, self._objs[2], ['add'], None)
 
         self._mgr.add(currentTS, [a1, a2])
 
@@ -167,9 +167,9 @@ class TestPushAgentBehavior(_TestAgentBehavior):
 
     def testDeletionNotification(self):
         currentTS = 0
-        a1 = ActionWrapper(currentTS, self._objs[1], ['add'])
-        a2 = ActionWrapper(currentTS, self._objs[2], ['add'])
-        a3 = ActionWrapper(currentTS + 1, self._objs[2], ['del'])
+        a1 = ActionWrapper(currentTS, self._objs[1], ['add'], None)
+        a2 = ActionWrapper(currentTS, self._objs[2], ['add'], None)
+        a3 = ActionWrapper(currentTS + 1, self._objs[2], ['del'], None)
 
         self._mgr.add(currentTS, [a1, a2])
 
@@ -194,9 +194,9 @@ class TestPushAgentBehavior(_TestAgentBehavior):
 
     def testChangeNotification(self):
         currentTS = 0
-        a1 = ActionWrapper(currentTS, self._objs[0], ['add'])
-        a2 = ActionWrapper(currentTS + 1, self._objs[0], ['chg'])
-        a3 = ActionWrapper(currentTS + 2, self._objs[0], ['chg'])
+        a1 = ActionWrapper(currentTS, self._objs[0], ['add'], None)
+        a2 = ActionWrapper(currentTS + 1, self._objs[0], ['chg'], None)
+        a3 = ActionWrapper(currentTS + 2, self._objs[0], ['chg'], None)
 
         self._mgr.add(currentTS, [a1])
 

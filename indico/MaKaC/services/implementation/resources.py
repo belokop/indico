@@ -1,22 +1,28 @@
+# -*- coding: utf-8 -*-
+##
+##
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+##
+## Indico is free software; you can redistribute it and/or
+## modify it under the terms of the GNU General Public License as
+## published by the Free Software Foundation; either version 3 of the
+## License, or (at your option) any later version.
+##
+## Indico is distributed in the hope that it will be useful, but
+## WITHOUT ANY WARRANTY; without even the implied warranty of
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+## General Public License for more details.
+##
+## You should have received a copy of the GNU General Public License
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
+
 from MaKaC.services.implementation.base import ServiceBase
-from MaKaC.services.interface.rpc.common import ServiceError
-from MaKaC.common import Config
-from MaKaC import i18n
+from indico.core.config import Config
+
 
 class GetTimezones(ServiceBase):
-    
+
     def _getAnswer(self):
         cfg = Config.getInstance()
         return cfg.getTimezoneList()
-        
-class GetLanguages(ServiceBase):
-    
-    def _getAnswer(self):
-        # the language list comes in an 'exotic' format
-        # [["en_US","English (US)"],...]
-        # we're better off returning a dictionary
-        languages = {}
-        for lang in i18n.langList():
-            languages[lang[0]] = lang[1]
-
-        return languages

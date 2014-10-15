@@ -1,4 +1,22 @@
-type("TimezoneSelector", ["BalloonPopup", "RemoteWidget"], {
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
+
+type("TimezoneSelector", ["RemoteWidget"], {
 
     // Is called when the list of timezones is retrieved by AJAX.
     // Populates the select list with all timezones
@@ -6,10 +24,10 @@ type("TimezoneSelector", ["BalloonPopup", "RemoteWidget"], {
         var self = this;
 
         var result = this.source.get();
-        
+
         this.firstOption = null;
         this.nothingSelected = true;
-        
+
         select.clear();
 
         each(result['timezones'], function(value, key) {
@@ -35,13 +53,13 @@ type("TimezoneSelector", ["BalloonPopup", "RemoteWidget"], {
 
         // Add header
         this.div.append(Html.div({className: 'tzHeader'}, $T('Change timezone')));
-        
+
         this.form = Html.form({method: "post", action: this.formTarget, style: {margin: 0}});
         this.div.append(this.form);
-        
-        var container = Html.div({classNme: 'tzContainer'});
+
+        var container = Html.div({className: 'tzContainer'});
         this.form.append(container);
-        
+
         // Add the radio buttons
         this.localTZRadio = Html.input('radio', {name: 'activeTimezone'}, 'LOCAL');
         this.userTZRadio = Html.input('radio', {name: 'activeTimezone'}, 'My');
@@ -58,7 +76,7 @@ type("TimezoneSelector", ["BalloonPopup", "RemoteWidget"], {
         container.append(select);
 
         // Add all the timezones to the select list
-        this.RemoteWidget('timezone.getTimezones', {}, false)
+        this.RemoteWidget('timezone.getTimezones', {}, false);
         this.RemoteWidget.prototype.draw.call(self, select);
 
         select.dom.onchange = function(){
@@ -94,33 +112,30 @@ type("TimezoneSelector", ["BalloonPopup", "RemoteWidget"], {
                     Html.input('checkbox', {name: 'saveToProfile'}), $T(' Remember these settings next time I log in')
             ));
         }
-        
+
         // Add cancel and apply buttons
         var applyButton = Html.input('submit', {className: 'btn'}, $T('Apply'));
         var cancelButton = Html.input('button', {className: 'btn'}, $T('Cancel'));
-        cancelButton.observeClick(function(){self.close()});
+        cancelButton.observeClick(function(){$("#timezoneSelectorLink").qtip('hide');});
         container.append(Html.div({style:{textAlign: 'center', marginTop: '15px'}}, applyButton, " ", cancelButton));
-        
-        return this.BalloonPopup.prototype.draw.call(this, this.triggerElement.getAbsolutePosition().x + this.triggerElement.dom.offsetWidth / 2,
-                                                           this.triggerElement.getAbsolutePosition().y + this.triggerElement.dom.offsetHeight);
-
-    },
-    
-    postDraw: function() {
-        /*
-            Make sure the correct radio button is selected based on the current
-            timezone selection.
-        */
         if (this.activeTZ == 'LOCAL') {
             this.localTZRadio.set(true);
         }
-        else if (this.userTZ && this.userDisplayTZMode && this.userTZ == this.activeTZ && 
+        else if (this.userTZ && this.userDisplayTZMode && this.userTZ == this.activeTZ &&
                  this.userDisplayTZMode == 'MyTimezone') {
             this.userTZRadio.set(true);
         }
         else {
             this.selectTZradio.set(true);
         }
+        this.alreadyDraw = true;
+    },
+
+    getContent: function(){
+      if (!this.alreadyDraw){
+          this.draw();
+      }
+      return this.div;
     }},
     /*
      * @param {String} activeTZ - the timezone currently used
@@ -137,14 +152,14 @@ type("TimezoneSelector", ["BalloonPopup", "RemoteWidget"], {
         this.activeTZDisplay = activeTZDisplay;
         this.userTZ = userTZ;
         this.userDisplayTZMode = userDisplayTZMode;
-        
+
         // The URL where to data should be sent when apply button is clicked
         this.formTarget = formTarget;
 
-        
-        this.div = Html.div({className: 'timezonePopup'});
-        this.BalloonPopup(this.div, triggerElement, function(){ return true; });
-        self.open();
+        this.alreadyDraw = false;
+
+
+        this.div = Html.div({id: "timezonePopup", className: 'timezonePopup'});
 
     }
 );

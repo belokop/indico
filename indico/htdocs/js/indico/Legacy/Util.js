@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 
 /**
  @namespace Utility functions for IndicoUI
@@ -94,17 +111,9 @@ var IndicoUtil = {
             if (isDom(component)) {
                 var node = component;
                 if (node.type == "checkbox") {
-                    if (node.name in values && exists($L(values[node.name]).indexOf(node.value))) {
-                        node.checked = true;
-                    } else {
-                        node.checked = false;
-                    }
+                    node.checked = node.name in values && exists($L(values[node.name]).indexOf(node.value));
                 } else if (node.type == "radio") {
-                    if (node.name in values && values[node.name] == node.value) {
-                        node.checked = true;
-                    } else {
-                        node.checked = false;
-                    }
+                    node.checked = node.name in values && values[node.name] == node.value;
                 } else {
                     node.value = values[node.name];
                 }
@@ -167,13 +176,14 @@ var IndicoUtil = {
         if (!document.styleSheets) {
             return;
         }
+        var css;
         if (document.styleSheets[0].cssRules) {
             css = document.styleSheets[0].cssRules;
         }
         else {
             css = document.styleSheets[0].rules;
         }
-        for (i = 0; i < css.length; i++) {
+        for (var i = 0; i < css.length; i++) {
             if (css[i].selectorText.toLowerCase() == cls.toLowerCase()) {
                 css[i].style.cssText = style;
             }
@@ -187,30 +197,31 @@ var IndicoUtil = {
     */
     createFormFromMap: function(map, expand) {
         expand = any(expand, false);
-        var labelStyle = {style:{textAlign:'right', verticalAlign: 'top'}};
-        var fieldStyle = {style:{verticalAlign: 'top'}};
+        var labelStyle = "style='text-align: right; vertical-align: top;'";
+        var fieldStyle = "style='vertical-align: top;'";
         if (expand) {
-            labelStyle.style.whiteSpace = "nowrap";
-            fieldStyle.style.width = "100%";
+            labelStyle = "style='white-space:nowrap;'";
+            fieldStyle = "style='width:100%;'";
         }
-        var list = [];
-        $L(map).each(function(item) {
+        var table = $("<table></table>");
+        $(map).each(function(key, item) {
             // if the key is an int, do not print the label
             if (item.length == 2) {
-                list.push(Html.tr({style:{marginTop:'10px'}},
-                                  Html.td(labelStyle, Html.label("popUpLabel",item[0])),
-                                  Html.td(fieldStyle, Html.div('popUpTdContent', item[1]))));
+                // TO REMOVE: when completed migration to jquery
+                if(!item[1].jquery && item[1].dom) item[1] = $(item[1].dom);
+
+                var row = $("<tr style='margin-top:10px;'></tr>");
+                row.append($("<td " + labelStyle + "><label class='popUpLabel'>" + item[0] +"</label></td>"));
+                row.append($("<td " + fieldStyle + "></td>").append($("<div class='popUpTdContent'></div>").append(item[1])));
+                table.append(row);
             } else {
-                list.push(Html.tr({style:{marginTop:'10px'}},
-                                  Html.td(),
-                                  Html.td(fieldStyle, item[0])));
+                // TO REMOVE: when completed migration to jquery
+                if(item[0]!== undefined && !item[0].jquery && item[0].dom) item[0] = $(item[0].dom);
+
+                table.append($("<tr style='margin-top:10px;'><td></td></tr>").append($("<td " + fieldStyle + "></td>").append(item[0])));
             }
         });
-        var tbody = Html.tbody();
-        each(list, function(row){
-            tbody.append(row);
-        });
-        return Html.table({}, tbody);
+        return table
 
     },
 
@@ -346,7 +357,9 @@ var IndicoUtil = {
                               function(result, error) {
                                   if(exists(error)) {
                                       IndicoUtil.errorReport(error);
+                                      self.set(cachedValue);
                                   } else {
+                                      cachedValue = value;
                                       if (exists(result.hasWarning) && result.hasWarning === true) {
                                           var popup = new WarningPopup(result.warning.title, result.warning.content);
                                           popup.open();
@@ -405,11 +418,19 @@ var IndicoUtil = {
     /**
      * Determines if a string contains invalid characters for short URLs
      * @param {String} s The input string
-     * @return {Booleab} true if the string is a valid string, false otherwise
+     * @return {Boolean} true if the string is a valid string, false otherwise
      */
     parseShortURL: function(s) {
-        var regExp = new RegExp("[^A-Za-z0-9\._-]");
-        return !regExp.test(s);
+        if (/^[0-9]+$/.test(s)) {
+            // Just a number
+            return false;
+        }
+        if (s.substr(0, 1) == '/' || s.substr(s.length - 1, 1) == '/' || ~s.indexOf('//')) {
+            // Leading/trailing/duplicate slash
+            return false;
+        }
+        // Restrict characters
+        return /^[a-zA-Z0-9/._-]*$/.test(s);
     },
 
     /**
@@ -425,10 +446,15 @@ var IndicoUtil = {
     markInvalidField: function(component, error, passive) {
 
         // passive - don't check actively for changes / keypresses
-
-        if ( startsWith(component.dom.type, 'select')) {
-            if (component.dom.className.slice(-13) != "invalidSelect") {
-                component.dom.className += ' invalidSelect';
+        if (component.dom.type) {
+            if ( startsWith(component.dom.type, 'select')) {
+                if (component.dom.className.slice(-13) != "invalidSelect") {
+                    component.dom.className += ' invalidSelect';
+                }
+            } else {
+                if (component.dom.className.slice(-7) != "invalid") {
+                    component.dom.className += ' invalid';
+                }
             }
         } else {
             if (component.dom.className.slice(-7) != "invalid") {
@@ -436,7 +462,6 @@ var IndicoUtil = {
             }
         }
 
-        var tooltip;
         var oList = []; //list of functions that we will call to stop observing events
 
         var stopObserving = function(){
@@ -447,36 +472,34 @@ var IndicoUtil = {
 
         // we'll add a function that removes the coloring first of all
         oList.push(function() {
-                Dom.List.remove(document.body, tooltip);
-                component.dom.className = component.dom.className.substring(0, component.dom.className.length-8);
+            component.dom.className = component.dom.className.substring(0, component.dom.className.length-8);
+            $(component.dom).qtip('destroy');
         });
 
-        oList.push(component.observeEvent('mouseover', function(event){
-            tooltip = IndicoUI.Widgets.Generic.errorTooltip(event.clientX, event.clientY, error, "tooltipError");
-        }));
-
-        oList.push(component.observeEvent('mouseout', function(event){
-            Dom.List.remove(document.body, tooltip);
-        }));
+        $(component.dom).qtip({
+            content: {
+                text: error.dom ? $(error.dom) : error
+            }
+        });
 
         if (!passive) {
-
-            oList.push(component.observeEvent('keypress', function(event){
-                stopObserving();
-            }));
-
-            oList.push(component.observeEvent('change', function(event){
-                stopObserving();
-            }));
-
-            if ( startsWith(component.dom.type, 'select')) {
-                oList.push(component.observeEvent('click', function(event){
-                    stopObserving();
-                }));
-            }
+            $(component.dom).on('keypress change select click', stopObserving);
         }
 
-        return [tooltip, oList];
+        return oList;
+    },
+
+    /**
+     *  Used as extraCheckFunction within the parameter manager.
+     *  Extra checking for numbers (minimum, maximum).
+     *
+     */
+    validate_number: function(opts) {
+        return function(value) {
+            var val = parseInt(value, 10);
+            if(opts.minimum && val < opts.minimum) return Html.span({}, $T("The value must be at least ") + opts.minimum);
+            if(opts.maximum && val > opts.maximum) return Html.span({}, $T("The value must be at maximum ") + opts.maximum);
+        }
     },
 
     /**
@@ -541,51 +564,67 @@ var IndicoUtil = {
                 }
 
                 //--- Check if there are errors ---
-                if (dataType == "radio") {
+                if (dataType == "checkBoxList" && !exists(extraCheckFunction)) {
+                    if (!allowEmpty && !self.checkCheckBoxes(component)) { // component must be the parent element of all the checkboxes
+                        error = Html.span({}, $T("At least one must be selected"));
+                    }
+                }
+                else if (dataType == 'checkBox' && !exists(extraCheckFunction)) {
+                    if (!allowEmpty && !component.dom.checked) {
+                        error = Html.span({}, $T("Please enable the checkbox"));
+                    }
+                }
+                else if (dataType == "radio" && !exists(extraCheckFunction)) {
                     if (!allowEmpty && !self.checkRadioButton(component)) {
-                        error = Html.span({}, "Please choose an option");
+                        error = Html.span({}, $T("Please choose an option"));
+                    }
+                }
+                else if (dataType == "select" && !exists(extraCheckFunction)) {
+                    if (!allowEmpty && !self.checkSelect(component)) {
+                        error = Html.span({}, $T("Please choose an option"));
                     }
                 }
                 else if (dataType == 'int' && !(allowEmpty && trim(component.get()) === '') && !IndicoUtil.isInteger(component.get())) {
-                    error = Html.span({}, "Field must be a number");
+                    error = Html.span({}, $T("Field must be a number"));
                 }
                 // TODO: to be replaced by just 'int'
                 else if (dataType == 'int_pos_or_neg' && !(allowEmpty && trim(component.get()) === '') && !IndicoUtil.isInteger(component.get())) {
                     if (!(component.get()[0] == '-' && IndicoUtil.isInteger(component.get().slice(1)))) {
-                        error = Html.span({}, "Field must be a number");
+                        error = Html.span({}, $T("Field must be a number"));
                     }
                 }
                 else if (dataType == 'unsigned_int' && !(allowEmpty && trim(component.get()) === '') && (!IndicoUtil.isInteger(component.get()) || component.get()<=0)) {
                     error = Html.span({}, "Field must be a positive number");
                 }
                 else if (dataType == 'non_negative_int' && !(allowEmpty && trim(component.get()) === '') && (!IndicoUtil.isInteger(component.get()) || component.get()<0)) {
-                    error = Html.span({}, "Field must be a positive number");
+                    error = Html.span({}, $T("Field must be a positive number"));
                 }
                 else if (dataType == 'datetime' && !(allowEmpty && trim(component.get()) === '') && !IndicoUtil.parseDateTime(component.get())) {
-                    error = Html.span({}, "Date format is not valid. It should be dd/mm/yyyy hh:mm");
+                    error = Html.span({}, $T("Date format is not valid. It should be dd/mm/yyyy hh:mm"));
                 }
                 else if (dataType == 'email' && !(allowEmpty && trim(component.get()) === '') && !Util.Validation.isEmailAddress(component.get())) {
-                    error = Html.span({}, "Invalid e-mail address");
+                    error = Html.span({}, $T("Invalid e-mail address"));
                 }
                 else if (dataType == 'emaillist' && !(allowEmpty && trim(component.get()) === '') && !Util.Validation.isEmailList(component.get())){
-                    error = Html.span({}, "List contains invalid e-mail address or invalid separator");
+                    error = Html.span({}, $T("List contains invalid e-mail address or invalid separator"));
                 }
                 else if (dataType == 'url' && !(allowEmpty && trim(component.get()) === '') && !Util.Validation.isURL(component.get())) {
-                    error = Html.span({}, "Invalid URL");
+                    error = Html.span({}, $T("Invalid URL"));
                 }
                 else if (dataType == 'ip' && !(allowEmpty && trim(component.get()) === '') &&  !Util.Validation.isIPAddress(component.get())) {
-                    error = Html.span({}, "That doesn't seem like a valid IP Address. Example of valid IP Address: 132.156.31.38");
+                    error = Html.span({}, $T("That doesn't seem like a valid IP Address. Example of valid IP Address: 132.156.31.38"));
                 }
                 else if (dataType == 'time' && !IndicoUtil.isTime(trim(component.get()))) {
-                    error = Html.span({}, "Time format is not valid. It should be hh:mm");
+                    error = Html.span({}, $T("Time format is not valid. It should be hh:mm"));
                 }
                 else if (dataType == 'shortURL' && !IndicoUtil.parseShortURL(component.get())) {
-                    error = Html.span({}, "The short URL contains invalid characters. The allowed characters are alphanumeric, _, - and .");
+                    error = Html.span({}, $T("The short URL contains invalid characters. The allowed characters are alphanumeric, /, _, - and ."));
                 }
-                else if (exists(extraCheckFunction)) {
-                    error = extraCheckFunction(component.get());
-                } else if (!allowEmpty && trim(component.get()) === '') {
-                    error = Html.span({}, "Field is mandatory");
+                else if (!allowEmpty && component.get() != null && (!isString(component.get()) || trim(component.get()) === '')) {
+                    error = Html.span({}, $T("Field is mandatory"));
+                }
+                if (exists(extraCheckFunction)) {
+                    error = error || extraCheckFunction(component.get());
                 }
                 //--------------------------------
 
@@ -599,50 +638,44 @@ var IndicoUtil = {
                     if (component.ErrorAware) {
                         oList = component.setError(error);
 
+                    } else if (dataType == 'checkBoxList' || dataType == 'radio' || dataType == 'select') {
+                        oList = IndicoUtil.markInvalidField(component, error);
                     } else if (component.dom.type != 'radio') {
-                        var result = IndicoUtil.markInvalidField(component, error);
-                        oList = result[1];
-
+                        oList = IndicoUtil.markInvalidField(component, error);
                     } else {
-                        component.dom.className += ' invalid';
-                        $E(component.dom.id + 'Label').dom.className += ' invalidLabel';
-
-                        var tooltip;
-                        oList = []; //list of functions that we will call to stop observing events
-
-                        var stopObserving = component.observeEvent('mouseover', function(event){
-                            tooltip = IndicoUI.Widgets.Generic.errorTooltip(event.clientX, event.clientY, error, "tooltipError");
+                        // XXX: Is this code still used anywhere?!
+                        // If yes, please add a comment where, if not let's remove it!
+                        // The jQuery/qtip things here are untested btw.. if you find out where this is used, please test it. :)
+                        var $label = $('#' + component.dom.id + 'Label');
+                        var $component = $(component.dom);
+                        $label.addClass('invalidLabel');
+                        $component.addClass('invalid');
+                        $component.add($label).qtip({
+                            content: {
+                                text: error.dom ? $(error.dom) : error
+                            }
                         });
-                        oList.push(stopObserving);
 
-                        var stopObservingLabel = $E(component.dom.id + 'Label').observeEvent('mouseover', function(event){
-                            tooltip = IndicoUI.Widgets.Generic.errorTooltip(event.clientX, event.clientY, error, "tooltipError");
-                        });
+                        var stopObserving = function() {
+                            $component.qtip('destroy');
+                            $label.qtip('destroy');
+                        };
+                        oList = [stopObserving]; //list of functions that we will call to stop observing events
 
                         if (!exists(radioButtonLabelStopObserving[component.dom.name])) {
-                            radioButtonLabelStopObserving[component.dom.name] = []
+                            radioButtonLabelStopObserving[component.dom.name] = [];
                         }
                         radioButtonLabelStopObserving[component.dom.name].push(stopObserving);
-                        radioButtonLabelStopObserving[component.dom.name].push(stopObservingLabel);
-
-                        oList.push(component.observeEvent('mouseout', function(event){
-                            Dom.List.remove(document.body, tooltip);
-                        }));
-
-                        $E(component.dom.id + 'Label').observeEvent('mouseout', function(event){
-                            Dom.List.remove(document.body, tooltip);
-                        });
 
                         each($N(component.dom.name), function(component){
                             component.observeEvent('click', function(event) {
-                                each($N(component.dom.name), function(component){
-                                    component.dom.className = component.dom.className.substring(0, component.dom.className.length-8);
-                                    $E(component.dom.id + 'Label').dom.className = component.dom.className.substring(0, component.dom.className.length-13);
+                                each($N(component.dom.name), function(subcomponent){
+                                    $(subcomponent.dom).removeClass('invalid');
+                                    $('#' + subcomponent.dom.id + 'Label').removeClass('invalidLabel');
                                 });
                                 if (exists(radioButtonLabelStopObserving[component.dom.name])) {
                                     each (radioButtonLabelStopObserving[component.dom.name], function(stopObserver) {stopObserver()});
                                 }
-                                Dom.List.remove(document.body, tooltip);
                             });
                         });
                     }
@@ -678,6 +711,21 @@ var IndicoUtil = {
             return radioButtonChecks;
         };
 
+        this.checkSelect = function(component) {
+            return (component.dom.value!="")
+        };
+
+        // component must be the parent element of all the checkboxes
+        this.checkCheckBoxes = function(component) {
+            for (var i=0; i<component.dom.childNodes.length; i++) {
+                var node = component.dom.childNodes[i];
+                if (node.type == "checkbox" && node.checked) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
         /**
          * Adds a form input to the list of paramters to check.
          *  @param {Html component} component The input component
@@ -686,6 +734,10 @@ var IndicoUtil = {
          *
          */
         this.add = function(component, dataType, allowEmpty, extraCheckFunction) {
+            if (component instanceof jQuery) {
+                component = $E(component[0]);
+            }
+
             // Add new entry
             entryList.append([component, dataType, allowEmpty, extraCheckFunction]);
 
@@ -697,12 +749,15 @@ var IndicoUtil = {
                 }
 
                 classList[component.dom.id] = component.dom.className;
-
             }
             return component;
         };
 
         this.remove = function(component) {
+            if (component instanceof jQuery) {
+                component = $E(component[0]);
+            }
+
             var removeEntry = null;
             each(entryList,
                  function(entry) {
@@ -715,6 +770,7 @@ var IndicoUtil = {
                 entryList.remove(removeEntry);
             }
         };
+
     },
 
     waitLoad : function(preLoad, process) {
@@ -789,6 +845,17 @@ var IndicoUtil = {
     onclickFunctions : new WatchList(),
 
     // DEPRECATED, in favor of IndicoUI.Dialogs.Util.error
-    errorReport: IndicoUI.Dialogs.Util.error
+    errorReport: IndicoUI.Dialogs.Util.error,
 
+    /**
+     * Simple function used in sorting
+     */
+    compare: function(elem1, elem2){
+        if(elem1 > elem2)
+            return 1;
+        if(elem1 < elem2)
+            return -1;
+        if(elem1 == elem2)
+            return 0;
+    }
 };

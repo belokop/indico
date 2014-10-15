@@ -1,37 +1,39 @@
-<% import MaKaC.common.Configuration as Configuration %>
-<%!
-try:
-    dark
-except NameError:
-    dark = False;
+<%
+if dark is not UNDEFINED:
+    dark_ = dark
+else:
+    dark_ = False;
 %>
+<div id="footer" class="${"longFooter " if shortURL != "" and not isFrontPage else ""}footer${" footerDark" if dark_ == True else ""}">
 
-<!-- TODO: remove? -->
-<script type="text/javascript">
-function envoi(){
-	//alert('Le code de la langue choisie est '+document.forms["changeSesLang"].elements["lang"].value)
-	document.forms["changeSesLang"].submit()
-}
-</script>
-
-<div id="poweredBy" class="<%if shortURL != "" and not isFrontPage: %>longFooter <% end %>footer<% if dark == True: %> footerDark<% end %>">
-
-<div style="margin-bottom: 15px; font-family: monospace; font-size: 10px;">
-  <% if shortURL != "" and not isFrontPage: %>
-  <div><%= shortURL %></div>
-  <% end %>
-
-  <% if modificationDate != "": %>
-  <div><%= _("Last modified: ") + modificationDate %></div>
-  <% end %>
+% if Config.getInstance().getMobileURL():
+    <div class="mobile-footer" style="display:none">
+        ${_("Classic")} | <a id="mobileURL" style="font-size:11px !important" href="${Config.getInstance().getMobileURL()}"><span class="icon icon-mobile"></span>${_("Mobile")}</a>
+    </div>
+     <script type="text/javascript">
+         % if conf:
+             $("#mobileURL").prop("href", $("#mobileURL").prop("href") + "/event/"+${conf.getId()});
+             % if conf.hasAnyProtection():
+                  $("#mobileURL").prop("href", $("#mobileURL").prop("href") + "?pr=yes");
+             % endif
+         % endif
+         if($.mobileBrowser) {
+                $(".mobile-footer").show();
+         }
+     </script>
+% endif
+  <%block name="footer">
+          <img src="${ systemIcon("indico_small") }" alt="${ _("Indico - Integrated Digital Conference")}" style="vertical-align: middle; margin-right: 2px;"/>
+            <span style="vertical-align: middle;">${ _("Powered by ")} <a href="http://indico-software.org">Indico</a></span>
+  </%block>
 </div>
 
-
-            <img src="<%= systemIcon("indico_small") %>" alt="<%= _("Indico - Integrated Digital Conference")%>" style="vertical-align: middle; margin-right: 2px;"/>
-            <span style="vertical-align: middle;"><%= _("Powered by ")%> <a href="http://cdsware.cern.ch/indico/">Indico</a></span>
-
-            <% if Configuration.Config.getInstance().getWorkerName()!="": %>
-                <span style="display: none;"><%= Configuration.Config.getInstance().getWorkerName() %></span>
-            <% end %>
-
-</div>
+% if Config.getInstance().getWorkerName():
+  <!-- worker: ${ Config.getInstance().getWorkerName() } -->
+% endif
+% if _app.debug:
+  <!-- endpoint: ${ _request.endpoint } -->
+  % if rh:
+  <!-- rh: ${ rh.__class__.__module__ }.${ rh.__class__.__name__ } -->
+  % endif
+% endif

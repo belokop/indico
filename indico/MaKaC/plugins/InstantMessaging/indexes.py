@@ -2,22 +2,21 @@
 ##
 ## $id$
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 from MaKaC.common.Counter import Counter
 from BTrees.OOBTree import OOBTree, OOTreeSet
@@ -64,7 +63,6 @@ class IMIndex(Persistent):
     def unindex(self, element):
         pass
 
-
 class CounterIndex(IMIndex):
     """ This index just takes the count of the next index that shall be given to a new chat room """
 
@@ -94,7 +92,7 @@ class IndexByConf(IMIndex):
 
 
 class IndexByUser(IMIndex):
-    """ Index by user ID. We use a OOTreeSet to store the chat rooms"""
+    """ Index by user ID. We use a OOBTree to store the chat rooms """
 
     def __init__(self):
         IMIndex.__init__(self, 'indexByUser')
@@ -104,14 +102,26 @@ class IndexByUser(IMIndex):
 
         # self.get is equivalent to root['IndexByUser']
         if not self.get().has_key(userId):
-            self.get()[userId] = OOTreeSet()
+            self.get()[userId] = OOBTree()
 
-        self.get()[userId].insert(element)
+        self.get()[userId].insert(element.getTitle().lower(), element)
 
     def unindex(self, userId, element):
-        self.get()[userId].remove(element)
-
+        key = element if isinstance(element, str) else element.getTitle()
+        self.get()[userId].pop(key.lower())
         self._indexCheckDelete(userId)
+
+    def reindex(self, userId, element, oldKey=None):
+        """ oldKey will be the key in which the previous
+            is stored, therefore use that to remove if title has been
+            replaced.
+        """
+        if oldKey is not None:
+            self.unindex(userId, oldKey)
+        else:
+            self.unindex(userId, element)
+
+        self.index(userId, element)
 
 
 class IndexByCRName(IMIndex):

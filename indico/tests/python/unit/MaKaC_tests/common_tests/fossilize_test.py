@@ -1,31 +1,31 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 # For now, disable Pylint
 # pylint: disable-all
 
 
 from MaKaC.common.fossilize import IFossil, Fossilizable, fossilizes, fossilize, \
-    NonFossilizableException, WrongFossilTypeException, addFossil,\
+    NonFossilizableException, addFossil,\
     InvalidFossilException
-import unittest
+from indico.tests.python.unit.util import IndicoTestCase
+
 
 class ISomeFossil(IFossil):
     pass
@@ -119,8 +119,10 @@ class SimpleClass(Fossilizable):
     def getC(self):
         return self.c
 
+
 class DerivedClass(SimpleClass):
     pass
+
 
 class ComplexClass(Fossilizable):
 
@@ -132,14 +134,17 @@ class ComplexClass(Fossilizable):
     def getSimpleInstance(self):
         return self.simpleInstance
 
+
 class IterableWrapper(object):
     def __init__(self, *content):
         self.onlyAttribute = list(content)
+
 
 class ConversionClass(object):
     @classmethod
     def multiply(cls, number, factor):
         return number * factor
+
 
 def mysum(number, numberToBeAdded):
     return number + numberToBeAdded
@@ -150,6 +155,7 @@ class IWithConversion2Fossil(IFossil):
         pass
     getA.convert = mysum
 
+
 class IWithConversionFossil(IFossil):
     def getA(self):
         pass
@@ -157,6 +163,7 @@ class IWithConversionFossil(IFossil):
     def getList(self):
         pass
     getList.result = IWithConversion2Fossil
+
 
 class AnotherClass(Fossilizable):
     fossilizes(IWithConversionFossil)
@@ -175,6 +182,7 @@ class AnotherChildrenClass(Fossilizable):
     def getA(self):
         return self.a
 
+
 class ClassWithDifferentMethodNames(Fossilizable):
     fossilizes(IClassWithDifferentMethodNamesFossil, IClassWithDifferentMethodNamesBadFossil, IClassWithDifferentMethodNamesBad2Fossil)
     def __init__(self):
@@ -191,10 +199,10 @@ class ClassWithDifferentMethodNames(Fossilizable):
         pass
 
 
-
-class TestFossilize(unittest.TestCase):
+class TestFossilize(IndicoTestCase):
 
     def setUp(self):
+        super(TestFossilize, self).setUp()
         addFossil(SimpleClass, IDynamicFossil)
         self.s = SimpleClass(1, 'a', 'foo')
         self.c = ComplexClass()
@@ -229,14 +237,14 @@ class TestFossilize(unittest.TestCase):
         self.assertRaises(InvalidFossilException, fossilize, o1, IClassWithDifferentMethodNamesBad2Fossil)
 
     def testFossilizingNonFossilizable(self):
-        "Non-fossilizable objects should thrown an exception"
+        "Non-Fossilizable objects should be OK to fossilize"
 
-        self.assertRaises(NonFossilizableException, fossilize, 1+4j, ISomeFossil)
+        self.assertEqual(fossilize(1+4j, ISomeFossil), {'_fossil': 'some', '_type': 'complex'})
 
     def testFossilizingWrongType(self):
-        "Fossilizing using the wrong type should thrown an exception"
+        "Fossilizing Fossilizables using non-standard types should be OK"
 
-        self.assertRaises(WrongFossilTypeException, self.s.fossilize, ISomeFossil)
+        self.assertEqual(self.s.fossilize(ISomeFossil), {'_fossil': 'some', '_type': 'SimpleClass'})
 
     def testFossilizingSimpleClass(self):
         "Simple fossilization example"
@@ -318,18 +326,26 @@ class TestFossilize(unittest.TestCase):
         self.assertEquals(fossilize([s1, d1]), [fossilize(s1), d1.fossilize()])
 
     def testFossilizeDict(self):
-        "Fossilize a dictionary of objects"
+        "Fossilize using a dictionary of interfaces"
 
         s1 = SimpleClass(10, 20, 'foo')
         d1 = DerivedClass(10, 50, 'bar')
         self.assertEquals(fossilize([s1, d1], {"indico.tests.python.unit.MaKaC_tests.common_tests.fossilize_test.SimpleClass": ISimpleFossil2Fossil, "indico.tests.python.unit.MaKaC_tests.common_tests.fossilize_test.DerivedClass": ISimpleFossil1Fossil}),
                           [s1.fossilize(ISimpleFossil2Fossil), d1.fossilize(ISimpleFossil1Fossil)])
 
+    def testFossilizeWrongDict(self):
+        "Fossilize using a wrong dictionary of interfaces"
+
+        s1 = SimpleClass(10, 20, 'foo')
+        d1 = DerivedClass(10, 50, 'bar')
+        self.assertRaises(NonFossilizableException, fossilize, [s1, d1],
+                          {"indico.tests.python.unit.MaKaC_tests.common_tests.fossilize_test.DerivedClass": ISimpleFossil1Fossil})
+
     def testFossilizeWithAttributes(self):
+        """
+        Using attributes instead of getters
+        """
         s1 = SimpleClass(10, 20, 'foo')
         d1 = DerivedClass(10, 50, 'bar')
         self.assertEquals(s1.fossilize(IAttributeFossil), {'_type':'SimpleClass', '_fossil':'attribute', "a": 10, "b": 20, "c":"foo"})
         self.assertEquals(fossilize(d1, IAttributeFossil), {'_type':'DerivedClass', '_fossil':'attribute', "a": 10, "b": 50, "c":"bar"})
-
-if __name__ == '__main__':
-    unittest.main()

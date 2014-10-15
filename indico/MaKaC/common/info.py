@@ -1,30 +1,39 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 import os
+import warnings
+from flask import current_app as app
 from persistent import Persistent
+from persistent.dict import PersistentDict
 from BTrees import OOBTree
-from db import DBMgr
-from Configuration import Config
+from indico.core.config import Config
+from indico.core import db
 
-#from MaKaC.common.logger import Logger
+DEFAULT_PERSISTENT_ENABLE_AGREEMENT = 'Enabling persistent signatures will allow signed requests without a timestamp. This means that the same link can be used forever to access private information. This introduces the risk that if somebody finds out about the link, he/she can access the same private information as yourself. By enabling this you agree to keep those links private and ensure that no unauthorized people will use them.'
+DEFAULT_PERSISTENT_DISABLE_AGREEMENT = 'When disabling persistent signatures, all signed requests need a valid timestamp again. If you enable them again, old persistent links will start working again - if you need to to invalidate them, you need to create a new API key!'
+DEFAULT_API_USER_AGREEMENT = """In order to enable an iCal export link, your account needs to have a key created. This key enables other applications to access data from within Indico even when you are neither using nor logged into the Indico system yourself with the link provided. Once created, you can manage your key at any time by going to 'My Profile' and looking under the tab entitled 'HTTP API'. Further information about HTTP API keys can be found in the Indico documentation."""
+DEFAULT_PERSISTENT_USER_AGREEMENT = """In conjunction with a having a key associated with your account, to have the possibility of exporting private event information necessitates the creation of a persistent key.  This new key is also associated with your account and whilst it is active the data which can be obtained through using this key can be obtained by anyone in possession of the link provided. Due to this reason, it is extremely important that you keep links generated with this key private and for your use only. If you think someone else may have acquired access to a link using this key in the future, you must immediately remove it from 'My Profile' under the 'HTTP API' tab and generate a new key before regenerating iCalendar links."""
+DEFAULT_PROTECTION_DISCLAINER_RESTRICTED = 'Circulation to people other than the intended audience is not authorized. You are obliged to treat the information with the appropriate level of confidentiality.'
+DEFAULT_PROTECTION_DISCLAINER_PROTECTED = 'As such, this information is intended for an internal audience only. You are obliged to treat the information with the appropriate level of confidentiality.'
+
+#from indico.core.logger import Logger
 
 #the singleton pattern should be applied to this class to ensure that it is
 #   unique, but as Extended classes seem not to support classmethods it will
@@ -37,12 +46,9 @@ class MaKaCInfo(Persistent):
         # server description fields
         self._title = ""
         self._organisation = ""
-        self._supportEmail = ""
-        self._publicSupportEmail = ""
-        self._noReplyEmail = ""
         self._city = ""
         self._country = ""
-        self._lang = "en_US"
+        self._lang = "en_GB"
         self._tz = ""
 
         # Account-related features
@@ -51,9 +57,6 @@ class MaKaCInfo(Persistent):
         self._moderateAccountCreation = False
         self._moderators = []
 
-        # Room booking related
-        self._roomBookingModuleActive = False
-
         # Global poster/badge templates
         self._defaultConference = None
 
@@ -61,12 +64,14 @@ class MaKaCInfo(Persistent):
         self._news = ""
 
         # special features
-        self._cacheActive = False
         self._newsActive = False
         self._debugActive = False
 
         # template set
         self._defaultTemplateSet = None
+
+        # social sites
+        self.getSocialAppConfig()
 
         # Define if Indico use a proxy (load balancing)
         self. _proxy = False
@@ -77,14 +82,29 @@ class MaKaCInfo(Persistent):
         # /afs/cern.ch/project/indico/2008/...
         self._archivingVolume = ""
 
-        # list of IPs that can access the private OAI gateway
-        self._oaiPrivateHarvesterList = []
+        self._ip_based_acl_mgr = IPBasedACLMgr()
 
-        # list of IPs that can access the private OAI gateway
-        self._oaiPrivateHarvesterList = []
+        # http api
+        self._apiHTTPSRequired = False
+        self._apiPersistentAllowed = False
+        self._apiMode = 0
+        self._apiCacheTTL = 600
+        self._apiSignatureTTL = 600
+        self._analyticsActive = False
+        self._analyticsCode = ""
+        self._analyticsCodeLocation = "head"
 
         # Event display style manager
         self._styleMgr = StyleManager()
+
+        self._apiPersistentEnableAgreement = DEFAULT_PERSISTENT_ENABLE_AGREEMENT
+        self._apiPersistentDisableAgreement = DEFAULT_PERSISTENT_DISABLE_AGREEMENT
+        self._apiKeyUserAgreement = DEFAULT_API_USER_AGREEMENT
+        self._apiPersistentUserAgreement = DEFAULT_PERSISTENT_USER_AGREEMENT
+
+        self._protectionDisclaimerRestricted = DEFAULT_PROTECTION_DISCLAINER_RESTRICTED
+        self._protectionDisclaimerProtected = DEFAULT_PROTECTION_DISCLAINER_PROTECTED
+
 
     def getStyleManager( self ):
         try:
@@ -93,16 +113,15 @@ class MaKaCInfo(Persistent):
             self._styleMgr = StyleManager()
             return self._styleMgr
 
-    def isDebugActive( self ):
-        if hasattr( self, "_debugActive" ):
-            return self._debugActive
-        else:
-            self._debugActive = False
-            return False
+    def getSocialAppConfig( self ):
+        if not hasattr(self, '_socialAppConfig'):
+            self._socialAppConfig = PersistentDict({'active': False, 'facebook': {}})
+        return self._socialAppConfig
 
-    def setDebugActive( self, bool=True ):
-        self._debugActive = bool
-
+    def isDebugActive(self):
+        msg = 'MaKaCinfo.isDebugActive() is deprecated; use app.debug or Config.getInstance().getDebug() instead'
+        warnings.warn(msg, DeprecationWarning, 2)
+        return app.debug
 
     def getNews( self ):
         try:
@@ -170,16 +189,6 @@ class MaKaCInfo(Persistent):
     def getTitle( self ):
         return self._title
 
-    def isCacheActive( self ):
-        if hasattr( self, "_cacheActive" ):
-            return self._cacheActive
-        else:
-            self._cacheActive = False
-            return False
-
-    def setCacheActive( self, bool=True ):
-        self._cacheActive = bool
-
     def isNewsActive( self ):
         if hasattr( self, "_newsActive" ):
             return self._newsActive
@@ -189,16 +198,6 @@ class MaKaCInfo(Persistent):
 
     def setNewsActive( self, bool=True ):
         self._newsActive = bool
-
-    def isHighlightActive ( self ):
-        if hasattr( self, "_highlightActive" ):
-           return self._highlightActive
-        else:
-           self._highlightActive = False
-           return False
-
-    def setHighlightActive (self, bool=True ):
-        self._highlightActive = bool
 
     def setTitle( self, newTitle ):
         self._title = newTitle.strip()
@@ -211,39 +210,6 @@ class MaKaCInfo(Persistent):
 
     def setOrganisation( self, newOrg ):
         self._organisation = newOrg.strip()
-
-    def getSupportEmail( self ):
-        if not hasattr( self, "_supportEmail" ) or (self._supportEmail == "" and Config.getInstance().getSupportEmail() != ""):
-            self._supportEmail = Config.getInstance().getSupportEmail()
-        return self._supportEmail
-
-    def setSupportEmail( self, newEmail ):
-        self._supportEmail = newEmail.strip()
-
-    def getPublicSupportEmail( self ):
-        if not hasattr( self, "_publicSupportEmail" ) or (self._publicSupportEmail == "" and Config.getInstance().getPublicSupportEmail() != ""):
-            self._publicSupportEmail = Config.getInstance().getPublicSupportEmail()
-        return self._publicSupportEmail
-
-    def setPublicSupportEmail( self, newEmail ):
-        self._publicSupportEmail = newEmail.strip()
-
-    def getNoReplyEmail( self, returnSupport=False ):
-        if not hasattr( self, "_noReplyEmail" ) or (self._noReplyEmail == "" and Config.getInstance().getNoReplyEmail() != ""):
-            self._noReplyEmail = Config.getInstance().getNoReplyEmail()
-
-        if self._noReplyEmail != "":
-            return self._noReplyEmail
-        elif returnSupport:
-            return self.getSupportEmail()
-        else:
-            return ""
-
-        return self._noReplyEmail
-
-    def setNoReplyEmail( self, newEmail ):
-        self._noReplyEmail = newEmail.strip()
-
 
     def getCity( self ):
         return self._city
@@ -278,68 +244,6 @@ class MaKaCInfo(Persistent):
         for admin in self.getAdminList().getList():
             emails.append(admin.getEmail())
         return emails
-
-    # === ROOM BOOKING RELATED ===============================================
-
-    def getRoomBookingModuleActive( self ):
-        try:
-            return self._roomBookingModuleActive
-        except:
-            self.setRoomBookingModuleActive()
-            return self._roomBookingModuleActive
-
-    def setRoomBookingModuleActive( self, active = False ):
-        self._roomBookingModuleActive = active
-        from MaKaC.webinterface.rh.JSContent import RHGetVarsJs
-        RHGetVarsJs.removeTmpVarsFile()
-
-    # Only for default Indico/ZODB plugin
-    def getRoomBookingDBConnectionParams( self ):
-        #self._roomBookingStorageParams = ('indicodev.cern.ch', 9676)
-        try:
-            return self._roomBookingStorageParams
-        except:
-            self.setRoomBookingDBConnectionParams()
-            return self._roomBookingStorageParams
-
-    def setRoomBookingDBConnectionParams( self, hostPortTuple = ('localhost', 9676) ):
-        self._roomBookingStorageParams = hostPortTuple
-
-    # Only for default Indico/ZODB plugin
-    def getRoomBookingDBUserName( self ):
-        try:
-            return self._roomBookingDBUserName
-        except:
-            self._roomBookingDBUserName = ""
-            return self._roomBookingDBUserName
-
-    # Only for default Indico/ZODB plugin
-    def setRoomBookingDBUserName( self, user = "" ):
-        self._roomBookingDBUserName = user
-
-    # Only for default Indico/ZODB plugin
-    def getRoomBookingDBPassword( self ):
-        try:
-            return self._roomBookingDBPassword
-        except:
-            self._roomBookingDBPassword = ""
-            return self._roomBookingDBPassword
-
-    # Only for default Indico/ZODB plugin
-    def setRoomBookingDBPassword( self, password = "" ):
-        self._roomBookingDBPassword = password
-
-    # Only for default Indico/ZODB plugin
-    def getRoomBookingDBRealm( self ):
-        try:
-            return self._roomBookingDBRealm
-        except:
-            self._roomBookingDBRealm = ""
-            return self._roomBookingDBRealm
-
-    # Only for default Indico/ZODB plugin
-    def setRoomBookingDBRealm( self, realm = "" ):
-        self._roomBookingDBRealm = realm
 
     def getDefaultConference( self ):
         try:
@@ -378,7 +282,7 @@ class MaKaCInfo(Persistent):
         try:
             return self._lang
         except:
-            self._lang = "en_US"
+            self._lang = "en_GB"
             #Logger.get('i18n').warning('No language set in MaKaCInfo... using %s by default' % self._lang)
             return self._lang
 
@@ -394,18 +298,137 @@ class MaKaCInfo(Persistent):
             self._archivingVolume = ""
         return self._archivingVolume
 
-    def getOAIPrivateHarvesterList(self):
-        """ Returns the list of allowed IPs of harvesters
-        for the private OAI gateway """
+    def getIPBasedACLMgr(self):
+        return self._ip_based_acl_mgr
 
-        try:
-            self._oaiPrivateHarvesterList
-        except:
-            self._oaiPrivateHarvesterList = []
-        return self._oaiPrivateHarvesterList
+    def isAPIHTTPSRequired(self):
+        if hasattr(self, '_apiHTTPSRequired'):
+            return self._apiHTTPSRequired
+        else:
+            self._apiHTTPSRequired = False
+            return False
 
-    def setOAIPrivateHarvesterList(self, harvList):
-        self._oaiPrivateHarvesterList = harvList
+    def setAPIHTTPSRequired(self, v):
+        self._apiHTTPSRequired = v
+
+    def isAPIPersistentAllowed(self):
+        if hasattr(self, '_apiPersistentAllowed'):
+            return self._apiPersistentAllowed
+        else:
+            self._apiPersistentAllowed = False
+            return False
+
+    def setAPIPersistentAllowed(self, v):
+        self._apiPersistentAllowed = v
+
+    def getAPIMode(self):
+        if hasattr(self, '_apiMode'):
+            return self._apiMode
+        else:
+            self._apiMode = 0
+            return 0
+
+    def setAPIMode(self, v):
+        self._apiMode = v
+
+    def getAPICacheTTL(self):
+        if hasattr(self, '_apiCacheTTL'):
+            return self._apiCacheTTL
+        else:
+            self._apiCacheTTL = 600
+            return 600
+
+    def setAPICacheTTL(self, v):
+        self._apiCacheTTL = v
+
+    def getAPISignatureTTL(self):
+        if hasattr(self, '_apiSignatureTTL'):
+            return self._apiSignatureTTL
+        else:
+            self._apiSignatureTTL = 600
+            return 600
+
+    def setAPISignatureTTL(self, v):
+        self._apiSignatureTTL = v
+
+    def isAnalyticsActive(self):
+        if hasattr(self, '_analyticsActive'):
+            return self._analyticsActive
+        else:
+            self._analyticsActive = False
+            return False
+
+    def setAnalyticsActive(self, v):
+        self._analyticsActive = v
+
+    def getAnalyticsCode(self):
+        if hasattr(self, '_analyticsCode'):
+            return self._analyticsCode
+        else:
+            self._analyticsCode = ""
+            return ""
+
+    def setAnalyticsCode(self, v):
+        self._analyticsCode = v
+
+
+    def getAnalyticsCodeLocation(self):
+        if hasattr(self, '_analyticsCodeLocation'):
+            return self._analyticsCodeLocation
+        else:
+            self._analyticsCodeLocation = ""
+            return ""
+
+    def setAnalyticsCodeLocation(self, v):
+        self._analyticsCodeLocation = v
+
+    def getAPIPersistentEnableAgreement(self):
+        if not hasattr(self, '_apiPersistentEnableAgreement'):
+            self._apiPersistentEnableAgreement = DEFAULT_PERSISTENT_ENABLE_AGREEMENT
+        return self._apiPersistentEnableAgreement
+
+    def getAPIPersistentDisableAgreement(self):
+        if not hasattr(self, '_apiPersistentDisableAgreement'):
+            self._apiPersistentDisableAgreement = DEFAULT_PERSISTENT_DISABLE_AGREEMENT
+        return self._apiPersistentDisableAgreement
+
+    def getAPIKeyUserAgreement(self):
+        if not hasattr(self, '_apiKeyUserAgreement'):
+            self._apiKeyUserAgreement = DEFAULT_API_USER_AGREEMENT
+        return self._apiKeyUserAgreement
+
+    def getAPIPersistentUserAgreement(self):
+        if not hasattr(self, '_apiPersistentUserAgreement'):
+            self._apiPersistentUserAgreement = DEFAULT_PERSISTENT_USER_AGREEMENT
+        return self._apiPersistentUserAgreement
+
+    def setAPIPersistentEnableAgreement(self, v):
+        self._apiPersistentEnableAgreement = v
+
+    def setAPIPersistentDisableAgreement(self, v):
+        self._apiPersistentDisableAgreement = v
+
+    def setAPIKeyUserAgreement(self, v):
+        self._apiKeyUserAgreement = v
+
+    def setAPIPersistentUserAgreement(self, v):
+        self._apiPersistentUserAgreement = v
+
+    def getProtectionDisclaimerProtected(self):
+        if not hasattr(self, '_protectionDisclaimerProtected'):
+            self._protectionDisclaimerProtected = DEFAULT_PROTECTION_DISCLAINER_PROTECTED
+        return self._protectionDisclaimerProtected
+
+    def setProtectionDisclaimerProtected(self, v):
+        self._protectionDisclaimerProtected = v
+
+    def getProtectionDisclaimerRestricted(self):
+        if not hasattr(self, '_protectionDisclaimerRestricted'):
+            self._protectionDisclaimerRestricted = DEFAULT_PROTECTION_DISCLAINER_RESTRICTED
+        return self._protectionDisclaimerRestricted
+
+    def setProtectionDisclaimerRestricted(self, v):
+        self._protectionDisclaimerRestricted = v
 
 
 class HelperMaKaCInfo:
@@ -414,89 +437,89 @@ class HelperMaKaCInfo:
         ZODB4 is released and the Persistent classes are no longer Extension
         ones.
     """
-
+    @classmethod
     def getMaKaCInfoInstance(cls):
-        dbmgr = DBMgr.getInstance()
+        dbmgr = db.DBMgr.getInstance()
         root = dbmgr.getDBConnection().root()
         try:
-            minfo = root["MaKaCInfo"]["main"]
-        except KeyError, e:
+            minfo = root['MaKaCInfo']['main']
+        except KeyError:
             minfo = MaKaCInfo()
-            root["MaKaCInfo"] = OOBTree.OOBTree()
-            root["MaKaCInfo"]["main"] = minfo
+            root['MaKaCInfo'] = OOBTree.OOBTree()
+            root['MaKaCInfo']['main'] = minfo
         return minfo
-
-    getMaKaCInfoInstance = classmethod( getMaKaCInfoInstance )
 
 
 class StyleManager(Persistent):
-    """This class manages the stylesheets used by the server for the display
+    """This class manages the styles used by the server for the display
        of events timetables
     """
 
     def __init__( self ):
-        self._stylesheets = Config.getInstance().getStylesheets()
+        self._styles = Config.getInstance().getStyles()
         self._eventStylesheets = Config.getInstance().getEventStylesheets()
         self._defaultEventStylesheet = Config.getInstance().getDefaultEventStylesheet()
 
-    def getStylesheets(self):
-        """gives back the entire stylesheet list.
-        """
-        return self._stylesheets
+    def getStyles(self):
+        try:
+            return self._styles
+        except AttributeError:
+            self._styles = Config.getInstance().getStyles()
+            return self._styles
 
-    def setStylesheets(self, sList=[]):
-        self._stylesheets = sList
+    def setStyles(self, newStyles):
+        self._styles = newStyles
 
-    def getEventStylesheets(self):
-        """gives back the entire stylesheet/event association list.
+    def getEventStyles(self):
+        """gives back the entire style/event association list.
         """
         return self._eventStylesheets
 
-    def setEventStylesheets(self, sDict={}):
+    def setEventStyles(self, sDict={}):
         self._eventStylesheets = sDict
 
-    def getDefaultEventStylesheet(self):
-        """gives back the default stylesheet/event association
+    def getDefaultEventStyles(self):
+        """gives back the default styles/event association
         """
         return self._defaultEventStylesheet
 
-    def setDefaultEventStylesheet(self, sDict={}):
+    def setDefaultEventStyle(self, sDict={}):
         self._defaultEventStylesheet = sDict
 
-    def getDefaultStylesheetForEventType(self, type):
+    def getDefaultStyleForEventType(self, eventType):
         """gives back the default stylesheet for the given type of event
         """
-        return self._defaultEventStylesheet.get(type,"")
+        return self._defaultEventStylesheet.get(eventType, "")
 
-    def removeStyle( self, style, type="" ):
+    def removeStyle(self, styleId, type=""):
         if type == "":
             # style globally removed
-            if style in self.getStylesheets().keys():
-                styles = self.getStylesheets()
-                del styles[style]
-                self.setStylesheets(styles)
-                self.removeStyleFromAllTypes(style)
+            styles = self.getStyles()
+            if styles.has_key(styleId):
+                del styles[styleId]
+                self.setStyles(styles)
+                self.removeStyleFromAllTypes(styleId)
         else:
             # style removed only in the type list
-            self.removeStyleFromEventType(style, type)
+            self.removeStyleFromEventType(styleId, type)
 
     def addStyleToEventType( self, style, type ):
-        dict = self.getEventStylesheets()
+        dict = self.getEventStyles()
         styles = dict.get(type,[])
         if style not in styles:
             styles.append(style)
             dict[type] = styles
-            self.setEventStylesheets(dict)
+            self.setEventStyles(dict)
 
     def removeStyleFromEventType( self, style, type ):
         # style removed only in the type list
-        dict = self.getEventStylesheets()
+        dict = self.getEventStyles()
         styles = dict.get(type,[])
-        defaultStyle = self.getDefaultStylesheetForEventType(type)
+        defaultStyle = self.getDefaultStyleForEventType(type)
         if style != "" and style in styles:
             styles.remove(style)
             dict[type] = styles
-            self.setEventStylesheets(dict)
+            self.setEventStyles(dict)
             if style.strip() == defaultStyle.strip():
                 if len(styles) > 0:
                     newDefaultStyle = styles[0]
@@ -506,61 +529,148 @@ class StyleManager(Persistent):
 
     def setDefaultStyle( self, style, type ):
         if style != "":
-            dict = self.getDefaultEventStylesheet()
+            dict = self.getDefaultEventStyles()
             dict[type] = style
-            self.setDefaultEventStylesheet(dict)
+            self.setDefaultEventStyle(dict)
 
     def removeStyleFromAllTypes( self, style ):
         for type in ["simple_event", "meeting", "conference"]:
             self.removeStyleFromEventType(style, type)
 
-    def getStylesheetListForEventType(self, type):
-        """gives back the stylesheet list associated to a given type of event.
+    def getStyleListForEventType(self, eventType):
+        """gives back the style list associated to a given type of event.
         If no event was specified it returns the empty list.
            Params:
                 type -- unique identifier of the event type
         """
-        return self._eventStylesheets.get( type, [] )
+        return self._eventStylesheets.get(eventType, [])
 
-    def getStylesheetDictForEventType(self, type):
-        """gives back the stylesheet list associated to a given type of event.
+    def isCorrectStyle(self, styleId):
+        if styleId not in self.getStyles():
+            return False
+
+        correctCSS = self.existsCSSFile(styleId) or not self.getCSSFilename(styleId)
+        return styleId == 'static' or (self.existsTPLFile(styleId) and correctCSS) or (self.existsXSLFile(styleId) and correctCSS)
+
+    def getExistingStylesForEventType(self, eventType):
+        result = []
+        for style in self.getStyleListForEventType(eventType):
+            if self.isCorrectStyle(style):
+                result.append(style)
+        return result
+
+    def getStyleDictForEventType(self, type):
+        """gives back the style list associated to a given type of event.
         If no event was specified it returns the empty list.
            Params:
                 type -- unique identifier of the event type
         """
-        return dict((ssid, self._stylesheets[ssid]) for ssid in self._eventStylesheets.get( type, [] ))
+        styles = self.getStyles()
+        return dict((styleID, styles[styleID]) for styleID in self._eventStylesheets.get(type, []))
 
-    def getStylesheetName( self, stylesheet ):
-        return self._stylesheets.get( stylesheet, "" )
+    def getStyleName(self, styleId):
+        styles = self.getStyles()
+        if styleId in styles:
+            return styles[styleId][0]
+        else:
+            return ""
 
-    def getBaseXSLPath( self ):
-        return Config.getInstance().getStylesheetsDir()
+    def getBaseTPLPath(self):
+        tplDir = Config.getInstance().getTPLDir()
+        return os.path.join(tplDir, "events")
 
-    def getXSLPath( self, stylesheet ):
-        if stylesheet.strip() != "":
-            basepath = Config.getInstance().getStylesheetsDir()
-            path = os.path.join( basepath, "%s.xsl" % stylesheet )
+    def getBaseXSLPath(self):
+        xslDir = Config.getInstance().getStylesheetsDir()
+        return os.path.join(xslDir, "events")
+
+    def existsTPLFile(self, styleId):
+        if styleId.strip() != "":
+            tplFile = self.getTemplateFilename(styleId)
+            if not tplFile:
+                return False
+            path = os.path.join(self.getBaseTPLPath(), tplFile)
+            if os.path.exists(path):
+                return True
+        return False
+
+    def existsXSLFile(self, styleId):
+        if styleId.strip() != "":
+            xslFile = self.getTemplateFilename(styleId)
+            if not xslFile:
+                return False
+            path = os.path.join(self.getBaseXSLPath(), xslFile)
+            if os.path.exists(path):
+                return True
+        return False
+
+    def getXSLPath(self, styleId):
+        if styleId.strip() != "":
+            xslFile = self.getTemplateFilename(styleId)
+            if not xslFile:
+                return False
+            path = os.path.join(self.getBaseXSLPath(), xslFile)
             if os.path.exists(path):
                 return path
-        return ""
+        return None
 
-    def getXSLFile( self, stylesheet ):
-        if self.getXSLPath( stylesheet ):
-            return "%s.xsl" % stylesheet
-        return ""
+    def getTemplateFilename(self, styleId):
+        styles = self.getStyles()
+        if styleId in styles:
+            fileName = styles[styleId][1]
+            return fileName
+        else:
+            return None
 
     def getBaseCSSPath( self ):
-        return os.path.join(Config.getInstance().getHtdocsDir(),"css")
+        return os.path.join(Config.getInstance().getHtdocsDir(),"css", "events")
 
-    def getCSSPath( self, stylesheet ):
-        if stylesheet.strip() != "":
-            basepath = Config.getInstance().getHtdocsDir()
-            path = os.path.join( basepath, "css", "%s.css" % stylesheet )
+    def existsCSSFile(self, styleId):
+        if styleId.strip() != "":
+            basepath = self.getBaseCSSPath()
+            filename = self.getCSSFilename(styleId)
+            if not filename:
+                return False
+            path = os.path.join(basepath, filename)
             if os.path.exists(path):
-                return path
-        return ""
+                return True
+        return False
 
-    def getCSSFile( self, stylesheet ):
-        if self.getCSSPath( stylesheet ):
-            return "%s.css" % stylesheet
-        return ""
+    def getCSSFilename( self, stylesheet ):
+        if stylesheet.strip() != "" and stylesheet in self.getStyles():
+            return self._styles[stylesheet][2]
+        return None
+
+    def getXSLStyles(self):
+        xslStyles = []
+        for style in self.getStyles():
+            if self._styles[style][1]!= None and self._styles[style][1].endswith(".xsl"):
+                xslStyles.append(style)
+        return xslStyles
+
+    def existsStyle(self, styleId):
+        styles = self.getStyles()
+        if styleId in styles:
+            return True
+        else:
+            return False
+
+class IPBasedACLMgr(Persistent):
+
+    def __init__(self):
+        self._full_access_acl = set()
+
+    def get_full_access_acl(self):
+        return self._full_access_acl
+
+    def grant_full_access(self, ip):
+        self._full_access_acl.add(ip)
+        self.notify_modification()
+
+    def revoke_full_access(self, ip):
+        if ip in self._full_access_acl:
+            self._full_access_acl.remove(ip)
+        self.notify_modification()
+
+    def notify_modification(self):
+        self._p_changed = 1
+

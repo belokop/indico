@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 type("PreLoadHandler", [],
      {
          execute: function() {
@@ -57,9 +74,9 @@ type("ServiceDialog", ["ExclusivePopup"],
                         killProgress();
                         self._error(error);
                     } else {
-                        self._success(response);
                         killProgress();
                         self.close();
+                        self._success(response);
                     }
                 }
             );
@@ -95,17 +112,26 @@ type("ErrorReportDialog", ["ServiceDialogWithButtons"],
          _sendReport: function(email) {
              var self = this;
              this.error.userMail = email.get();
+
+             if (!$.isArray(this.error.inner)) {
+                 this.error.inner = this.error.inner ? [this.error.inner] : [];
+             }
+
+             // make sure the HTML sanitization filter won't ruin everything
+             _(this.error.inner).each(function(line, i) {
+                 self.error.inner[i] = Util.HTMLEscape(line);
+             });
              indicoRequest('system.error.report',
                            this.error,
                            function(result, error){
                                if (error) {
-                                   alert($T("Unable to send your error report: ") + error.message);
+                                   new AlertPopup($T("Error"), $T("Unable to send your error report: ") + error.message).open();
                                }
                                else {
                                    if (result) {
-                                       alert($T("Your report has been sent. Thank you!"));
+                                       new AlertPopup($T("Success"), $T("Your report has been sent. Thank you!")).open();
                                    } else {
-                                       alert($T("Your report could not be sent to the support address."));
+                                       new AlertPopup($T("Error"), $T("Your report could not be sent to the support address.")).open();
                                    }
                                    self.close();
                                }
@@ -115,33 +141,35 @@ type("ErrorReportDialog", ["ServiceDialogWithButtons"],
 
          draw: function() {
              var self = this;
-             var email = new WatchObject();
+             this.email = new WatchObject();
 
              // TODO: force unidirectional binding?
-             $B(email.accessor(), indicoSource('user.data.email.get', {}));
+             $B(this.email.accessor(), indicoSource('user.data.email.get', {}));
 
-             var content = Html.div({style:{paddingLeft:pixels(10), paddingRight: pixels(10), paddingBottom:pixels(10)}},
-                     Html.div({style:{marginBottom: pixels(10), width:'300px', textAlign: 'center'}}, $T('An error has occurred while processing your request. We advise you to submit an error report, by clicking "Send report".')),
-                     Html.unescaped.div({style:{color: 'red', marginBottom: pixels(10), width: '300px', maxHeight: '75px', textAlign: 'center', overflow: 'auto'}},
-                              this.error.message),
-                     Html.div({style:{marginBottom: pixels(10), textAlign: 'center'}},
-                              Html.label({},"Your e-mail: "),
-                              $B(Html.input("text",{}), email.accessor())));
+             var content = $('<div/>').css({
+                 textAlign: 'center',
+                 width: '300px'
+             });
+             $('<p/>').text($T('An error has occurred while processing your request. We advise you to submit an error report, by clicking "Send report".')).appendTo(content);
+             $('<p/>').css('color', 'red').text(this.error.message).appendTo(content);
+             var emailBlock = $('<div/>').appendTo(content);
+             emailBlock.append($('<label/>').text($T('Your e-mail: ')));
+             var emailInput = $B(Html.input('text', {}), this.email.accessor());
+             emailBlock.append(emailInput.dom);
 
-             var buttons = Html.div({},
-                     Widget.link(command(
-                         function() {
-                             self._sendReport(email);
-                         },
-                         Html.input('button', {}, $T('Send report')))),
-                     Widget.link(command(
-                         function() {
-                             self.close();
-                         },
-                         Html.input('button', {style:{marginLeft: pixels(5)}}, $T('Do not send report'))
-                     )));
+             return this.ServiceDialogWithButtons.prototype.draw.call(this, content);
+         },
 
-             return this.ServiceDialogWithButtons.prototype.draw.call(this, content, buttons);
+         _getButtons: function() {
+             var self = this;
+             return [
+                 [$T('Send report'), function() {
+                     self._sendReport(self.email);
+                 }],
+                 [$T('Do not send report'), function() {
+                     self.close();
+                 }]
+             ];
          }
      },
      function(error) {
@@ -155,22 +183,20 @@ type("ErrorReportDialog", ["ServiceDialogWithButtons"],
 type("NoReportErrorDialog", ["AlertPopup"], {
 
     __getTitle: function() {
-        var title = this.error.title;
-        return Html.span('warningTitle', title ? title : $T("Warning"));
+        return this.error.title || $T("Warning");
     },
 
     __getContent: function() {
-
         var content = Html.div({style: {textAlign: 'left'}});
         content.append(Html.div({}, this.error.message));
         content.append(Html.unescaped.div("warningExplanation", this.error.explanation));
 
         if (this.error.code == 'ERR-P4') {
             content.append(Html.div({style:{marginTop:pixels(10)}},
-                    Html.a({href: Indico.Urls.Login+'?returnURL='+document.URL}, $T("Go to login page"))));
+                    Html.a({href: build_url(Indico.Urls.Login, {returnURL: document.URL})}, $T("Go to login page"))));
         }
 
-        return content;
+        return content.dom;
     }
 },
     function(error){
@@ -184,9 +210,10 @@ type("ProgressDialog",["ExclusivePopup"],
          draw: function() {
              return this.ExclusivePopup.prototype.draw.call(
                  this,
-                 Html.div('loadingPopup',
-                          Html.div('text', this.text)),
-                 {background: '#424242', border: 'none', padding: '20px'});
+                 $('<div class="loadingPopup"/>').append($('<div class="text"/>').html(this.text)),
+                 {background: '#424242', border: 'none', padding: '20px', overflow: 'visible'},
+                 {background: '#424242', border: 'none', padding: '1px', overflow: 'auto', display:"inline"}
+             );
          }
      },
      function(text) {

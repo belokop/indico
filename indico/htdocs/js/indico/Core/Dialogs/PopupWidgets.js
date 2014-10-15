@@ -1,20 +1,40 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*
  * A popup widget containing two DateSelectors where one can
  * specify a date range.
  */
 type("DateRangeSelector", ["ExclusivePopupWithButtons"], {
-    _drawButtons: function() {
+    _getButtons: function() {
         var self = this;
-
-        var buttonDiv = Html.div({}, Widget.button(command(function() {
-            self._submit();
-        }, $T("Choose"))));
-
-        return buttonDiv;
+        return [
+            [$T('Choose'), function() {
+                self._submit()
+            }],
+            [$T('Cancel'), function() {
+                self.close()
+            }]
+        ];
     },
 
     _submit: function() {
-        if(!this.valid) {
+        if(!this._verifyDates()) {
+            new AlertPopup($T('Invalid date range'), $T('The selected date range is invalid.')).open();
             return;
         }
 
@@ -22,93 +42,63 @@ type("DateRangeSelector", ["ExclusivePopupWithButtons"], {
     },
 
     _dateFromString: function(dateStr) {
-        var matches = /^(...) (\d+)\/(\d+)\/(\d+)$/.exec(dateStr);
-        return new Date(matches[4], matches[3] - 1, matches[2]);
+        return new Date(dateStr);
     },
 
     _verifyDates: function() {
-        var valid = true;
+        var dates = this.dateRangeWidget.daterange('getDates');
+        var sDate = dates[0];
+        var eDate = dates[1];
 
-        this.startDateSel.askForErrorCheck();
-        this.endDateSel.askForErrorCheck();
-
-        if (this.startDateSel.inError() || this.endDateSel.inError()) {
-            valid = false;
-        }
-        else {
-            var sDate = Util.parseJSDateTime(this.startDateSel.get(), IndicoDateTimeFormats.ServerHourless);
-            var eDate = Util.parseJSDateTime(this.endDateSel.get(), IndicoDateTimeFormats.ServerHourless);
-
-            if (sDate > eDate || (!this.allowEqual && sDate == eDate)) {
-                valid = false;
-                this.startDateSel.setError($T('Start date should be before end date'));
-                this.endDateSel.setError($T('End date should be after start date'));
-            }
-            else {
-                valid = true;
-                this.startDateSel.setError(null);
-                this.endDateSel.setError(null);
-                this.startDate = sDate;
-                this.endDate = eDate;
-            }
+        if (sDate > eDate || (!this.allowEqual && (sDate - eDate) == 0)) {
+            return false;
         }
 
-        this.valid = valid;
+        this.startDate = sDate;
+        this.endDate = eDate;
+        return true;
     },
 
     _drawWidget: function() {
         var self = this;
+        self.dateRangeWidget = $('<div/>');
+        return self.dateRangeWidget;
+    },
 
-        var structure = Html.table({}, Html.tbody({},
-                Html.tr("startEndDate",
-                        Html.td("startEndDateEntry", "Start date:"),
-                        Html.td({}, this.startDateSel.draw())),
-                Html.tr("startEndDate",
-                        Html.td("startEndDateEntry", "End date:"),
-                        Html.td({}, this.endDateSel.draw()))));
-
-        return Html.div({style: {width: pixels(220), height: pixels(50)}}, structure);
+    postDraw: function() {
+        this.dateRangeWidget.daterange({
+            allowPast: true,
+            useFields: false,
+            startDate: this.startDate,
+            endDate: this.endDate,
+            pickerOptions: {
+                yearRange: 'c-2:c+2'
+            }
+        });
+        return true; // refresh position
     },
 
     draw: function() {
-        var self = this;
-        return this.ExclusivePopupWithButtons.prototype.draw.call(this, this._drawWidget(), this._drawButtons());
+        return this.ExclusivePopupWithButtons.prototype.draw.call(this, this._drawWidget(), {
+            overflow: 'visible'
+        });
     }
 }, function(startDate, endDate, callback, title, allowEqual) {
     var self = this;
 
-    this.valid = true;
     this.callback = callback;
     this.allowEqual = allowEqual || false;
+    this.dateRangeWidget = null;
 
-    if(startDate) {
-        this.startDate = this._dateFromString(startDate);
+    if (startDate && typeof startDate == 'string') {
+        startDate = this._dateFromString(startDate);
     }
-    else {
-        this.startDate = new Date();
-    }
-
-    if(endDate) {
-        this.endDate = this._dateFromString(endDate);
-    }
-    else {
-        this.endDate = new Date();
+    if (endDate && typeof endDate == 'string') {
+        endDate = this._dateFromString(endDate);
     }
 
-    this.startDateSel = new DateSelector();
-    this.endDateSel = new DateSelector();
-
-    this.startDateSel.set(Util.formatDateTime(this.startDate, IndicoDateTimeFormats.ServerHourless));
-    this.endDateSel.set(Util.formatDateTime(this.endDate, IndicoDateTimeFormats.ServerHourless));
-
-    this.startDateSel.observe(function() {
-        self._verifyDates();
-        return true;
-    });
-    this.endDateSel.observe(function() {
-        self._verifyDates();
-        return true;
-    });
+    this.startDate = startDate || new Date();
+    this.endDate = endDate || new Date();
 
     this.ExclusivePopupWithButtons(title || 'Choose date range', function() {
         self.close();

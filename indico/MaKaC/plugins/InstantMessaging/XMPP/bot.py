@@ -1,23 +1,22 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
-from MaKaC.common.logger import Logger
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
+from indico.core.logger import Logger
 
 
 try:
@@ -58,13 +57,11 @@ class IndicoXMPPBotBase(object):
 
     def treatError(self, error, msg=''):
         """ Gets the response from the XMPP driver and, in case of error, returns the appropiate message"""
-        return {'error':error, 'reason':msg if msg!= '' else _('There was a problem while connecting our XMPP server. Please try again later')}
+        return {'error': error,
+                'reason': msg if msg!= '' else _('There was a problem while connecting our XMPP server. Please try again later')}
 
     def run(self):
-        try:
-            self.xmpp.process(threaded=False)
-        except Exception, e:
-            raise Exception(e)
+        self.xmpp.process(threaded=False)
 
 
 class IndicoXMPPBotRoomExists(IndicoXMPPBotBase):
@@ -78,6 +75,7 @@ class IndicoXMPPBotRoomExists(IndicoXMPPBotBase):
         try:
             connected = self.xmpp.connect()
         except Exception, e:
+            Logger.get('xmpp').exception('Connection problem')
             self._error = self.treatError(True, str(e))
             self.xmpp.disconnect()
 
@@ -85,16 +83,18 @@ class IndicoXMPPBotRoomExists(IndicoXMPPBotBase):
         #mod_discovery, service discovery related
         disco = self.xmpp.plugin['xep_0030']
         try:
-            roomExists=disco.getInfo(self._jid)
-        except Exception, e:
-            self._error = self.treatError(True, str(e))
-            self.xmpp.disconnect()
-        if roomExists.get('type') != 'error':
-            #if the type returned is not error it means that it found a chat room with the name we want, therefore that name is not usable
+            disco.getInfo(self._jid)
             self._error = self.treatError(True, 'roomExists')
-        else:
-            self._error = self.treatError(False)
-        self.xmpp.disconnect()
+        except sleekxmpp.exceptions.IqError, e:
+            if e.condition == 'item-not-found':
+                self._error = self.treatError(False)
+            else:
+                self._error = self.treatError(True, str(e))
+        except Exception, e:
+            Logger.get('xmpp').exception('Error connecting')
+            self._error = self.treatError(True, str(e))
+        finally:
+            self.xmpp.disconnect()
 
 
 

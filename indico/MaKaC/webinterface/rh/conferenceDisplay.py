@@ -2,30 +2,31 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
-from datetime import timedelta,datetime, time
-import os, re, sys
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
+from datetime import datetime
+from flask import session, redirect
+import os
+import re
+import pytz
+
 import MaKaC.common.info as info
 import MaKaC.webinterface.rh.base as base
 import MaKaC.webinterface.rh.conferenceBase as conferenceBase
 import MaKaC.webinterface.pages.conferences as conferences
-import MaKaC.webinterface.pages.abstracts as abstracts
-import MaKaC.webinterface.pages.authors as authors
 import MaKaC.webinterface.urlHandlers as urlHandlers
 import MaKaC.webinterface.displayMgr as displayMgr
 import MaKaC.webinterface.internalPagesMgr as internalPagesMgr
@@ -33,21 +34,19 @@ import MaKaC.user as user
 import MaKaC.webinterface.mail as mail
 from MaKaC.webinterface.pages.errors import WPAccessError, WPError404
 import MaKaC.conference as conference
-from MaKaC.common import Config, DBMgr
-from MaKaC.common.utils import isStringHTML,sortContributionByDate
+from indico.core.config import Config
+from indico.core.db import DBMgr
 from MaKaC.authentication import AuthenticatorMgr
 from MaKaC.webinterface.rh.base import RHDisplayBaseProtected
-from MaKaC.webinterface.rh.base import RoomBookingDBMixin
-from MaKaC.webinterface.rh.conferenceBase import RHConferenceBase, RHSubmitMaterialBase
+from MaKaC.webinterface.rh.conferenceBase import RHConferenceBase
+from MaKaC.webinterface.rh.login import RHSignInBase, RHResetPasswordBase
 import MaKaC.common.filters as filters
 import MaKaC.webinterface.common.contribFilters as contribFilters
-from MaKaC.errors import MaKaCError, ModificationError, NoReportError, AccessError, NotFoundError
-from MaKaC.PDFinterface.conference import ConfManagerContribsToPDF,TimeTablePlain,AbstractBook, SimplifiedTimeTablePlain, ProgrammeToPDF, TimetablePDFFormat
-from xml.sax.saxutils import escape
-from MaKaC.participant import Participant
-from MaKaC.ICALinterface.conference import ConferenceToiCal
+from MaKaC.errors import MaKaCError, NoReportError, NotFoundError
+from MaKaC.PDFinterface.conference import TimeTablePlain,AbstractBook, SimplifiedTimeTablePlain, TimetablePDFFormat
 from MaKaC.common.contribPacker import ConferencePacker, ZIPFileHandler
-import StringIO, zipfile
+import zipfile
+from cStringIO import StringIO
 from MaKaC.i18n import _
 
 import MaKaC.common.timezoneUtils as timezoneUtils
@@ -55,86 +54,50 @@ from reportlab.platypus.doctemplate import LayoutError
 from MaKaC.webinterface.rh.base import RH
 from MaKaC.webinterface.common.tools import cleanHTMLHeaderFilename
 
-class RHConfSignIn( conferenceBase.RHConferenceBase ):
+from indico.util.contextManager import ContextManager
+from indico.web.http_api.metadata.serializer import Serializer
+from indico.web.http_api.hooks.event import CategoryEventHook
+from indico.web.flask.util import send_file
+from indico.util.contextManager import ContextManager
+from indico.util.i18n import i18nformat
+from MaKaC.PDFinterface.base import LatexRunner
+
+
+class RHConfSignIn( conferenceBase.RHConferenceBase, RHSignInBase):
 
     def _checkParams( self, params ):
         conferenceBase.RHConferenceBase._checkParams( self, params )
-        self._login = params.get( "login", "" ).strip()
-        self._password = params.get( "password", "" ).strip()
-        self._returnURL = params.get( "returnURL", "").strip()
+        RHSignInBase._checkParams(self, params)
         if self._returnURL == "":
             self._returnURL = urlHandlers.UHConferenceDisplay.getURL( self._conf )
-        self._loginURL = params.get( "loginURL", "").strip()
-        self._signIn = params.get("signIn", "").strip()
 
+        self._disabledAccountURL = lambda av: urlHandlers.UHConfDisabledAccount.getURL(self._conf, av)
+        self._unactivatedAccountURL = lambda av: urlHandlers.UHConfUnactivatedAccount.getURL(self.conf, av)
+        self._signInPage = conferences.WPConfSignIn( self, self._conf )
+        self._signInPageFailed = conferences.WPConfSignIn( self, self._conf, login = self._login, msg = _("Wrong login or password")  )
 
-    def _process( self ):
-        self._tohttps = True
-        #Check for automatic login
-        auth = AuthenticatorMgr()
-        av = auth.autoLogin(self)
-        if av:
-            url = self._returnURL
-            self._getSession().setUser( av )
-            self._redirect( url )
-        if not self._signIn:
-            p = conferences.WPConfSignIn( self, self._conf )
-            return p.display( returnURL = self._returnURL )
-        else:
-            li = user.LoginInfo( self._login, self._password )
-            av = auth.getAvatar(li)
-            if not av:
-                p = conferences.WPConfSignIn( self, self._conf, login = self._login, msg = "Wrong login or password" )
-                return p.display( returnURL = self._returnURL )
-            elif not av.isActivated():
-                if av.isDisabled():
-                    self._redirect(urlHandlers.UHConfDisabledAccount.getURL(self._conf, av))
-                else:
-                    self._redirect(urlHandlers.UHConfUnactivatedAccount.getURL( self._conf, av))
-                return "your account is not active\nPlease activate it and retry"
-            else:
-                url = self._returnURL
-                self._getSession().setUser( av )
-                tzUtil = timezoneUtils.SessionTZ(av)
-                tz = tzUtil.getSessionTZ()
-                self._getSession().setVar("ActiveTimezone",tz)
-            self._redirect( url )
+    def _addExtraParamsToURL(self):
+        pass
 
-# REPLACED BY RHSignOut IN login.py
-#class RHConfSignOut( conferenceBase.RHConferenceBase ):
-#
-#    def _process( self ):
-#        if self._getUser():
-#            self._getSession().setUser( None )
-#            self._setUser( None )
-#        self._redirect( urlHandlers.UHConferenceDisplay.getURL( self._conf ) )
-
+    def _process(self):
+        return self._makeLoginProcess()
 
 
 class RHConferenceAccessKey( conferenceBase.RHConferenceBase ):
 
-    def _checkParams( self, params ):
-        conferenceBase.RHConferenceBase._checkParams(self, params )
-        self._accesskey = params.get( "accessKey", "" ).strip()
+    _isMobile = False
 
-    def _process( self ):
-        access_keys = self._getSession().getVar("accessKeys")
-        if access_keys == None:
-            access_keys = {}
+    def _checkParams(self, params):
+        conferenceBase.RHConferenceBase._checkParams(self, params)
+        self._accesskey = params.get("accessKey", "").strip()
+        self._doNotSanitizeFields.append("accessKey")
+
+    def _process(self):
+        access_keys = session.setdefault("accessKeys", {})
         access_keys[self._conf.getUniqueId()] = self._accesskey
-        self._getSession().setVar("accessKeys",access_keys)
-        url = urlHandlers.UHConferenceDisplay.getURL( self._conf )
-        self._redirect( url )
-
-
-class RHConferenceForceAccessKey( conferenceBase.RHConferenceBase ):
-
-    def _checkParams( self, params ):
-        conferenceBase.RHConferenceBase._checkParams(self, params )
-
-    def _process( self ):
-        wp = WPAccessError( self )
-        return wp.display()
+        session.modified = True
+        url = urlHandlers.UHConferenceDisplay.getURL(self._conf)
+        self._redirect(url)
 
 
 class RHConfDisabledAccount( conferenceBase.RHConferenceBase ):
@@ -169,7 +132,7 @@ class RHConfSendActivation( conferenceBase.RHConferenceBase ):
 
     def _process( self ):
         av = user.AvatarHolder().getById(self._userId)
-        sm = mail.sendConfirmationRequest(av)
+        sm = mail.sendConfirmationRequest(av, self._conf)
         sm.send()
         self._redirect( urlHandlers.UHConfSignIn.getURL( self._conf ) )
 
@@ -193,24 +156,26 @@ class _UserUtils:
         ##################################
         # Fermi timezone awareness(end)  #
         ##################################
-    setUserData = classmethod( setUserData )
+    setUserData = classmethod(setUserData)
 
 
-class RHConfUserCreation( conferenceBase.RHConferenceBase ):
+class RHConfUserCreation(conferenceBase.RHConferenceBase):
     _uh = urlHandlers.UHConfUserCreation
 
-    def _checkProtection( self ):
+    def _checkProtection(self):
         pass
 
-    def _checkParams( self, params ):
+    def _checkParams(self, params):
         self._params = params
-        conferenceBase.RHConferenceBase._checkParams( self, params )
+        conferenceBase.RHConferenceBase._checkParams(self, params)
         self._save = params.get("Save", "")
-        self._returnURL = params.get( "returnURL", "").strip()
+        self._returnURL = params.get("returnURL", "").strip()
+        self._doNotSanitizeFields.append("password")
+        self._doNotSanitizeFields.append("passwordBis")
 
-    def _process( self ):
+    def _process(self):
         save = False
-        ih = AuthenticatorMgr()
+        authManager = AuthenticatorMgr()
         minfo = info.HelperMaKaCInfo.getMaKaCInfoInstance()
         self._params["msg"] = ""
         if self._save:
@@ -237,7 +202,7 @@ class RHConfUserCreation( conferenceBase.RHConferenceBase ):
             if self._params.get("password","") != self._params.get("passwordBis",""):
                 self._params["msg"] += _("You must enter the same password twice.")+"<br>"
                 save = False
-            if not ih.isLoginFree(self._params.get("login","")):
+            if not authManager.isLoginAvailable(self._params.get("login", "")):
                 self._params["msg"] += _("Sorry, the login you requested is already in use. Please choose another one.")+"<br>"
                 save = False
             if not self._validMail(self._params.get("email","")):
@@ -246,24 +211,24 @@ class RHConfUserCreation( conferenceBase.RHConferenceBase ):
         if save:
             #Data are OK, Now check if there is an existing user or create a new one
             ah = user.AvatarHolder()
-            res =  ah.match({"email": self._params["email"]}, exact=1, forceWithoutExtAuth=True)
+            res =  ah.match({"email": self._params["email"]}, exact=1, searchInAuthenticators=False)
             if res:
                 #we find a user with the same email
                 a = res[0]
                 #check if the user have an identity:
                 if a.getIdentityList():
-                    self._redirect( urlHandlers.UHConfUserExistWithIdentity.getURL( self._conf, a))
+                    self._redirect(urlHandlers.UHConfUserExistWithIdentity.getURL(self._conf, a))
                     return
                 else:
-                    #create the identity to the user and send the comfirmatio email
-                    li = user.LoginInfo( self._params["login"], self._params["password"] )
-                    id = ih.createIdentity( li, a, "Local" )
-                    ih.add( id )
+                    #create the identity to the user and send the comfirmation email
+                    li = user.LoginInfo(self._params["login"], self._params["password"])
+                    id = authManager.createIdentity(li, a, "Local")
+                    authManager.add(id)
                     DBMgr.getInstance().commit()
                     if minfo.getModerateAccountCreation():
                         mail.sendAccountCreationModeration(a).send()
                     else:
-                        mail.sendConfirmationRequest(a).send()
+                        mail.sendConfirmationRequest(a, self._conf).send()
                         if minfo.getNotifyAccountCreation():
                             mail.sendAccountCreationNotification(a).send()
             else:
@@ -271,8 +236,8 @@ class RHConfUserCreation( conferenceBase.RHConferenceBase ):
                 _UserUtils.setUserData( a, self._params )
                 ah.add(a)
                 li = user.LoginInfo( self._params["login"], self._params["password"] )
-                id = ih.createIdentity( li, a, "Local" )
-                ih.add( id )
+                id = authManager.createIdentity( li, a, "Local" )
+                authManager.add( id )
                 DBMgr.getInstance().commit()
                 if minfo.getModerateAccountCreation():
                     mail.sendAccountCreationModeration(a).send()
@@ -353,13 +318,24 @@ class RHConfSendLogin( conferenceBase.RHConferenceBase ):
             av = user.AvatarHolder().getById(self._userId)
         elif self._email != "":
             try:
-                av = user.AvatarHolder().match({"email":self._email})[0]
+                av = user.AvatarHolder().match({"email": self._email}, exact=1)[0]
             except IndexError:
                 pass
         if av:
-            sm = mail.sendLoginInfo(av)
-            sm.send()
-        self._redirect(urlHandlers.UHConfSignIn.getURL( self._conf ))
+            mail.send_login_info(av, self._conf)
+        self._redirect(urlHandlers.UHConfSignIn.getURL(self._conf))
+
+
+class RHConfResetPassword(RHResetPasswordBase, RHConferenceBase):
+    def _checkParams(self, params):
+        RHConferenceBase._checkParams(self, params)
+        RHResetPasswordBase._checkParams(self, params)
+
+    def _getWP(self):
+        return conferences.WPConfResetPassword(self, self._conf)
+
+    def _getRedirectURL(self):
+        return urlHandlers.UHConfSignIn.getURL(self._conf)
 
 
 class RHConferenceBaseDisplay( RHConferenceBase, RHDisplayBaseProtected ):
@@ -368,19 +344,16 @@ class RHConferenceBaseDisplay( RHConferenceBase, RHDisplayBaseProtected ):
         RHConferenceBase._checkParams( self, params )
 
     def _checkProtection( self ):
-
-        from MaKaC.webinterface.rh.collaboration import RCCollaborationAdmin, RCCollaborationPluginAdmin
-        if not RCCollaborationAdmin.hasRights(self, None) and \
-            not RCCollaborationPluginAdmin.hasRights(self, plugins = "any"):
+        if not any(self._notify("isPluginAdmin", {"user": self._getUser(), "plugins": "any"}) +
+                   self._notify("isPluginTypeAdmin", {"user": self._getUser()})):
             RHDisplayBaseProtected._checkProtection( self )
 
 
-class RHConferenceDisplay( RoomBookingDBMixin, RHConferenceBaseDisplay ):
+class RHConferenceDisplay(RHConferenceBaseDisplay):
     _uh = urlHandlers.UHConferenceDisplay
 
     def _process( self ):
         params = self._getRequestParams()
-
         #set default variables
         if not self._reqParams.has_key("showDate"):
             self._reqParams["showDate"] = "all"
@@ -395,14 +368,14 @@ class RHConferenceDisplay( RoomBookingDBMixin, RHConferenceBaseDisplay ):
             type = self.getWebFactory().getId()
         else:
             type = "conference"
+        styleMgr = info.HelperMaKaCInfo.getMaKaCInfoInstance().getStyleManager()
         if self._reqParams.has_key("view"):
             view = self._reqParams["view"]
         else:
             view = displayMgr.ConfDisplayMgrRegistery().getDisplayMgr(self._target).getDefaultStyle()
             # if no default view was attributed, then get the configuration default
-            if view == "":
-                styleMgr = info.HelperMaKaCInfo.getMaKaCInfoInstance().getStyleManager()
-                view =styleMgr.getDefaultStylesheetForEventType( type )
+            if view == "" or not styleMgr.existsStyle(view):
+                view =styleMgr.getDefaultStyleForEventType( type )
                 displayMgr.ConfDisplayMgrRegistery().getDisplayMgr(self._target).setDefaultStyle( view )
         isLibxml = True
         warningText = ""
@@ -410,6 +383,7 @@ class RHConferenceDisplay( RoomBookingDBMixin, RHConferenceBaseDisplay ):
             import lxml
         except:
             isLibxml = False
+
         # create the html factory
         if type == "conference":
             if params.get("ovw", False):
@@ -424,23 +398,40 @@ class RHConferenceDisplay( RoomBookingDBMixin, RHConferenceBaseDisplay ):
                     p = conferences.WPConferenceDisplay( self, self._target )
                 else:
                     p = conferences.WPInternalPageDisplay(self,self._target, self._page)
-        elif view != "static" and isLibxml:
-            p = conferences.WPXSLConferenceDisplay( self, self._target, view, type, self._reqParams )
-        else:
-            if view != "static":
+        elif view in styleMgr.getXSLStyles():
+            if not isLibxml:
                 warningText = "lxml needs to be installed if you want to use a stylesheet-driven display - switching to static display"
+            self._responseUtil.content_type = 'text/xml'
+            p = conferences.WPXSLConferenceDisplay( self, self._target, view, type, self._reqParams )
+        elif view != "static":
+            p = conferences.WPTPLConferenceDisplay( self, self._target, view, type, self._reqParams )
+        else:
             if wf != None:
                 p = wf.getConferenceDisplayPage( self, self._target, self._reqParams )
             else:
                 p = conferences.WPConferenceDisplay( self, self._target )
-        # generate the html
 
         return warningText + p.display(**params)
 
 
-class RHConferenceOtherViews( RoomBookingDBMixin, RHConferenceBaseDisplay ):
-    """this class is for the conference type objects only
-    it is an alternative to the standard TimeTable view"""
+class RHRelativeEvent(RHConferenceBaseDisplay):
+    def _checkParams(self, params):
+        RHConferenceBaseDisplay._checkParams(self, params)
+        self._which = params['which']
+
+    def _process(self):
+        evt = self._conf.getOwner().getRelativeEvent(self._which, conf=self._conf)
+        if evt:
+            self._redirect(urlHandlers.UHConferenceDisplay.getURL(evt))
+        else:
+            return WPError404(self, urlHandlers.UHConferenceDisplay.getURL(self._conf)).display()
+
+
+class RHConferenceOtherViews(RHConferenceBaseDisplay):
+    """
+    this class is for the conference type objects only
+    it is an alternative to the standard TimeTable view
+    """
     _uh = urlHandlers.UHConferenceOtherViews
 
     def _process( self ):
@@ -454,39 +445,43 @@ class RHConferenceOtherViews( RoomBookingDBMixin, RHConferenceBaseDisplay ):
         #get default/selected view
         view = "standard"
         type = "conference"
+        styleMgr = info.HelperMaKaCInfo.getMaKaCInfoInstance().getStyleManager()
+        isLibxml = True
+        try:
+            import lxml
+        except:
+            isLibxml = False
         if self._reqParams.has_key("view"):
             view = self._reqParams["view"]
         else:
             view = displayMgr.ConfDisplayMgrRegistery().getDisplayMgr(self._target).getDefaultStyle()
             # if no default view was attributed, then get the configuration default
             if view == "":
-                styleMgr = info.HelperMaKaCInfo.getMaKaCInfoInstance().getStyleManager()
-                view =styleMgr.getDefaultStylesheetForEventType( type )
-                displayMgr.ConfDisplayMgrRegistery().getDisplayMgr(self._target).setDefaultStyle( view )
+                view =styleMgr.getDefaultStyleForEventType(type)
+                displayMgr.ConfDisplayMgrRegistery().getDisplayMgr(self._target).setDefaultStyle(view)
         # create the html factory
-        if view != "static":
-            p = conferences.WPXSLConferenceDisplay( self, self._target, view, type, self._reqParams )
+        if view in styleMgr.getXSLStyles() and isLibxml:
+            p = conferences.WPXSLConferenceDisplay(self, self._target, view, type, self._reqParams)
+        elif view != "static":
+            p = conferences.WPTPLConferenceDisplay(self, self._target, view, type, self._reqParams)
         else:
-            p = conferences.WPMeetingTimeTable( self, self._target,"parallel","meeting",self._reqParams )
+            p = conferences.WPMeetingTimeTable(self, self._target, "parallel", "meeting", self._reqParams)
         # generate the html
         if view == "xml" and self._reqParams.get('fr') == 'no':
-            self._req.content_type = "text/xml"
+            self._responseUtil.content_type = 'text/xml'
         return p.display()
 
 
-class RHConferenceGetLogo(RHConferenceBaseDisplay):
+class RHConferenceGetLogo(RHConferenceBase):
 
     def _process(self):
-        logo=self._target.getLogo()
-        self._req.headers_out["Content-Length"]="%s"%logo.getSize()
-        cfg=Config.getInstance()
-        mimetype=cfg.getFileTypeMimeType(logo.getFileType())
-        self._req.content_type="""%s"""%(mimetype)
-        self._req.headers_out["Content-Disposition"]="""inline; filename="%s\""""%cleanHTMLHeaderFilename(logo.getFileName())
-        return self._target.getLogo().readBin()
+        logo = self._target.getLogo()
+        if not logo:
+            raise MaKaCError(_("This event does not have a logo"))
+        return send_file(logo.getFileName(), logo.getFilePath(), logo.getFileType(), no_cache=False, conditional=True)
 
 
-class RHConferenceGetCSS(RHConferenceBaseDisplay):
+class RHConferenceGetCSS(RHConferenceBase):
 
     """
     CSS which is used just for a conference.
@@ -494,35 +489,25 @@ class RHConferenceGetCSS(RHConferenceBaseDisplay):
 
     def _process(self):
         sm = displayMgr.ConfDisplayMgrRegistery().getDisplayMgr(self._conf).getStyleManager()
-        css=sm.getLocalCSS()
+        css = sm.getLocalCSS()
         if css:
-            self._req.headers_out["Content-Length"]="%s"%css.getSize()
-            self._req.content_type="text/css"
-            self._req.headers_out["Content-Disposition"]="""inline; filename="%s\""""%css.getFileName()
-            return css.readBin()
-
+            return send_file(css.getFileName(), css.getFilePath(), mimetype='text/css', no_cache=False, conditional=True)
         return ""
 
 
 class RHConferenceGetPic(RHConferenceBaseDisplay):
 
     def _checkParams(self, params):
-        RHConferenceBaseDisplay._checkParams( self, params )
-        self._picId = params.get("picId","")
+        RHConferenceBaseDisplay._checkParams(self, params)
+        self._picId = params.get("picId", "")
 
     def _process(self):
         im = displayMgr.ConfDisplayMgrRegistery().getDisplayMgr(self._conf).getImagesManager()
         if im.getPic(self._picId):
-            pic=im.getPic(self._picId).getLocalFile()
-            self._req.headers_out["Content-Length"]="%s"%pic.getSize()
-            cfg=Config.getInstance()
-            mimetype=cfg.getFileTypeMimeType(pic.getFileType())
-            self._req.content_type="""%s"""%(mimetype)
-            self._req.headers_out["Content-Disposition"]="""inline; filename="%s\""""%pic.getFileName()
-            return pic.readBin()
+            pic = im.getPic(self._picId).getLocalFile()
+            return send_file(pic.getFileName(), pic.getFilePath(), pic.getFileType())
         else:
-            from indico.web.wsgi import webinterface_handler_config as apache
-            self._req.status = apache.HTTP_NOT_FOUND
+            self._responseUtil.status = 404
             return WPError404(self, urlHandlers.UHConferenceDisplay.getURL(self._conf)).display()
 
 
@@ -534,8 +519,8 @@ class RHConferenceEmail(RHConferenceBaseDisplay, base.RHProtected):
 
     def _checkParams( self, params ):
         RHConferenceBaseDisplay._checkParams( self, params )
-        self._auth = params.has_key("authId")
-        self._chair = params.has_key("chairId")
+        self._auth = "authorId" in params
+        self._chair = "chairId" in params
         if params.has_key("contribId"):
             contrib = self._conf.getContributionById(params.get("contribId",""))
         if self._chair:
@@ -543,17 +528,20 @@ class RHConferenceEmail(RHConferenceBaseDisplay, base.RHProtected):
             chair = self._conf.getChairById(chairid)
             if chair == None:
                 raise NotFoundError(_("The chair you try to email does not exist."))
-            self._emailto = chair.getEmail()
+            self._emailto = chair
         if self._auth:
-            authid=params.get("authId","")
+            authid = params.get("authorId", "")
+            if not contrib:
+                raise MaKaCError(_("The author's contribution does not exist anymore."))
             author = contrib.getAuthorById(authid)
             if author == None:
                 raise NotFoundError(_("The author you try to email does not exist."))
-            self._emailto = author.getEmail()
+            self._emailto = author
 
     def _process(self):
+        postURL = urlHandlers.UHConferenceSendEmail.getURL(self._emailto)
         p=conferences.WPEMail(self, self._target)
-        return p.display(emailto=self._emailto)
+        return p.display(emailto=[self._emailto], postURL=postURL)
 
 class RHConferenceSendEmail (RHConferenceBaseDisplay, base.RHProtected):
     _uh = urlHandlers.UHConferenceSendEmail
@@ -563,9 +551,17 @@ class RHConferenceSendEmail (RHConferenceBaseDisplay, base.RHProtected):
 
     def _checkParams(self, params):
         RHConferenceBaseDisplay._checkParams( self, params )
-        self._to = params.get("to","")
-        self._cc = params.get("cc","")
-        self._from=params.get("from","")
+        if "contribId" in params:
+            contrib = self._conf.getContributionById(params.get("contribId",""))
+        if "chairId" in params:
+            chairid=params.get("chairId","")
+            self._to = self._conf.getChairById(chairid).getEmail()
+        if "authorId" in params:
+            authid = params.get("authorId", "")
+            self._to = contrib.getAuthorById(authid).getEmail()
+        fromId = params.get("from","")
+        self._from = (user.AvatarHolder()).getById(fromId).getEmail()
+        self._cc = self._from
         self._subject=params.get("subject","")
         self._body = params.get("body","")
         self._send = params.has_key("OK")
@@ -579,38 +575,29 @@ class RHConferenceSendEmail (RHConferenceBaseDisplay, base.RHProtected):
             self._redirect(urlHandlers.UHConferenceDisplay.getURL(self._conf))
 
 
-
-class RHConferenceProgram( RHConferenceBaseDisplay ):
+class RHConferenceProgram(RHConferenceBaseDisplay):
     _uh = urlHandlers.UHConferenceProgram
 
-    def _checkParams( self, params ):
-        RHConferenceBaseDisplay._checkParams( self, params )
-        self._xs = self._normaliseListParam( params.get("xs", []) )
+    def _checkParams(self, params):
+        RHConferenceBaseDisplay._checkParams(self, params)
+        self._xs = self._normaliseListParam(params.get("xs", []))
+
+    def _process(self):
+        p = conferences.WPConferenceProgram(self, self._target)
+        return p.display(xs=self._xs)
 
 
-    def _process( self ):
-        p = conferences.WPConferenceProgram( self, self._target )
-        return p.display( xs = self._xs )
+class RHConferenceProgramPDF(RHConferenceBaseDisplay):
 
-
-class RHConferenceProgramPDF( RHConferenceBaseDisplay ):
-
-    def _process( self ):
-        tz = timezoneUtils.DisplayTZ(self._aw,self._target).getDisplayTZ()
-        filename = "%s - Programme.pdf"%cleanHTMLHeaderFilename(self._target.getTitle())
+    def _process(self):
+        tz = timezoneUtils.DisplayTZ(self._aw, self._target).getDisplayTZ()
+        filename = "%s - Programme.pdf" % self._target.getTitle()
         from MaKaC.PDFinterface.conference import ProgrammeToPDF
         pdf = ProgrammeToPDF(self._target, tz=tz)
-        data = pdf.getPDFBin()
-        #self._req.headers_out["Accept-Ranges"] = "bytes"
-        self._req.headers_out["Content-Length"] = "%s"%len(data)
-        cfg = Config.getInstance()
-        mimetype = cfg.getFileTypeMimeType( "PDF" )
-        #self._req.content_type = """%s; name="%s\""""%(mimetype, filename )
-        self._req.content_type = """%s"""%(mimetype)
-        self._req.headers_out["Content-Disposition"] = """inline; filename="%s\""""%filename.replace("\r\n"," ")
-        return data
+        return send_file(filename, StringIO(pdf.getPDFBin()), 'PDF')
 
-class RHConferenceTimeTable( RoomBookingDBMixin, RHConferenceBaseDisplay ):
+
+class RHConferenceTimeTable(RHConferenceBaseDisplay):
     _uh = urlHandlers.UHConferenceTimeTable
 
     def _process( self ):
@@ -721,12 +708,7 @@ class RHTimeTablePDF(RHConferenceTimeTable):
     ##                    tries = 0
     ##                    raise MaKaCError(str(e))
 
-            self._req.headers_out["Content-Length"] = "%s"%len(data)
-            cfg=Config.getInstance()
-            mimetype=cfg.getFileTypeMimeType("PDF")
-            self._req.content_type = """%s"""%(mimetype)
-            self._req.headers_out["Content-Disposition"]="""inline; filename="%s\""""%filename
-            return data
+            return send_file(filename, StringIO(data), 'PDF')
 
 class RHTimeTableCustomizePDF(RHConferenceTimeTable):
 
@@ -736,11 +718,14 @@ class RHTimeTableCustomizePDF(RHConferenceTimeTable):
         self._view = params.get("view", "standard")
 
     def _process(self):
-        # TODO: why not construct p this way only if wf == None?
-        p=conferences.WPTimeTableCustomizePDF(self, self._target)
+        if self._target.getType() =="simple_event":
+            raise NoReportError(_("Lectures have no timetable therefore one cannot generate a timetable PDF."))
+
         wf = self.getWebFactory()
         if wf != None:
             p=wf.getTimeTableCustomizePDF(self, self._target, self._view)
+        else:
+            p=conferences.WPTimeTableCustomizePDF(self, self._target)
         return p.display(**self._getRequestParams())
 
 
@@ -770,37 +755,31 @@ class ContributionsFilterCrit(filters.FilterCriteria):
 class RHContributionList( RHConferenceBaseDisplay ):
     _uh = urlHandlers.UHContributionList
 
+    @staticmethod
+    def create_filter(conf, params, filterUsed=False):
+        filter = {"hide_withdrawn": True}
+        ltypes = ltracks = lsessions = []
+        if not filterUsed:
+            for type in conf.getContribTypeList():
+                ltypes.append( type.getId() )
+            for track in conf.getTrackList():
+                ltracks.append( track.getId() )
+            for session in conf.getSessionList():
+                lsessions.append( session.getId() )
+
+        filter["type"] = params.get("selTypes", ltypes)
+        filter["track"] = params.get("selTracks", ltracks)
+        filter["session"] = params.get("selSessions", lsessions)
+        return ContributionsFilterCrit(conf,filter)
+
     def _checkParams( self, params ):
         RHConferenceBaseDisplay._checkParams( self, params )
-        # Sorting
-        self._sortingCrit=contribFilters.SortingCriteria( [params.get( "sortBy", "number").strip()] )
-        self._order = params.get("order","down")
+
         # Filtering
-        filterUsed = params.has_key( "OK" ) # this variable is true when the
-                                            # filter has been used
-        filter = {"hide_withdrawn": True}
-        ltypes = []
-        if not filterUsed:
-            for type in self._conf.getContribTypeList():
-                ltypes.append( type.getId() )
-        else:
-            for id in self._normaliseListParam( params.get("selTypes", []) ):
-                ltypes.append(id)
-        filter["type"] = ltypes
+        filterUsed = params.get("filter","no") == "yes"
+        self._filterText =  params.get("filterText","")
+        self._filterCrit = self.create_filter(self._conf, params, filterUsed)
 
-        ltracks = []
-        if not filterUsed:
-            for track in self._conf.getTrackList():
-                ltracks.append( track.getId() )
-        filter["track"] = self._normaliseListParam( params.get("selTracks", ltracks) )
-
-        lsessions = []
-        if not filterUsed:
-            for session in self._conf.getSessionList():
-                lsessions.append( session.getId() )
-        filter["session"] = self._normaliseListParam( params.get("selSessions", lsessions) )
-
-        self._filterCrit=ContributionsFilterCrit(self._conf,filter)
         typeShowNoValue, trackShowNoValue, sessionShowNoValue = True, True, True
         if filterUsed:
             if self._conf.getContribTypeList():
@@ -812,13 +791,11 @@ class RHContributionList( RHConferenceBaseDisplay ):
         self._filterCrit.getField("type").setShowNoValue( typeShowNoValue )
         self._filterCrit.getField("track").setShowNoValue( trackShowNoValue )
         self._filterCrit.getField("session").setShowNoValue( sessionShowNoValue )
-        self._sc=params.get("sc",1)
-        self._nc=params.get("nc",20)
 
 
     def _process( self ):
         p = conferences.WPContributionList( self, self._target )
-        return p.display(sortingCrit = self._sortingCrit, filterCrit = self._filterCrit, sc=self._sc, nc=self._nc, order=self._order)
+        return p.display(filterCrit = self._filterCrit, filterText=self._filterText)
 
 
 class RHAuthorIndex(RHConferenceBaseDisplay):
@@ -826,24 +803,20 @@ class RHAuthorIndex(RHConferenceBaseDisplay):
 
     def _checkParams( self, params ):
         RHConferenceBaseDisplay._checkParams( self, params )
-        self._view=params.get("view","full")
-        self._letter=params.get("letter","a")
 
     def _process(self):
         p=conferences.WPAuthorIndex(self,self._target)
-        return p.display(viewMode=self._view,selLetter=self._letter)
+        return p.display()
 
 class RHSpeakerIndex(RHConferenceBaseDisplay):
-    _uh=urlHandlers.UHConfAuthorIndex
+    _uh=urlHandlers.UHConfSpeakerIndex
 
     def _checkParams( self, params ):
         RHConferenceBaseDisplay._checkParams( self, params )
-        self._view=params.get("view","full")
-        self._letter=params.get("letter","a")
 
     def _process(self):
         p=conferences.WPSpeakerIndex(self,self._target)
-        return p.display(viewMode=self._view,selLetter=self._letter)
+        return p.display()
 
 class RHMyStuff(RHConferenceBaseDisplay,base.RHProtected):
     _uh=urlHandlers.UHConfMyStuff
@@ -862,8 +835,13 @@ class RHConfMyStuffMySessions(RHConferenceBaseDisplay,base.RHProtected):
         base.RHProtected._checkProtection(self)
 
     def _process(self):
-        p=conferences.WPConfMyStuffMySessions(self,self._target)
-        return p.display()
+        ls = set(self._conf.getCoordinatedSessions(self._aw.getUser())) | \
+             set(self._conf.getManagedSession(self._aw.getUser()))
+        if len(ls) == 1:
+            self._redirect(urlHandlers.UHSessionModification.getURL(ls.pop()))
+        else:
+            p = conferences.WPConfMyStuffMySessions(self, self._target)
+            return p.display()
 
 class RHConfMyStuffMyContributions(RHConferenceBaseDisplay,base.RHProtected):
     _uh=urlHandlers.UHConfMyStuffMyContributions
@@ -882,29 +860,21 @@ class RHConfMyStuffMyTracks(RHConferenceBaseDisplay,base.RHProtected):
         base.RHProtected._checkProtection(self)
 
     def _process(self):
-        p=conferences.WPConfMyStuffMyTracks(self,self._target)
-        return p.display()
+        ltracks = self._target.getCoordinatedTracks(self._aw.getUser())
 
-
-class RHContribsActions:
-    """
-    class to select the action to do with the selected abstracts
-    """
-    def __init__(self, req):
-        self._req = req
-
-    def process(self, params):
-        if params.has_key("PDF"):
-            return RHContributionListToPDF(self._req).process(params)
-        return "no action to do"
+        if len(ltracks) == 1:
+            self._redirect(urlHandlers.UHTrackModifAbstracts.getURL(ltracks[0]))
+        else:
+            p = conferences.WPConfMyStuffMyTracks(self, self._target)
+            return p.display()
 
 class RHContributionListToPDF(RHConferenceBaseDisplay):
 
     def _checkParams( self, params ):
         RHConferenceBaseDisplay._checkParams( self, params )
-        self._contribIds = self._normaliseListParam( params.get("contributions", []) )
+        contribIds = self._normaliseListParam( params.get("contributions", []) )
         self._contribs = []
-        for id in self._contribIds:
+        for id in contribIds:
             contrib = self._conf.getContributionById(id)
             if contrib.canAccess(self.getAW()):
                 self._contribs.append(contrib)
@@ -914,158 +884,52 @@ class RHContributionListToPDF(RHConferenceBaseDisplay):
         filename = "Contributions.pdf"
         if not self._contribs:
             return "No contributions to print"
-        from MaKaC.PDFinterface.conference import ConfManagerContribsToPDF
-        pdf = ConfManagerContribsToPDF(self._conf, self._contribs, tz=tz)
-        data = pdf.getPDFBin()
-        self._req.set_content_length(len(data))
-        cfg = Config.getInstance()
-        mimetype = cfg.getFileTypeMimeType( "PDF" )
-        self._req.content_type = """%s"""%(mimetype)
-        self._req.headers_out["Content-Disposition"] = """inline; filename="%s\""""%filename
-        return data
+        from MaKaC.PDFinterface.conference import ContribsToPDF
+        pdf = ContribsToPDF(self._conf, self._contribs)
 
-
-class RHConferenceMenuClose(RHConferenceBaseDisplay):
-
-    def _checkParams( self, params ):
-        RHConferenceBaseDisplay._checkParams( self, params )
-        self._currentURL = params.get("currentURL","")
-
-    def _process( self ):
-        websession = self._getSession()
-        websession.setVar("menuStatus", "close")
-        self._redirect(self._currentURL)
-
-
-class RHConferenceMenuOpen(RHConferenceBaseDisplay):
-
-    def _checkParams( self, params ):
-        RHConferenceBaseDisplay._checkParams( self, params )
-        self._currentURL = params.get("currentURL","")
-
-    def _process( self ):
-        websession = self._getSession()
-        websession.setVar("menuStatus", "open")
-        self._redirect(self._currentURL)
+        return send_file(filename, pdf.generate(), 'PDF')
 
 
 class RHAbstractBook(RHConferenceBaseDisplay):
     _uh=urlHandlers.UHConfAbstractBook
 
-    def _checkProtection( self ):
+    def _checkParams(self, params):
+        RHConferenceBaseDisplay._checkParams(self, params)
+        self._noCache = params.get('cache') == '0'
+
+    def _checkProtection(self):
         RHConferenceBaseDisplay._checkProtection(self)
         if not self._conf.getAbstractMgr().isActive() or not self._conf.hasEnabledSection("cfa"):
             raise MaKaCError( _("The Call For Abstracts was disabled by the conference managers"))
 
-    def _process( self ):
-        p=conferences.WPAbstractBookCustomise(self,self._target)
-        return p.display()
+    def _getCacheFileName(self):
+        dir = os.path.join(Config().getInstance().getXMLCacheDir(), "abstract_books")
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+        return os.path.join(dir, '%s.pdf' % self._conf.getId())
 
-class RHAbstractBookPerform(RHConferenceBaseDisplay):
-    _uh=urlHandlers.UHConfAbstractBook
+    def _process(self):
+        boaConfig = self._conf.getBOAConfig()
+        pdfFilename = "%s - Book of abstracts.pdf" % cleanHTMLHeaderFilename(self._target.getTitle())
+        cacheFile = self._getCacheFileName()
+        if os.path.isfile(cacheFile):
+            mtime = pytz.utc.localize(datetime.utcfromtimestamp(os.path.getmtime(cacheFile)))
+        else:
+            mtime = None
 
-    def _checkParams( self, params ):
-        RHConferenceBaseDisplay._checkParams( self, params )
-        self._sortBy = params.get("sortBy","")
+        if boaConfig.isCacheEnabled() and not self._noCache and mtime and mtime > boaConfig.lastChanged:
+            return send_file(pdfFilename, cacheFile, 'PDF')
+        else:
+            tz = timezoneUtils.DisplayTZ(self._aw, self._target).getDisplayTZ()
+            pdf = AbstractBook(self._target, self.getAW(), tz=tz)
+            fname = pdf.generate()
 
-    def _process( self ):
-        tz = timezoneUtils.DisplayTZ(self._aw,self._target).getDisplayTZ()
-        filename = "%s - Book of abstracts.pdf"%cleanHTMLHeaderFilename(self._target.getTitle())
-        from MaKaC.PDFinterface.conference import AbstractBook
-        pdf = AbstractBook(self._target,self.getAW(), self._sortBy, tz=tz)
-        data = pdf.getPDFBin()
-        self._req.headers_out["Content-Length"] = "%s"%len(data)
-        cfg = Config.getInstance()
-        mimetype = cfg.getFileTypeMimeType( "PDF" )
-        self._req.content_type = """%s"""%(mimetype)
-        self._req.headers_out["Content-Disposition"] = """inline; filename="%s\""""%filename.replace("\r\n"," ")
-        return data
+            with open(fname, 'rb') as f:
+                data = f.read()
+            with open(cacheFile, 'wb') as f:
+                f.write(data)
 
-
-class RHConfParticipantsNewPending(RHConferenceDisplay):
-    _uh = urlHandlers.UHConfParticipantsNewPending
-
-    def _process( self ):
-        params = self._getRequestParams()
-
-        errorList = []
-        if self._conf.getStartDate() < timezoneUtils.nowutc() :
-            errorList.append("This event began on %s"%self._conf.getStartDate())
-            errorList.append("You cannot apply for participation after the event began")
-
-        if not self._conf.getParticipation().isAllowedForApplying() :
-            errorList.append("Participation in this event is restricted to persons invited")
-            errorList.append("If you insist on taking part in this event, please contact the event manager")
-
-        if errorList:
-            self._reqParams["errorMsg"] = errorList
-            return RHConferenceDisplay._process(self)
-
-        params["formAction"] = str(urlHandlers.UHConfParticipantsAddPending.getURL(self._conf))
-        user = self._getUser()
-        if user is not None :
-            params["titleValue"] = user.getTitle()
-            params["surNameValue"] = user.getFamilyName()
-            params["nameValue"] = user.getName()
-            params["emailValue"] = user.getEmail()
-            params["addressValue"] = user.getAddress()
-            params["affiliationValue"] = user.getAffiliation()
-            params["phoneValue"] = user.getTelephone()
-            params["faxValue"] = user.getFax()
-
-            params["disabledTitle"] = params["disabledSurName"] = True
-            params["disabledName"] = params["disabledEmail"] = True
-            params["disabledAddress"] = params["disabledPhone"] = True
-            params["disabledFax"] = params["disabledAffiliation"] = True
-
-
-        wf=self.getWebFactory()
-        if wf is not None:
-            p = wf.getConfModifParticipantsNewPending(self, self._conf)
-        else :
-            p = conferences.WPConfModifParticipantsNewPending( self, self._target )
-        return p.display(**params)
-
-
-class RHConfParticipantsAddPending(RHConferenceDisplay):
-    _uh = urlHandlers.UHConfParticipantsAddPending
-
-    def _process( self ):
-        params = self._getRequestParams()
-        errorList = []
-        infoList = []
-        if params.has_key("ok") :
-            user = self._getUser()
-            pending = Participant(self._conf, user)
-            if user is None :
-                pending.setTitle(params.get("title",""))
-                pending.setFamilyName(params.get("surName",""))
-                pending.setFirstName(params.get("name",""))
-                pending.setEmail(params.get("email",""))
-                pending.setAffiliation(params.get("affiliation",""))
-                pending.setAddress(params.get("address",""))
-                pending.setTelephone(params.get("phone",""))
-                pending.setFax(params.get("fax",""))
-            participation = self._conf.getParticipation()
-            if participation.alreadyParticipating(pending) != 0:
-                errorList.append("There is already a participant with the email address '%s' in this meeting."
-                                 % pending.getEmail())
-            else:
-                if participation.addPendingParticipant(pending):
-                    if participation.getAutoAccept():
-                        infoList.append(_("The request for participation has been accepted"))
-                    else:
-                        infoList.append("The participant identified by email '%s' has been added to the list of pending participants"
-                                    % pending.getEmail())
-                else:
-                    errorList.append(_("The participant cannot be added."))
-
-        if infoList:
-            self._reqParams["infoMsg"] = infoList
-        if errorList:
-            self._reqParams["errorMsg"] = errorList
-
-        return RHConferenceDisplay._process(self)
+            return send_file(pdfFilename, cacheFile, 'PDF')
 
 
 class RHConfParticipantsRefusal(RHConferenceBaseDisplay):
@@ -1076,20 +940,24 @@ class RHConfParticipantsRefusal(RHConferenceBaseDisplay):
         self._confirm = params.has_key( "confirm" )
         self._cancel = params.has_key( "cancel" )
 
-    def _process( self ):
+    def _process(self):
         params = self._getRequestParams()
         participantId = params["participantId"]
+        status = self._conf.getParticipation().getParticipantById(participantId).getStatus()
+        if status == 'accepted':
+            raise NoReportError(_('You have already accepted the invitation.'))
+        elif status == 'rejected':
+            raise NoReportError(_('You have already rejected the invitation.'))
         if self._cancel:
-            participant = self._conf.getParticipation().getParticipantById(participantId)
-            url = urlHandlers.UHConferenceDisplay.getURL( self._conf )
-            self._redirect( url )
+            url = urlHandlers.UHConferenceDisplay.getURL(self._conf)
+            self._redirect(url)
         elif self._confirm:
             participant = self._conf.getParticipation().getParticipantById(participantId)
             participant.setStatusRefused()
-            url = urlHandlers.UHConferenceDisplay.getURL( self._conf )
-            self._redirect( url )
+            url = urlHandlers.UHConferenceDisplay.getURL(self._conf)
+            self._redirect(url)
         else:
-            return conferences.WPConfModifParticipantsRefuse( self, self._conf ).display(**params)
+            return conferences.WPConfModifParticipantsRefuse(self, self._conf).display(**params)
 
 
 class RHConfParticipantsInvitation(RHConferenceBaseDisplay):
@@ -1103,44 +971,42 @@ class RHConfParticipantsInvitation(RHConferenceBaseDisplay):
     def _process( self ):
         params = self._getRequestParams()
         participantId = params["participantId"]
+        status = self._conf.getParticipation().getParticipantById(participantId).getStatus()
+        if status == 'accepted':
+            raise NoReportError(_('You have already accepted the invitation.'))
+        elif status == 'rejected':
+            raise NoReportError(_('You have already rejected the invitation.'))
         if self._cancel:
-            participant = self._conf.getParticipation().getParticipantById(participantId)
-            if participant == None:
+            if not self._conf.getParticipation().setParticipantRejected(participantId):
                 raise NoReportError("It seems you have been withdrawn from the list of invited participants")
-            participant.setStatusRejected()
             url = urlHandlers.UHConferenceDisplay.getURL( self._conf )
             self._redirect( url )
         elif self._confirm:
-            participant = self._conf.getParticipation().getParticipantById(participantId)
-            if participant == None:
+            if not self._conf.getParticipation().setParticipantAccepted(participantId):
                 raise NoReportError("It seems you have been withdrawn from the list of invited participants")
-            participant.setStatusAccepted()
             url = urlHandlers.UHConferenceDisplay.getURL( self._conf )
             self._redirect( url )
         else:
             return conferences.WPConfModifParticipantsInvite( self, self._conf ).display(**params)
 
+
 class RHConferenceToiCal(RHConferenceBaseDisplay):
 
     def _checkParams( self, params ):
         RHConferenceBaseDisplay._checkParams( self, params )
-        self._detailLevel = params.get("detailLevel","top")
+        self._detailLevel = params.get("detail","events")
 
-    def _process( self ):
-        filename = "%s - Event.ics"%cleanHTMLHeaderFilename(self._target.getTitle())
-        ical = ConferenceToiCal(self._target.getConference())
+    def _process(self):
+        filename = "%s-Event.ics" % self._target.getTitle()
 
-        if self._detailLevel == "contributions":
-            data = ical.getDetailedBody()
-        else:
-            data = ical.getBody()
+        hook = CategoryEventHook({'detail': self._detailLevel}, 'event',
+                                 {'idlist': self._conf.getId(), 'dformat': 'ics'})
+        res = hook(self.getAW())
+        resultFossil = {'results': res[0]}
 
-        self._req.headers_out["Content-Length"] = "%s"%len(data)
-        cfg = Config.getInstance()
-        mimetype = cfg.getFileTypeMimeType( "ICAL" )
-        self._req.content_type = """%s"""%(mimetype)
-        self._req.headers_out["Content-Disposition"] = """inline; filename="%s\""""%filename.replace("\r\n"," ")
-        return data
+        serializer = Serializer.create('ics')
+        return send_file(filename, StringIO(serializer(resultFossil)), 'ICAL')
+
 
 class RHConferenceToXML(RHConferenceBaseDisplay):
 
@@ -1148,33 +1014,17 @@ class RHConferenceToXML(RHConferenceBaseDisplay):
         RHConferenceBaseDisplay._checkParams( self, params )
         self._xmltype = params.get("xmltype","standard")
 
-    def _process( self ):
-        filename = "%s - Event.xml"%cleanHTMLHeaderFilename(self._target.getTitle())
+    def _process(self):
+        filename = "%s - Event.xml" % self._target.getTitle()
         from MaKaC.common.xmlGen import XMLGen
-        from MaKaC.common.output import outputGenerator, XSLTransformer
+        from MaKaC.common.output import outputGenerator
         xmlgen = XMLGen()
         xmlgen.initXml()
         outgen = outputGenerator(self.getAW(), xmlgen)
         xmlgen.openTag("event")
         outgen.confToXML(self._target.getConference(),0,0,1)
         xmlgen.closeTag("event")
-        basexml = xmlgen.getXml()
-        path = Config.getInstance().getStylesheetsDir()
-        stylepath = "%s.xsl" % (os.path.join(path,self._xmltype))
-        if self._xmltype != "standard" and os.path.exists(stylepath):
-            try:
-                parser = XSLTransformer(stylepath)
-                data = parser.process(basexml)
-            except:
-                data = "Cannot parse stylesheet: %s" % sys.exc_info()[0]
-        else:
-            data = basexml
-        self._req.headers_out["Content-Length"] = "%s"%len(data)
-        cfg = Config.getInstance()
-        mimetype = cfg.getFileTypeMimeType( "XML" )
-        self._req.content_type = """%s"""%(mimetype)
-        self._req.headers_out["Content-Disposition"] = """inline; filename="%s\""""%filename.replace("\r\n"," ")
-        return data
+        return send_file(filename, StringIO(xmlgen.getXml()), 'XML')
 
 
 class RHConferenceToMarcXML(RHConferenceBaseDisplay):
@@ -1189,139 +1039,37 @@ class RHConferenceToMarcXML(RHConferenceBaseDisplay):
         xmlgen.openTag("marc:record", [["xmlns:marc","http://www.loc.gov/MARC21/slim"],["xmlns:xsi","http://www.w3.org/2001/XMLSchema-instance"],["xsi:schemaLocation", "http://www.loc.gov/MARC21/slim http://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd"]])
         outgen.confToXMLMarc21(self._target.getConference())
         xmlgen.closeTag("marc:record")
-        data = xmlgen.getXml()
-        self._req.headers_out["Content-Length"] = "%s"%len(data)
-        cfg = Config.getInstance()
-        mimetype = cfg.getFileTypeMimeType( "XML" )
-        self._req.content_type = """%s"""%(mimetype)
-        self._req.headers_out["Content-Disposition"] = """inline; filename="%s\""""%filename.replace("\r\n"," ")
-        return data
-
-class RHWriteMinutes( RHConferenceBaseDisplay ):
-
-    def _checkProtection(self):
-        if not self._target.canModify( self.getAW() ):
-            if self._target.getModifKey() != "":
-                raise ModificationError()
-            if self._getUser() == None:
-                self._preserveParams()
-                self._checkSessionUser()
-            else:
-                raise ModificationError()
-
-    def _preserveParams(self):
-        preservedParams = self._getRequestParams().copy()
-        self._websession.setVar("minutesPreservedParams",preservedParams)
-
-    def _getPreservedParams(self):
-        params = self._websession.getVar("minutesPreservedParams")
-        if params is None :
-            return {}
-        return params
-
-    def _removePreservedParams(self):
-        self._websession.setVar("minutesPreservedParams",None)
-
-    def _checkParams( self, params ):
-        RHConferenceBaseDisplay._checkParams( self, params )
-        preservedParams = self._getPreservedParams()
-        if preservedParams != {}:
-            params.update(preservedParams)
-            self._removePreservedParams()
-        self._cancel = params.has_key("cancel")
-        self._save = params.has_key("OK")
-        self._compile = params.has_key("compile")
-        self._text = params.get("text", "")#.strip()
-
-    def _getCompiledMinutes( self ):
-        minutes = []
-        isHTML = False
-        cList = self._target.getContributionList()
-        cList.sort(sortContributionByDate)
-        for c in cList:
-            if c.getMinutes():
-                minText = c.getMinutes().getText()
-                minutes.append([c.getTitle(),minText])
-                if isStringHTML(minText):
-                    isHTML = True
-        if isHTML:
-            lb = "<br>"
-        else:
-            lb = "\n"
-        text = "%s (%s)%s" % (self._target.getTitle(), self._target.getStartDate().strftime("%d %b %Y"), lb)
-        part = self._target.getParticipation().getPresentParticipantListText()
-        if part != "":
-            text += "Present: %s%s" % (part,lb)
-        uList = self._target.getChairList()
-        chairs = ""
-        for chair in uList:
-            if chairs != "":
-                chairs += "; "
-            chairs += chair.getFullName()
-        if len(uList) > 0:
-            text += "Chaired by: %s%s%s" % (chairs, lb, lb)
-        for min in minutes:
-            text += "==================%s%s%s==================%s%s%s%s" % (lb,min[0],lb,lb,min[1],lb,lb)
-        return text
-
-    def _process( self ):
-        wf=self.getWebFactory()
-        if self._compile:
-            minutes = self._target.getMinutes()
-            if not minutes:
-                minutes = self._target.createMinutes()
-            text = self._getCompiledMinutes()
-            minutes.setText( text )
-        if self._save:
-            minutes = self._target.getMinutes()
-            if not minutes:
-                minutes = self._target.createMinutes()
-            minutes.setText( self._text )
-        elif not self._cancel:
-            if wf is None:
-                wp = conferences.WPConfDisplayWriteMinutes(self, self._target)
-            else:
-                wp = wf.getConferenceDisplayWriteMinutes( self, self._conf)
-            return wp.display()
-        self._redirect( urlHandlers.UHConferenceDisplay.getURL( self._target ) )
+        return send_file(filename, StringIO(xmlgen.getXml()), 'XML')
 
 
 class RHInternalPageDisplay(RHConferenceBaseDisplay):
-    _uh=urlHandlers.UHInternalPageDisplay
+    _uh = urlHandlers.UHInternalPageDisplay
 
-    def _checkParams(self,params):
-        RHConferenceBaseDisplay._checkParams(self,params)
-        if params.has_key("pageId"):
-            pageId=params.get("pageId")
-            intPagesMgr=internalPagesMgr.InternalPagesMgrRegistery().getInternalPagesMgr(self._conf)
-            self._page=intPagesMgr.getPageById(pageId)
-            self._target = self._page
+    def _checkParams(self, params):
+        self._page = None
+        RHConferenceBaseDisplay._checkParams(self, params)
+
+        if 'pageId' in params:
+            pageId = params.get("pageId")
+            intPagesMgr = internalPagesMgr.InternalPagesMgrRegistery().getInternalPagesMgr(self._conf)
+            self._page = intPagesMgr.getPageById(pageId)
+            self._target = self._conf
+
             if self._page is None:
-                raise MaKaCError( _("The webpage, you are trying to access, does not exist"))
+                raise NotFoundError(_("The web page you are trying to access does not exist"))
         else:
-            raise MaKaCError( _("The webpage, you are trying to access, does not exist"))
+            raise NotFoundError(_("The web page you are trying to access does not exist"))
 
-    def _checkProtection(self):
-        if not self._conf.canView( self.getAW() ):
-            from MaKaC.conference import Link,LocalFile
-
-            if self._conf.getAccessKey() != "":
-                raise AccessError()
-            if self._getUser() == None:
-                self._checkSessionUser()
-            else:
-                raise AccessError()
-
-    def _process( self ):
-        p=conferences.WPInternalPageDisplay(self,self._conf, self._page)
+    def _process(self):
+        p = conferences.WPInternalPageDisplay(self, self._conf, self._page)
         return p.display()
+
 
 class RHConferenceLatexPackage(RHConferenceBaseDisplay):
 
-    def _process( self ):
-        #return "nothing"
-        filename = "%s-BookOfAbstracts.zip"%cleanHTMLHeaderFilename(self._target.getTitle())
-        zipdata = StringIO.StringIO()
+    def _process(self):
+        filename = "%s-BookOfAbstracts.zip" % self._target.getTitle()
+        zipdata = StringIO()
         zip = zipfile.ZipFile(zipdata, "w")
         for cont in self._target.getContributionList():
             f = []
@@ -1359,17 +1107,9 @@ class RHConferenceLatexPackage(RHConferenceBaseDisplay):
             f.append("""\\noindent %s"""%cont.getDescription())
             zip.writestr("contribution-%s"%cont.getId(), "\n".join(f))
         zip.close()
-        data = zipdata.getvalue()
-        zipdata.close()
+        zipdata.seek(0)
 
-        #self._req.headers_out["Accept-Ranges"] = "bytes"
-        self._req.headers_out["Content-Length"] = "%s"%len(data)
-        cfg = Config.getInstance()
-        mimetype = cfg.getFileTypeMimeType( "ZIP" )
-        #self._req.content_type = """%s; name="%s\""""%(mimetype, filename )
-        self._req.content_type = """%s"""%(mimetype)
-        self._req.headers_out["Content-Disposition"] = """inline; filename="%s\""""%filename.replace("\r\n"," ")
-        return data
+        return send_file(filename, zipdata, 'ZIP', inline=False)
 
 
 class RHFullMaterialPackage(RHConferenceBaseDisplay):
@@ -1377,7 +1117,6 @@ class RHFullMaterialPackage(RHConferenceBaseDisplay):
 
     def _checkParams( self, params ):
         RHConferenceBaseDisplay._checkParams( self, params )
-        self._errors = params.get("errors","")
 
     def _process( self ):
 
@@ -1386,64 +1125,40 @@ class RHFullMaterialPackage(RHConferenceBaseDisplay):
             p = wf.getDisplayFullMaterialPackage(self,self._target)
         else : #Event == Conference
             p = conferences.WPDisplayFullMaterialPackage(self,self._target)
-        return p.display(errors=self._errors)
-
-
+        return p.display()
 
 
 class RHFullMaterialPackagePerform(RHConferenceBaseDisplay):
-    _uh=urlHandlers.UHConferenceDisplayMaterialPackagePerform
+    _uh = urlHandlers.UHConferenceDisplayMaterialPackagePerform
 
-    def _checkParams( self, params ):
-        RHConferenceBaseDisplay._checkParams( self, params )
-        self._days=self._normaliseListParam(params.get("days",[]))
-        self._mainResource = (params.get("mainResource","") != "")
+    def _checkParams(self, params):
+        RHConferenceBaseDisplay._checkParams(self, params)
+        self._days = self._normaliseListParam(params.get("days", []))
+        self._mainResource = (params.get("mainResource", "") != "")
         self._fromDate = ""
-        fromDay = params.get("fromDay","")
-        fromMonth = params.get("fromMonth","")
-        fromYear = params.get("fromYear","")
+        fromDay = params.get("fromDay", "")
+        fromMonth = params.get("fromMonth", "")
+        fromYear = params.get("fromYear", "")
         if fromDay != "" and fromMonth != "" and fromYear != "" and \
-           fromDay != "dd" and fromMonth != "mm" and fromYear != "yyyy":
-            self._fromDate = "%s %s %s"%(fromDay, fromMonth, fromYear)
-        self._cancel = params.has_key("cancel")
-        self._materialTypes=self._normaliseListParam(params.get("materialType",[]))
-        self._sessionList = self._normaliseListParam(params.get("sessionList",[]))
-
-    def _process( self ):
-        if not self._cancel:
-            if self._materialTypes != []:
-                p=ConferencePacker(self._conf, self._aw)
-                path=p.pack(self._materialTypes, self._days, self._mainResource, self._fromDate, ZIPFileHandler(),self._sessionList)
-                filename = "full-material.zip"
-                cfg = Config.getInstance()
-                mimetype = cfg.getFileTypeMimeType( "ZIP" )
-                self._req.content_type = """%s"""%(mimetype)
-                self._req.headers_out["Content-Disposition"] = """inline; filename="%s\""""%filename
-                self._req.sendfile(path)
-            else:
-                url = urlHandlers.UHConferenceDisplayMaterialPackage.getURL(self._conf)
-                url.addParam("errors", "You have to select at least one material type")
-                self._redirect( url )
-        else:
-            self._redirect( urlHandlers.UHConferenceDisplay.getURL( self._conf ) )
-
-
-class RHShortURLRedirect(RH):
-
-    def _checkParams( self, params ):
-        self._tag = params.get("tag", "").strip()
+                fromDay != "dd" and fromMonth != "mm" and fromYear != "yyyy":
+            self._fromDate = "%s %s %s" % (fromDay, fromMonth, fromYear)
+        self._cancel = "cancel" in params
+        self._materialTypes = self._normaliseListParam(
+            params.get("materialType", []))
+        self._sessionList = self._normaliseListParam(
+            params.get("sessionList", []))
 
     def _process(self):
-        from MaKaC.conference import ConferenceHolder
-        ch = ConferenceHolder()
-        from MaKaC.common.url import ShortURLMapper
-        sum = ShortURLMapper()
-        if ch.hasKey(self._tag):
-            conf = ch.getById(self._tag)
-            self._redirect(urlHandlers.UHConferenceDisplay.getURL(conf))
-        elif sum.hasKey(self._tag):
-            conf = sum.getById(self._tag)
-            self._redirect(urlHandlers.UHConferenceDisplay.getURL(conf))
+        if not self._cancel:
+            if self._materialTypes != []:
+                p = ConferencePacker(self._conf, self._aw)
+                path = p.pack(self._materialTypes, self._days, self._mainResource, self._fromDate, ZIPFileHandler(), self._sessionList)
+                if not p.getItems():
+                    raise NoReportError(_("The selected package does not contain any items."))
+                return send_file('full-material.zip', path, 'ZIP', inline=False)
+            else:
+                raise NoReportError(
+                    _("You have to select at least one material type"))
         else:
-            raise NoReportError(_("The specified event with id or tag \"%s\" does not exist or has been deleted")%self._tag)
-
+            self._redirect(
+                urlHandlers.UHConferenceDisplay.getURL(self._conf))

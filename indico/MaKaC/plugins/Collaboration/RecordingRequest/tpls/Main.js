@@ -1,28 +1,6 @@
 {
     checkParams : function () {
         return {
-            "permission": ["radio", false, function(option, values){
-
-                var errors = [];
-                if (!exists(values["permission"]) || (exists(values["permission"]) && values["permission"] != "Yes")) {
-                    errors.push($T("We cannot handle this request if you do not commit to ensure each speaker will give permission."));
-                }
-                return errors;
-            }],
-            "lectureOptions": ["text", true, function(option, values){
-                var errors = [];
-                if (option == 'chooseOne') {
-                    errors.push($T("Please choose if slides and/or chalkboards will be used."));
-                }
-                return errors;
-            }],
-            "lectureStyle": ["text", true, function(option, values){
-                var errors = [];
-                if (option == 'chooseOne') {
-                    errors.push($T("Please choose a type of event."));
-                }
-                return errors;
-            }]
         }
     },
 
@@ -49,20 +27,27 @@
 
     clearForm : function () {
         var formNodes = IndicoUtil.findFormFields($E('RecordingRequestForm'));
-        IndicoUtil.setFormValues(formNodes, {'talkSelectionComments':'', 'numRemoteViewers':'', 'numAttendees':'', 'otherComments':''});
+        IndicoUtil.setFormValues(formNodes, {'numRemoteViewers':'', 'numAttendees':'', 'otherComments':''});
         if (!isLecture) {
-            $E('allTalksRB').dom.checked = true;
+            $('#allTalksRB').trigger('click');
             IndicoUI.Effect.disappear($E('contributionsDiv'));
         }
-        $E('permissionYesRB').dom.checked = false;
-        $E('permissionNoRB').dom.checked = false;
-        $E('lectureOptions').dom.value = "chooseOne";
-        $E('lectureStyle').dom.value = "chooseOne";
         $E('postingUrgency').dom.value = "withinWeek";
     },
 
     onLoad : function() {
-        RRUpdateContributionList();
+        RRUpdateContributionList('contributionList');
+
+        $('input[name=talks]:radio').change(function() {
+            if ($('#allTalksRB').attr('checked')) {
+                $('#not_capable_warning').show();
+            } else {
+                $('#not_capable_warning').hide();
+            }
+        });
+
+        IndicoUtil.enableDisableForm($E("RRForm"), RRRecordingCapable);
+
         if (!isLecture) {
             if (singleBookings['RecordingRequest'] && singleBookings['RecordingRequest'].bookingParams.talks == 'choose') {
                 IndicoUI.Effect.appear($E('contributionsDiv'));
@@ -71,6 +56,12 @@
 
         if(!singleBookings['RecordingRequest']) {
             callFunction('RecordingRequest', 'clearForm');
+        }
+    },
+
+    afterLoad : function() {
+        if ($("#chooseTalksRB").is(":checked")) {
+            $("#chooseTalksRB").trigger('change');
         }
     }
 }

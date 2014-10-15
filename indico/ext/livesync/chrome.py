@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 """
 Contains definitions for the plugin's web interface
@@ -24,21 +23,25 @@ Contains definitions for the plugin's web interface
 
 # system lib imports
 import os, datetime
+import pkg_resources
 
 # 3rd party lib imports
 import zope.interface
+from webassets import Bundle
 
 # plugin imports
+from indico.web.assets import PluginEnvironment
 from indico.ext.livesync import SyncManager
 from indico.ext.livesync.struct import EmptyTrackException
 from indico.ext.livesync.handlers import AgentTypeInspector
 import indico.ext.livesync
 
-# indico api imports
-from indico.core.api import Component
-from indico.core.api.plugins import IPluginSettingsContributor
-from indico.web.rh import RHHtdocs
+# indico extpoint imports
+from indico.core.extpoint import Component
+from indico.core.extpoint.plugins import IPluginSettingsContributor
+from indico.web.handlers import RHHtdocs
 from indico.util.date_time import nowutc, int_timestamp
+from indico.core.config import Config
 
 # legacy indico imports
 from MaKaC.webinterface.wcomponents import WTemplated
@@ -46,48 +49,35 @@ from MaKaC.webinterface.rh.admins import RHAdminBase
 from MaKaC.webinterface.urlHandlers import URLHandler
 from MaKaC.webinterface.pages.admins import WPAdminPlugins
 from MaKaC.webinterface import wcomponents
-
+from MaKaC.common.info import HelperMaKaCInfo
 
 class UHAdminLiveSyncManagement(URLHandler):
-    """
-    URL handler for livesync agent management
-    """
-    _relativeURL = "livesync/manage"
+    """URL handler for livesync agent management"""
+    _endpoint = 'livesync.manage'
 
 
 class UHAdminLiveSyncStatus(URLHandler):
-    """
-    URL handler for livesync status
-    """
-    _relativeURL = "livesync/status"
+    """URL handler for livesync status"""
+    _endpoint = 'livesync.status'
 
 
 # Request Handlers
 
 class RHLiveSyncHtdocs(RHHtdocs):
-    """
-    Static file handler for LiveSync plugin
-    """
+    """Static file handler for LiveSync plugin"""
 
-    _url = r"^/livesync/(?P<filepath>.*)$"
-    _local_path = os.path.join(indico.ext.livesync.__path__[0], 'htdocs')
+    _local_path = pkg_resources.resource_filename(indico.ext.livesync.__name__, "htdocs")
+    _min_dir = 'livesync'
 
 
 class RHAdminLiveSyncManagement(RHAdminBase):
-    """
-    LiveSync management page - request handler
-    """
-    _url = r'^/livesync/manage/?$'
-
+    """LiveSync management page - request handler"""
     def _process(self):
         return WPLiveSyncAdmin(self, WPluginAgentManagement).display()
 
 
 class RHAdminLiveSyncStatus(RHAdminBase):
-    """
-    LiveSync status page - request handler
-    """
-    _url = r'^/livesync/status/?$'
+    """LiveSync status page - request handler"""
 
     def _process(self):
         return WPLiveSyncAdmin(self, WPluginAgentStatus).display()
@@ -132,14 +122,21 @@ class WPLiveSyncAdmin(WPAdminPlugins):
     def __init__(self, rh, templateClass):
         WPAdminPlugins.__init__(self, rh, 'livesync', '')
         self._templateClass = templateClass
+        self._plugin_asset_env = PluginEnvironment('livesync', os.path.dirname(__file__), 'livesync')
+        self._plugin_asset_env.register('livesync_js', Bundle('js/livesync.js',
+                                                              filters='rjsmin',
+                                                              output="livesync__%(version)s.min.js"))
+        self._plugin_asset_env.register('livesync_css', Bundle('css/livesync.css',
+                                                               filters='cssmin',
+                                                               output="livesync__%(version)s.min.css"))
 
     def getJSFiles(self):
         return WPAdminPlugins.getJSFiles(self) + \
-               self._includeJSFile('livesync/js', 'livesync')
+            self._plugin_asset_env['livesync_js'].urls()
 
     def getCSSFiles(self):
         return WPAdminPlugins.getCSSFiles(self) + \
-               ['livesync/livesync.css']
+            self._plugin_asset_env['livesync_css'].urls()
 
     def _getPageContent(self, params):
         return wcomponents.WTabControl(self._tabCtrl, self._getAW()).getHTML(

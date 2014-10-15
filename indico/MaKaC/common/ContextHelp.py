@@ -1,7 +1,26 @@
+# -*- coding: utf-8 -*-
+##
+##
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+##
+## Indico is free software; you can redistribute it and/or
+## modify it under the terms of the GNU General Public License as
+## published by the Free Software Foundation; either version 3 of the
+## License, or (at your option) any later version.
+##
+## Indico is distributed in the hope that it will be useful, but
+## WITHOUT ANY WARRANTY; without even the implied warranty of
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+## General Public License for more details.
+##
+## You should have received a copy of the GNU General Public License
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
+
 import xml.dom.minidom as minidom
 from lxml import etree, builder, html as lhtml
 from MaKaC.errors import MaKaCError
-from MaKaC.common import Config
+from indico.core.config import Config
 import xml.sax
 import xml.sax.saxutils as saxutils
 import re, StringIO
@@ -372,19 +391,17 @@ class ContextHelp:
 
                 content =   '{indico:help ref=snip%s}' % count
 
-                filteredText = ttText.replace('\n','').replace('"','&quot;');
+                filteredText = ttText.replace('\n', '').replace('"', '&quot;')
 
                 if ttType == 'explicit':
-                    snippets['snip'+str(count)] ="""<span onmouseover="domTT_activate(this, event, 'content', '%s', 'type', 'greasy', 'caption', false , 'delay', 100, 'maxWidth', 320, 'styleClass', 'tip' );">
+                    snippets['snip'+str(count)] ="""<span class="contextHelp" title="%s">
                                                 <span style="color: Green; margin-left: 6px; font-size:smaller;"><img style="border: None;display:inline-block;vertical-align: middle" src="%s"/></span>
                                                 </span>""" % (filteredText,Config.getInstance().getSystemIconURL( "help" ))
 
                     elem.append(builder.E.span(content))
                 elif ttType == 'hover':
-                    snippets['snip'+str(count)] ="""domTT_activate(this, event, 'content', '%s', 'type', 'greasy', 'caption', false ,'trail', false, 'delay', 100, 'maxWidth', 320, 'styleClass', 'tip' );""" \
-                                                % filteredText
-
-                    elem.set('onmouseover', content)
+                    elem.set('class', ('contextHelp ' + elem.get('class')).strip())
+                    elem.set('title', filteredText)
 
                 else:
                     raise Exception( _('Tooltip type not recognized: ') + str(type))
@@ -406,7 +423,7 @@ class ContextHelp:
 
             content =   '{indico:help ref=snip%s}' % count
 
-            filteredText = ttText.replace('\n','').replace('"','&quot;');
+            filteredText = ttText.replace('\n', '').replace('"', '&quot;')
 
             snippets['snip'+str(count)] = filteredText
             elem.append(builder.E.div(content, {'class': 'ctxtInfo'}))

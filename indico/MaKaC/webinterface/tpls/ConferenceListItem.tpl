@@ -1,7 +1,9 @@
-<%!
+<%page args="aw=None, lItem=None, conferenceDisplayURLGen=None"/>
+<%
 from datetime import datetime, timedelta
 from pytz import timezone
 from MaKaC.common.timezoneUtils import DisplayTZ, nowutc
+from indico.util.string import remove_tags
 creatDate = lItem.getCreationDate()
 creatDate = creatDate.replace(hour=0,minute=0,second=0)
 
@@ -21,7 +23,7 @@ elif (startDate.month != endDate.month) or (startDate.day != endDate.day):
 else:
     evtDate = "%s"%startDate.strftime("%d %b")
 
-eventTitle = escape(lItem.getTitle().strip()) or "[no title]"
+eventTitle = escape(remove_tags(lItem.getTitle().strip())) or "[no title]"
 
 if lItem.getType() == "simple_event":
     if len(lItem.getChairList()) > 0:
@@ -33,34 +35,24 @@ if lItem.getType() == "simple_event":
 %>
 <li itemscope itemtype="http://data-vocabulary.org/Event">
     <span class="ical">
-        <a href="<%= urlHandlers.UHConferenceToiCal.getURL(lItem) %>"><img src="<%= systemIcon("ical_grey") %>" alt="iCal export" /></a>
+        <a href="${ urlHandlers.UHConferenceToiCal.getURL(lItem) }"><img src="${ systemIcon("ical_grey") }" alt="iCal export" /></a>
     </span>
     <span class="listName">
-        <span class="date <%= happeningNowClass %>"><%= evtDate %><time itemprop="startDate" datetime="<%= startDate.strftime("%Y-%m-%d") %>" /></span><a href="<%= conferenceDisplayURLGen(lItem)%>" itemprop="url" ><span itemprop="summary"><%= eventTitle %></span></a>
+        <span class="date ${ happeningNowClass }">${ evtDate }<time itemprop="startDate" datetime="${ startDate.strftime("%Y-%m-%d") }" /></span><a href="${ conferenceDisplayURLGen(lItem)}" itemprop="url" ><span itemprop="summary">${ eventTitle }</span></a>
 
-      	<span class="protected">
+          <span class="protected">
+            <% prot = getProtection(lItem) %>
+            % if prot[0]:
+                % if prot[0] == "domain":
+                    <span data-type="domain" data-domain="${prot[1] | n, j, h}">(${_("protected: ") + ", ".join(prot[1])})</span>
+                % else:
+                    <span data-type="restricted">(${_("protected")})</span>
+                % endif
+            % endif
 
-			<% if lItem.hasAnyProtection(): %>
-                <% # if it is public but it is protected by domain (when private domain is not valid) %>
-                <% if not lItem.isProtected(): %>
-                    <% d=[] %>
-                    <% for domain in lItem.getDomainList(): %>
-                        <% d.append(domain.getName()) %>
-                    <% end %>
-                    <% if d != []: %>
-                        <%= "%s domain only"%", ".join(d) %>
-                    <% end %>
-                    <% else: %>
-                        <%= _("(protected by parent category)")%>
-                    <% end %>
-                <% end %>
-				<% else: %>
-					<%= _("(protected)")%>
-				<% end %>
-			<% end %>
-			<% if creatDate > nowutc() - timedelta(weeks = 1): %>
-	           	<img src="<%= systemIcon('new') %>" style="vertical-align:middle" alt="New" title="<%= _("This event is New")%>" />
-			<% end %>
-    	</span>
+            % if creatDate > nowutc() - timedelta(weeks = 1):
+                   <img src="${ systemIcon('new') }" style="vertical-align:middle" alt="New" title="${ _("This event is New")}" />
+            % endif
+        </span>
     </span>
 </li>

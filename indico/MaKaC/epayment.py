@@ -1,28 +1,30 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 
 from persistent import Persistent
 from MaKaC.common.Locators import Locator
 from MaKaC.trashCan import TrashCanManager
 from MaKaC.plugins import PluginLoader
+from MaKaC.errors import MaKaCError, FormValuesError
+import re
+
 
 class EPayment(Persistent):
 
@@ -244,6 +246,14 @@ class EPayment(Persistent):
         self.updatePlugins()
         return self._sortedModPay
 
+    def getSortedEnabledModPay(self):
+        smp = self.getSortedModPay()
+        l = []
+        for m in smp:
+            if m.isEnabled():
+                l.append(m)
+        return l
+
     def addToSortedModPay(self, form, i=None):
         if i is None:
             i=len(self.getSortedModPay())
@@ -338,11 +348,18 @@ class BaseEPayMod(Persistent):
             self._enabled = False
         return self._enabled
 
-    def getFormHTML(self, price, currency, registrant, lang = "en_US", secure=False):
+    def getFormHTML(self, price, currency, registrant, lang = "en_GB", secure=False):
         """
         Returns the html form that will be used to send the information to the epayment server.
         """
         raise Exception("This method must be overloaded")
+
+    def getOnSelectedHTML(self):
+        return """function (amount) {
+                     $('#paySubmit').removeAttr('disabled');
+                     $('#totalAmount').text(amount);
+                     $('#inPlaceSelectPaymentMethod').hide();
+                }"""
 
     def getConfModifEPaymentURL(self, conf):
         """
@@ -354,98 +371,16 @@ class BaseEPayMod(Persistent):
         """ Saves the values coming in a dict (data) in the corresping class variables. (e.g. title, url, business, etc) """
         raise Exception("This method must be overloaded")
 
-##class YellowPayMod(BaseEPayMod):
-##
-##    def __init__(self, data=None):
-##        BaseEPayMod.__init__(self)
-##        self._title = "yellowpay"
-##
-##        self._url="https://yellowpay.postfinance.ch/checkout/Yellowpay.aspx?userctrl=Invisible"
-##        self._shopID= ""
-##        self._masterShopID  = ""
-##        self._hashSeed = ""
-##        if data is not None:
-##            setValue(data)
-##        self._id="yellowpay"
-##
-##    def getId(self):
-##        try:
-##            if self._id:
-##                pass
-##        except AttributeError, e:
-##            self._id="yellowpay"
-##        return self._id
-##
-##    def clone(self, newSessions):
-##        sesf = YellowPayMod()
-##        sesf.setTitle(self.getTitle())
-##        sesf.setUrl(self.getUrl())
-##        sesf.setShopID(self.getShopID())
-##        sesf.setMasterShopID(self.getMasterShopID())
-##        sesf.setHashSeed(self.getHashSeed())
-##        sesf.setEnabled(self.isEnabled())
-##
-##        return sesf
-##
-##    def setValues(self, data):
-##        self.setTitle(data.get("title", "epayment"))
-##        self.setUrl(data.get("url", ""))
-##        self.setShopID(data.get("shopid", ""))
-##        self.setMasterShopID(data.get("mastershopid", ""))
-##        self.setHashSeed(data.get("hashseed", ""))
-##
-##    def getTitle(self):
-##        return self._title
-##    def setTitle(self, title):
-##        self._title = title
-##
-##    def getUrl(self):
-##        return self._url
-##    def setUrl(self,url):
-##        self._url=url
-##
-##    def getShopID(self):
-##        return self._shopID
-##    def setShopID(self,shopID):
-##        self._shopID= shopID
-##
-##    def getMasterShopID(self):
-##        return self._masterShopID
-##    def setMasterShopID(self,masterShopID):
-##        self._masterShopID  = masterShopID
-##
-##    def getHashSeed(self):
-##        return self._hashSeed
-##    def setHashSeed(self,hashSeed):
-##        self._hashSeed  =  hashSeed
-##
-##
-##    def getFormHTML(self,prix,Currency,conf,registrant):
-##        l=[]
-##        l.append("%s=%s"%("confId",conf.getId()))
-##        l.append("%s=%s"%("registrantId",registrant.getId()))
-##        param= "&".join( l )
-##        #Shop-ID + txtArtCurrency + txtOrderTotal + Hash seed
-##        m=md5.new()
-##        m.update(self.getShopID())
-##        m.update(Currency)
-##
-##        m.update("%f"%prix)
-##        m.update(self.getHashSeed())
-##        #txtHash =  cgi.escape(m.digest(),True)
-##        txtHash =m.hexdigest()
-##        s=""" <form action="%s" method="POST">
-##                      <input type="hidden" name="txtShopId" value="%s">
-##                      <input type="hidden" name="txtLangVersion" value="%s">
-##                      <input type="hidden" name="txtOrderTotal" value="%s">
-##                      <input type="hidden" name="txtArtCurrency" value="%s">
-##                      <input type="hidden" name="txtHash" value="%s">
-##                      <input type="hidden" name="txtShopPara" value="%s">
-##                      <td align="center"><input type="submit" value="%s" ></td>
-##                   </form>
-##                       """%(self.getUrl(),self.getMasterShopID(),"2057",prix,Currency,txtHash,param,"submit")
-##        #s=cgi.escape(s)
-##        return s
+    def getPluginSectionHTML(self, conf, aw, urlStatus, urlModif, img, text):
+        selbox = ""
+        return """
+                <tr>
+                <td>
+                    <a href=%s><img src="%s" alt="%s" class="imglink"></a>&nbsp;%s&nbsp;<a href=%s>%s</a>
+                </td>
+                </tr>
+                """%(str(urlStatus), img, text, selbox, str(urlModif), self.getTitle())
+
 
 class BaseTransaction(Persistent):
 
@@ -464,71 +399,6 @@ class BaseTransaction(Persistent):
     def isChangeable(self):
         return False
 
-##class TransactionYellowPay(BaseTransaction):
-##
-##    def __init__(self,parms):
-##        BaseTransaction.__init__(self)
-##        self._Data=parms
-##
-##
-##    def getId(self):
-##        try:
-##            if self._id:
-##                pass
-##        except AttributeError, e:
-##            self._id="yellowpay"
-##        return self._id
-##
-##    def getTransactionHTML(self):
-##
-##        textOption="""
-##                          <tr>
-##                            <td align="right"><b>ESR Member:</b></td>
-##                            <td align="left">%s</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>ESR Ref:</b></td>
-##                            <td align="left">%s</td>
-##                          </tr>
-##         """%(self._Data["ESR_Member"],self._Data["ESR_Ref"])
-##        return"""<table>
-##                          <tr>
-##                            <td align="right"><b>Payment with:</b></td>
-##                            <td align="left">YellowPay</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>Payment Date:</b></td>
-##                            <td align="left">%s</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>TransactionID:</b></td>
-##                            <td align="left">%s</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>Order Total:</b></td>
-##                            <td align="left">%s %s</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>PayMet:</b></td>
-##                            <td align="left">%s</td>
-##                          </tr>
-##                          %s
-##                        </table>"""%(self._Data["payment_date"],self._Data["TransactionID"], self._Data["OrderTotal"], \
-##                             self._Data["Currency"], self._Data["PayMet"],textOption)
-##    def getTransactionTxt(self):
-##        textOption="""
-##\tESR Member:%s\n
-##\tESR Ref:%s\n
-##"""%(self._Data["ESR_Member"],self._Data["ESR_Ref"])
-##        return"""
-##\tPayment with:YellowPay\n
-##\tPayment Date:%s\n
-##\tTransactionID:%s\n
-##\tOrder Total:%s %s\n
-##\tPayMet:%s
-##%s
-##"""%(self._Data["payment_date"],self._Data["TransactionID"], self._Data["OrderTotal"], \
-##                             self._Data["Currency"], self._Data["PayMet"],textOption)
 
 class PayLaterMod(BaseEPayMod):
 
@@ -601,301 +471,53 @@ class TransactionPayLaterMod(BaseTransaction):
                              self._Data["Currency"])
 
 
+class PaymentMethod(Persistent):
 
+    def __init__(self, conf, name="", displayName="", type="", extraFee=0.0):
+        self._name = name
+        self._displayName = displayName
+        self._type = type
+        self._extraFee = extraFee
+        self._conf = conf
 
-##class PayPalMod(BaseEPayMod):
-##
-##    def __init__(self, data=None):
-##        BaseEPayMod.__init__(self)
-##        self._title = "paypal"
-##
-##        self._url="https://www.paypal.com/cgi-bin/webscr"
-##        self._business= ""
-##
-##        if data is not None:
-##            setValue(data)
-##        self._id="paypal"
-##
-##    def getId(self):
-##        try:
-##            if self._id:
-##                pass
-##        except AttributeError, e:
-##            self._id="paypal"
-##        return self._id
-##
-##    def clone(self, newSessions):
-##        sesf = PayPalMod()
-##        sesf.setTitle(self.getTitle())
-##        sesf.setUrl(self.getUrl())
-##        sesf.setBusiness(self.getBusiness())
-##
-##        return sesf
-##
-##    def setValues(self, data):
-##        self.setTitle(data.get("title", "epayment"))
-##        self.setUrl(data.get("url", ""))
-##        self.setBusiness(data["business"])
-##
-##    def getTitle(self):
-##        return self._title
-##    def setTitle(self, title):
-##        self._title = title
-##
-##    def getUrl(self):
-##        return self._url
-##    def setUrl(self,url):
-##        self._url=url
-##
-##    def getBusiness(self):
-##        return self._business
-##    def setBusiness(self,business):
-##        self._business= business
-##
-##
-##
-##    def getFormHTML(self,prix,Currency,conf,registrant):
-##        url_return=urlHandlers.UHPayConfirmPayPal.getURL(registrant)
-##        url_cancel_return=urlHandlers.UHPayCancelPayPal.getURL(registrant)
-##        url_notify=urlHandlers.UHPayParamsPayPal.getURL(registrant)
-##        s=""" <form action="%s" method="POST">
-##                        <input type="hidden" name="cmd" value="_xclick">
-##                        <input type="hidden" name="business" value="%s">
-##                        <input type="hidden" name="amount" value="%s">
-##                        <INPUT TYPE="hidden" NAME="currency_code" value="%s">
-##                        <input type="hidden" name="charset" value="windows-1252">
-##                        <input type="hidden" name="return" value="%s">
-##                        <input type="hidden" name="cancel_return" value="%s">
-##                        <input type="hidden" name="notify_url" value="%s">
-##                        <td align="center"><input type="submit" value="%s" ></td>
-##                   </form>
-##                       """%(self.getUrl(),self.getBusiness(),prix,Currency,\
-##                            url_return,url_cancel_return,url_notify,"submit")
-##        #s=cgi.escape(s)
-##        return s
-##class TransactionPayPal(BaseTransaction):
-##
-##    def __init__(self,parms):
-##        BaseTransaction.__init__(self)
-##        self._Data=parms
-##
-##
-##    def getId(self):
-##        try:
-##            if self._id:
-##                pass
-##        except AttributeError, e:
-##            self._id="paypal"
-##        return self._id
-##
-##    def getTransactionHTML(self):
-##        return"""<table>
-##                          <tr>
-##                            <td align="right"><b>Payment with:</b></td>
-##                            <td align="left">PayPal</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>Payment Date:</b></td>
-##                            <td align="left">%s</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>Payment ID:</b></td>
-##                            <td align="left">%s</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>Order Total:</b></td>
-##                            <td align="left">%s %s</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>verify sign:</b></td>
-##                            <td align="left">%s</td>
-##                          </tr>
-##                        </table>"""%(self._Data["payment_date"],self._Data["payer_id"], self._Data["mc_gross"], \
-##                             self._Data["mc_currency"], self._Data["verify_sign"])
-##    def getTransactionTxt(self):
-##        return"""
-##\tPayment with:PayPal\n
-##\tPayment Date:%s\n
-##\tPayment ID:%s\n
-##\tOrder Total:%s %s\n
-##\tverify sign:%s
-##"""%(self._Data["payment_date"],self._Data["payer_id"], self._Data["mc_gross"], \
-##                             self._Data["mc_currency"], self._Data["verify_sign"])
-##
-### WorldPay module
-##class WorldPayMod( BaseEPayMod ):
-##
-##    def __init__(self, date=None):
-##        BaseEPayMod.__init__(self)
-##        self._title = "worldpay"
-##        self._id = "worldpay"
-##        self._url = "https://select.worldpay.com/wcc/purchase"
-##        self._instId = ""#"70950"
-##        self._description = ""#"EuroPython Registration"
-##        self._testMode = ""#"100"
-##        self._textCallBackSuccess = ""
-##        self._textCallBackCancelled = ""
-##
-##    def getId(self):
-##        try:
-##            if self._id:
-##                pass
-##        except AttributeError, e:
-##            self._id="worldpay"
-##        return self._id
-##
-##    def getInstId(self):
-##        try:
-##            return self._instId
-##        except:
-##            self._instId = ""
-##        return self._instId
-##
-##    def setInstId(self, instId):
-##        self._instId = instId
-##
-##    def getTextCallBackSuccess(self):
-##        try:
-##            return self._textCallBackSuccess
-##        except:
-##            self._textCallBackSuccess = ""
-##        return self._textCallBackSuccess
-##
-##    def setTextCallBackSuccess(self, txt):
-##        self._textCallBackSuccess = txt
-##
-##    def getTextCallBackCancelled(self):
-##        try:
-##            return self._textCallBackCancelled
-##        except:
-##            self._textCallBackCancelled = ""
-##        return self._textCallBackCancelled
-##
-##    def setTextCallBackCancelled(self, txt):
-##        self._textCallBackCancelled = txt
-##
-##
-##    def getDescription(self):
-##        try:
-##            return self._description
-##        except:
-##            self._description = ""
-##        return self._description
-##
-##    def setDescription(self, description):
-##        self._description = description
-##
-##    def getTestMode(self):
-##        try:
-##            return self._testMode
-##        except:
-##            self._testMode = ""
-##        return self._testMode
-##
-##    def setTestMode(self, testMode):
-##        self._testMode = testMode
-##
-##
-##    def setValues(self, data):
-##        self.setTitle(data.get("title", "epayment"))
-##        self.setUrl(data.get("url", ""))
-##        self.setInstId(data["instId"])
-##        self.setDescription(data["description"])
-##        self.setTestMode(data["testMode"])
-##        self.setTextCallBackSuccess(data.get("APResponse", "epayment"))
-##        self.setTextCallBackCancelled(data.get("CPResponse", "epayment"))
-##
-##    def getFormHTML(self,prix,Currency,conf,registrant):
-##        """build the registration form to be send to worldPay"""
-##        url_confirm=urlHandlers.UHPayConfirmWorldPay.getURL()
-##        url_cancel_return=urlHandlers.UHPayCancelWorldPay.getURL(registrant)
-##        url = self._url
-##        self._conf = registrant.getConference()
-##        if isinstance(self._url, urlHandlers.URLHandler):
-##            url = self._url.getURL()
-##        #raise "%s"%(str(["", registrant.getCountry(), registrant.getPhone(), registrant.getEmail()]))
-##        s="""<form action="%s" method=POST>
-##             <input type=submit value="proceed to WorldPay"/>
-##             <input type=hidden name="instId" value="%s" />
-##             <input type=hidden name="cartId" value="%s"/>
-##             <input type=hidden name="amount" value="%s" />
-##             <input type=hidden name="currency" value="%s" />
-##             <input type=hidden name="desc" value="%s" />
-##             <INPUT TYPE=HIDDEN NAME=MC_callback VALUE="%s" />
-##             <input type=hidden name="M_confId" value="%s">
-##             <input type=hidden name="M_registrantId" value="%s">
-##             <input type=hidden name="testMode" value="%s" />
-##             <input type=hidden name="name" value="%s %s"/>
-##             <input type=hidden name="address" value="%s"/>
-##            <input type=hidden name="postcode" value="%s"/>
-##            <input type=hidden name="country" value="%s"/>
-##            <input type=hidden name="tel" value="%s" />
-##            <input type=hidden name="email" value="%s"/>
-##            </form>
-##        """%(url, self._instId, registrant.getId(), "%.2f"%prix, Currency, self._description, url_confirm, self._conf.getId(), registrant.getId(), self._testMode, registrant.getFirstName(),registrant.getSurName(),\
-##                registrant.getAddress(),"", registrant.getCountry(), registrant.getPhone(), registrant.getEmail())
-##        return s
-##
-##    def getTitle(self):
-##        return self._title
-##    def setTitle(self, title):
-##        self._title = title
-##
-##    def getUrl(self):
-##        return self._url
-##
-##    def setUrl(self,url):
-##        self._url=url
-##
-### World pay transaction
-##
-##class TransactionWorldPay(BaseTransaction):
-##    """Transaction information which is accessible via Registrant.getTransactionInfo()"""
-##
-##    def __init__(self,params):
-##        BaseTransaction.__init__(self)
-##        self._Data=params
-##
-##    def getId(self):
-##        try:
-##            if self._id:
-##                pass
-##        except AttributeError, e:
-##            self._id="worldpay"
-##        return self._id
-##
-##    def getTransactionHTML(self):
-##        return"""<table>
-##                          <tr>
-##                            <td align="right"><b>Payment with:</b></td>
-##                            <td align="left">WorldPay</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>Payment date:</b></td>
-##                            <td align="left">%s</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>TransactionID:</b></td>
-##                            <td align="left">%s</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>Amount:</b></td>
-##                            <td align="left">%s %s</td>
-##                          </tr>
-##                          <tr>
-##                            <td align="right"><b>Name:</b></td>
-##                            <td align="left">%s</td>
-##                          </tr>
-##                  </table>"""%(self._Data["payment_date"],self._Data["transId"], self._Data["amount"], \
-##                             self._Data["currency"], self._Data["name"])
-##
-##    def getTransactionTxt(self):
-##        """this is used for notification email """
-##        return"""
-##\tPayment with:WorldPay\n
-##\tPayment Date:%s\n
-##\tPayment ID:%s\n
-##\tOrder Total:%s %s\n
-##\tName n:%s
-##"""%(self._Data["payment_date"],self._Data["transId"], self._Data["amount"], \
-##                             self._Data["currency"], self._Data["name"])
+    def getName(self):
+        return self._name
+
+    def setName(self, name):
+        self._name = name
+
+    def getDisplayName(self):
+        return self._displayName
+
+    def setDisplayName(self, displayName):
+        self._displayName = displayName
+
+    def getType(self):
+        return self._type
+
+    def setType(self, type):
+        self._type = type
+
+    def getExtraFee(self):
+        return self._extraFee
+
+    def setExtraFee(self, extraFee):
+        match = re.compile(r'^(\d+(?:[\.]\d+)?)$').match(extraFee)
+        if match:
+            extraFee = match.group(1)
+        else:
+            raise FormValuesError( _('The extra fee format is in incorrect. The fee must be a number: 999.99'))
+        self._extraFee = extraFee
+
+    def getConference(self):
+        return self._conf
+
+    def setConference(self, conf):
+        self._conf = conf
+
+    def getLocator(self):
+        if self.getConference() == None:
+            return Locator()
+        lconf = self.getConference().getLocator()
+        lconf["paymentMethodName"] = self.getName()
+        return lconf

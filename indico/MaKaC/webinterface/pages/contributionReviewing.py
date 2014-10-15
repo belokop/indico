@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 import MaKaC.webinterface.wcomponents as wcomponents
 import MaKaC.webinterface.urlHandlers as urlHandlers
@@ -82,10 +81,6 @@ class WContributionReviewing(wcomponents.WTemplated):
         vars["IsReferee"] = self.__target.getReviewManager().isReferee(self._rh._getUser())
         vars["Review"] = self.__target.getReviewManager().getLastReview()
         vars["TrackList"] = self._conf.getTrackList()
-        if reviewManager.hasEditor() or reviewManager.hasReviewers():
-            vars["removeRefereeConfirm"] =  "javascript:return confirm( 'The reviewers already assigned to this contribution will be removed. Do you want to remove the referee anyway?');"
-        else:
-            vars["removeRefereeConfirm"] = ""
 
         return vars
 
@@ -103,9 +98,7 @@ class WPContributionReviewingJudgements( WPContributionModifBase ):
 
     def _getTabContent( self, params ):
         wc = WContributionReviewingJudgements(self._target.getConference(), self._aw)
-        finalJudgeURL = urlHandlers.UHFinalJudge.getURL(self._target)
-
-        return wc.getHTML(self._target, finalJudgeURL)
+        return wc.getHTML(self._target)
 
 class WPContributionModifReviewingMaterials( WPContributionModifBase ):
 
@@ -119,21 +112,40 @@ class WPContributionModifReviewingMaterials( WPContributionModifBase ):
 
 
     def _getTabContent( self, pars ):
-        showSendButton = False
-        wc=wcomponents.WShowExistingReviewingMaterial(self._target, False, showSendButton)
+        wc=wcomponents.WShowExistingReviewingMaterial(self._target)
         return wc.getHTML( pars )
 
-class WContributionReviewingJudgements(wcomponents.WTemplated):
+class WContributionReviewingBase(wcomponents.WTemplated):
+
+    def _getStatusClass( self, judgement ):
+        if judgement == "Accept":
+            return "contributionReviewingStatusAccepted"
+        elif judgement == "Reject":
+            return "contributionReviewingStatusRejected"
+        elif judgement == "To be corrected":
+            return "contributionReviewingStatusCorrected"
+        else:
+            return "contributionReviewingStatusCorrected"
+
+    def _getStatusText( self, judgement ):
+        if judgement == "Accept":
+            return _("ACCEPTED")
+        elif judgement == "Reject":
+            return _("REJECTED")
+        elif judgement == "To be corrected":
+            return _("To be corrected")
+        else:
+            return judgement
+
+class WContributionReviewingJudgements(WContributionReviewingBase):
 
     def __init__(self, conference, aw):
         self._conf = conference
         self._aw = aw
 
-    def getHTML( self, target, finalJudgeURL ):
-
+    def getHTML(self, target):
         self.__target = target
-        params = {"finalJudgeURL": finalJudgeURL}
-        return wcomponents.WTemplated.getHTML(self, params)
+        return wcomponents.WTemplated.getHTML(self)
 
     def getVars( self):
         vars = wcomponents.WTemplated.getVars( self )
@@ -152,6 +164,8 @@ class WContributionReviewingJudgements(wcomponents.WTemplated):
         vars["IsReferee"] = self.__target.getReviewManager().isReferee(self._rh._getUser())
         vars["Review"] = self.__target.getReviewManager().getLastReview()
         vars["TrackList"] = self._conf.getTrackList()
+        vars["getStatusClass"] = lambda judgement: self._getStatusClass(judgement)
+        vars["getStatusText"] = lambda judgement: self._getStatusText(judgement)
 
         return vars
 
@@ -223,24 +237,6 @@ class WGiveAdvice(wcomponents.WTemplated):
 
         return vars
 
-class WContributionReviewingDisplay(wcomponents.WTemplated):
-    """
-    """
-
-    def __init__(self, contribution):
-        self._contribution = contribution
-
-    def getHTML(self, params):
-        return wcomponents.WTemplated.getHTML(self, params)
-
-    def getVars(self):
-        vars = wcomponents.WTemplated.getVars( self )
-        vars["Editing"] = self._contribution.getReviewManager().getLastReview().getEditorJudgement()
-        vars["AdviceList"] = self._contribution.getReviewManager().getLastReview().getSubmittedReviewerJudgement()
-        vars["Review"] = self._contribution.getReviewManager().getLastReview()
-        vars["ConferenceChoice"] = self._contribution.getConference().getConfPaperReview().getChoice()
-        return vars
-
 class WPContributionReviewingHistory(WPContributionModifBase):
 
     def _setActiveTab( self ):
@@ -251,7 +247,7 @@ class WPContributionReviewingHistory(WPContributionModifBase):
         wc = WContributionReviewingHistory(self._target)
         return wc.getHTML({"ShowReviewingTeam" : True})
 
-class WContributionReviewingHistory(wcomponents.WTemplated):
+class WContributionReviewingHistory(WContributionReviewingBase):
 
     def __init__(self, contribution):
         self._contribution = contribution
@@ -266,5 +262,7 @@ class WContributionReviewingHistory(wcomponents.WTemplated):
 
         vars["ConferenceChoice"] = self._conf.getConfPaperReview().getChoice()
         vars["Versioning"] = self._contribution.getReviewManager().getSortedVerioning()
+        vars["getStatusClass"] = lambda judgement: self._getStatusClass(judgement)
+        vars["getStatusText"] = lambda judgement: self._getStatusText(judgement)
 
         return vars

@@ -1,244 +1,340 @@
 <% from MaKaC.common.timezoneUtils import nowutc %>
-<script type="text/javascript">
-<!--
-function selectAll()
-{
-	//document.participantsForm.trackShowNoValue.checked=true
-	if (!document.participantsForm.participants.length){
-		document.participantsForm.participants.checked=true
-    } else {
-		for (i = 0; i < document.participantsForm.participants.length; i++) {
-		    document.participantsForm.participants[i].checked=true
-    	}
-	}
-}
 
-function deselectAll()
-{
-	//document.participantsForm.trackShowNoValue.checked=false
-	if (!document.participantsForm.participants.length)	{
-	    document.participantsForm.participants.checked=false
-    } else {
-	   for (i = 0; i < document.participantsForm.participants.length; i++) {
-	       document.participantsForm.participants[i].checked=false
-       }
-	}
-}
-//-->
-</script>
+<form action="${ participantsAction }" method="post" name="participantsForm" id="participantsForm">
 
+<table width="100%" cellspacing="0" align="center" border="0">
+    <tr>
+       <td nowrap colspan="10">
+            <div class="CRLgroupTitleNoBorder">${ _("Displaying")} <span id="numberParticipants" style="font-weight: bold;">${numberParticipants}</span>
+                 <span id="numberParticipantsText"> ${ _("participant") if numberParticipants == 1 else _("participants")}</span>
+            </div>
+        </td>
+    </tr>
+    <tr id="headPanel" class="follow-scroll">
+        <td valign="bottom" width="100%" align="left" style="padding-top:5px;" colspan="9">
+            <table>
+                <tr >
+                    <td valign="bottom" align="left">
+                        <div id="button-menu" class="toolbar">
 
-		<table>
-			<!-- <tr>
-				<td>
-					<div>
-						<% if not nowutc() > self._conf.getStartDate(): %>
-							<form action="<%= urlHandlers.UHConfModifParticipantsObligatory.getURL(self._conf) %>" method="post">
-								Attendance to this event is
-									<select onchange="javascript:this.form.submit()">
-										<option <% if self._conf.getParticipation().isObligatory(): %>selected<% end %>>mandatory</option>
-										<option <% if not self._conf.getParticipation().isObligatory(): %>selected<% end %>>not mandatory</option>
-									</select>
-							</form>
-						<% end %>
-						<% else: %>
-							The attendance to this event is&nbsp;
-								<% if self._conf.getParticipation().isObligatory(): %>
-									<strong>mandatory</strong>
-								<% end %>
-								<% else: %>
-									<strong>not mandatory</strong>
-								<% end %>
-						<% end %>
-					</div>
+                          <div class="group left">
+                            <a class="icon-checkbox-checked i-button arrow" href="#" title="${_("Select")}" data-toggle="dropdown"></a>
+                            <ul class="dropdown">
+                              <li><a href="#" id="selectAll">All</a></li>
+                              <li><a href="#" id="deselectAll">None</a></li>
+                            </ul>
+                          </div>
 
-				</td>
-			</tr>-->
-			<tr>
-				<td>
-					<div>
-						<% if not nowutc() > self._conf.getStartDate(): %>
-							<form action="<%= urlHandlers.UHConfModifParticipantsAddedInfo.getURL(self._conf) %>" method="post">
-								<%= _("When an event manager adds a participant, email notification will")%>
-									<select onchange="javascript:this.form.submit()">
-										<option <% if self._conf.getParticipation().isAddedInfo(): %>selected<% end %>><%= _("be sent")%></option>
-										<option <% if not self._conf.getParticipation().isAddedInfo(): %>selected<% end %>><%= _("not be sent")%></option>
-									</select> <%= _("to the participant")%>
-							</form>
-						<% end %>
-						<% else: %>
-							<%= _("When an event manager adds a participant, email notification will")%>&nbsp;
-								<% if self._conf.getParticipation().isAddedInfo(): %>
-									<strong><%= _("be sent")%></strong>
-								<% end %>
-								<% else: %>
-									<strong><%= _("not be sent")%></strong>
-								<% end %>
-						<% end %>
-					</div>
-				</td>
-			</tr>
-			<tr>
-				<td><form action="<%= urlHandlers.UHConfModifParticipantsDisplay.getURL(self._conf) %>" method="post">
-						<div>
-							<%= _("The list of participants is")%>
-								<select onchange="javascript:this.form.submit()">
-									<option <% if self._conf.getParticipation().displayParticipantList(): %>selected<% end %>><%= _("displayed")%></option>
-									<option <% if not self._conf.getParticipation().displayParticipantList(): %>selected<% end %>><%= _("not displayed")%></option>
-								</select>
-							<%= _("on the event page")%>
-						</div>
-					</form>
-				</td>
-			</tr>
-			<tr>
-				<td>
-					<div>
-						<% if not nowutc() > self._conf.getStartDate(): %>
-							<form action="<%= urlHandlers.UHConfModifParticipantsAllowForApplying.getURL(self._conf) %>" method="post">
-								<%= _("Users")%>
-									<select onchange="javascript:this.form.submit()">
-										<option <% if self._conf.getParticipation().isAllowedForApplying(): %>selected<% end %>><%= _("may apply")%></option>
-										<option <% if not self._conf.getParticipation().isAllowedForApplying(): %>selected<% end %>><%= _("may not apply")%></option>
-									</select> <%= _("to participate in this event")%>
-							</form>
-						<% end %>
-						<% else: %>
-							<%= _("Users")%>&nbsp;
-								<% if self._conf.getParticipation().isAllowedForApplying(): %>
-									<strong><%= _("may apply")%></strong>
-								<% end %>
-								<% else: %>
-									<strong><%= _("may not apply")%></strong>
-								<% end %> <%= _("to participate in this event")%>
-						<% end %>
-					</div>
-				</td>
+                          <div class="group left">
+                          <a class="left arrow i-button" id="addParticipant" href="#" data-toggle="dropdown">
+                              ${_("Add")}
+                          </a>
 
-			</tr>
-            <tr>
-                <td>
-                    <div>
-                        <% if not nowutc() > self._conf.getStartDate(): %>
-                            <form action="<%= urlHandlers.UHConfModifParticipantsToggleAutoAccept.getURL(self._conf) %>" method="post">
-                            <%= _("Participation requests")%>
-                                <select onchange="javascript:this.form.submit()" <% if not self._conf.getParticipation().isAllowedForApplying(): %>disabled="disabled"<%end%>>
-                                    <option <% if self._conf.getParticipation().getAutoAccept(): %>selected<% end %><%= _(">are auto-approved")%></option>
-                                    <option <% if not self._conf.getParticipation().getAutoAccept(): %>selected<% end %>><%= _("must be approved by the event managers (you)")%></option>
-                                </select>
-                            </form>
-                        <% end %>
-                        <% else: %>
-                            <%= _("Participation requests")%>&nbsp;
-                                <% if self._conf.getParticipation().getAutoAccept(): %>
-                                    <strong><%= _("are auto-approved")%></strong>
-                                <% end %>
-                                <% else: %>
-                                    <strong><%= _("must be approved by the event managers (you)")%></strong>
-                                <% end %>
-                        <% end %>
-                    </div>
-                </td>
-            </tr>
+                          <ul class="dropdown">
+                            <li><a href="#" id="add_existing_user">${_("Indico User")}</a></li>
+                            <li><a href="#" id="add_new_user">${_("New user")}</a></li>
+                            % if nowutc() < self_._conf.getStartDate() :
+                              <li><a href="#" id="invite_users">${_("Invite")}</a></li>
+                            % endif
+                          </ul>
 
-               <% if self._conf.getParticipation().getPendingNumber() > 0 : %>
-                <tr>
-                	<td>
-                          <span style="color:green"><%= _("""Some users have applied for participation in this event.
-							See""")%> <a href="<%= urlHandlers.UHConfModifParticipantsPending.getURL(self._conf) %>"><%= _("pending participants")%></a>
-						</span>
-					</td>
-            	</tr>
-			<% end %>
-		</table>
+                          <a class="i-button" id="remove_users" href="#">
+                            ${_("Remove")}
+                          </a>
 
-		<%= errorMsg %>
-		<%= infoMsg %>
+                          % if nowutc() > self_._conf.getStartDate():
+                            <a class="i-button arrow" href="#" data-toggle="dropdown">
+                              ${_("Manage attendance")}
+                            </a>
+                            <ul class="dropdown">
+                              <li><a href="#" id="set_present">${_("Set as present")}</a></li>
+                              <li><a href="#" id="set_absent">${_("Set as absent")}</a></li>
+                              <li><a href="#" id="excuse_absence">${_("Excuse absence")}</a></li>
+                            </ul>
+                          % endif
 
-		<table style="margin-top: 20px;">
-				<tr>
-					<td>Add participant: </td>
+                          <a class="i-button" href="#" id="send_email">
+                            ${_("Email")}
+                          </a>
 
-                    <td>
-                        <form action="<%= addAction %>" method="post">
-                            <div><%= addButton %></div>
-                        </form>
+                          <a class="i-button arrow button" href="#" data-toggle="dropdown">
+                            ${_("Export")}
+                          </a>
+                          <ul class="dropdown">
+                            <li><a href="#" class="icon-file-excel" id="export_csv">${_("CSV")}</a></li>
+                          </ul>
+
+                          </div>
+
+                        </div>
                     </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+    <tr id="headParticipants"  style="display:none">
+        <td style="border-bottom: 1px solid #DDDDDD; padding-left:5px" class="titleCellFormat" align="right" width="3%"></td>
+        <td style="border-bottom: 1px solid #DDDDDD; padding-left:5px" class="titleCellFormat">
+            ${_("Name")}
+        </td>
+        <td style="border-bottom: 1px solid #DDDDDD; padding-left:5px" class="titleCellFormat">
+            ${_("Affiliation")}
+        </td>
+        <td style="border-bottom: 1px solid #DDDDDD; padding-left:5px" class="titleCellFormat">
+            ${_("Email")}
+        </td>
+        <td style="border-bottom: 1px solid #DDDDDD; padding-left:5px" class="titleCellFormat">
+            ${_("Address")}
+        </td>
+        <td style="border-bottom: 1px solid #DDDDDD; padding-left:5px" class="titleCellFormat">
+            ${_("Telephone")}
+        </td>
+        <td style="border-bottom: 1px solid #DDDDDD; padding-left:5px" class="titleCellFormat">
+            ${_("Fax")}
+        </td>
+        <td style="border-bottom: 1px solid #DDDDDD; padding-left:5px" class="titleCellFormat">
+            ${_("Status")}
+        </td>
+        <td style="border-bottom: 1px solid #DDDDDD; padding-left:5px" class="titleCellFormat">
+            ${_("Presence")}
+        </td>
+    </tr>
+    <tr id="noParticipantsInfo" style="display:none">
+        <td colspan=10 style="font-style: italic; padding:15px 0px 15px 15px; border-bottom: 1px solid #DDDDDD;" nowrap>
+            <span class="italic">${_("There are no participants yet")}</span>
+        </td>
+    </tr>
+        % for p in self_._conf.getParticipation().getParticipantList():
+             <%include file="ConferenceParticipant.tpl" args="participant=p,conference=conf"/>
+        % endfor
+    <tr>
 
-                    <td>
-						<form action="<%= newParticipantURL %>" method="post">
-								<div><input type="submit" value="<%= _("Define new")%>" class="btn"  /></div>
-						</form>
-					</td>
-
-					<% if inviteAction: %>
-					<td>
-
-						<form action="<%= inviteAction %>" method="post">
-							<div><%= inviteButton %></div>
-						</form>
-					</td>
-					<% end %>
-
-				</tr>
-
-		</table>
-
-
-		<div style="position: relative; overflow: auto; margin-top: 10px;">
-		<form action="<%= statisticAction %>" method="post" id="statisticsForm"></form>
-			<form action="<%= participantsAction %>" method="post" name="participantsForm">
-
-				<div style="float: left; padding-right: 30px; min-width: 400px; min-height: 270px;">
-							<table>
-								<tr>
-									<th class="titleCellFormat">
-										<img src="<%= selectAll %>" alt="<%= _("Select all")%>" title="<%= _("Select all")%>" onclick="javascript:selectAll()">
-										<img src="<%= deselectAll %>" alt="<%= _("Deselect all")%>" title="<%= _("Deselect all")%>" onclick="javascript:deselectAll()">
-										<%= _("Name")%>
-									</th>
-									<th class="titleCellFormat">&nbsp;<%= _("Status")%></th>
-									<th class="titleCellFormat">&nbsp;<%= _("Presence")%></th>
-								</tr>
-									<%= participants %>
-
-
-							</table>
-				</div>
-
-				<div style="padding-top: 30px;" class="uniformButtonVBar">
-
-                            <div><input type="button" class="btn" style="margin-bottom: 20px" value="<%= _("View attendance") %>" onclick="javascript:$E('statisticsForm').dom.submit();" /></div>
-
-							<% if presenceButton: %>
-								<div><%= presenceButton %></div>
-							<% end %>
-
-							<% if absenceButton: %>
-								<div><%= absenceButton %></div>
-							<% end %>
-
-							<% if askButton: %>
-								<div><%= askButton %></div>
-							<% end %>
-
-							<% if excuseButton: %>
-								<div><%= excuseButton %></div>
-							<% end %>
-
-							<% if sendButton: %>
-								<div style="margin-bottom: 20px"><%= sendButton %></div>
-							<% end %>
-
-							<% if sendAddedInfoButton: %>
-								<div><%= sendAddedInfoButton %></div>
-							<% end %>
-                            <div><%= excelButton %></div>
-							<div><%= removeButton %></div>
-
-				</div>
+    </tr>
+</table>
+</form>
 
 
-			</form>
-		</div>
+<script type="text/javascript">
+var actionParticipantRows = function(){
+    $("input:checkbox[id^=checkParticipant]").on('change', function(){
+        $(this).closest('tr').toggleClass('selected', this.checked);
+    }).trigger('change');
+};
 
+var selectAll = function () {
+    $('input:checkbox[id^=checkParticipant]').prop('checked', true).trigger('change');
+};
+
+var deselectAll = function () {
+    $('input:checkbox[id^=checkParticipant]').prop('checked', false).trigger('change');
+};
+
+var checkNumberParticipants = function(){
+    $('#numberParticipants').text($('input:checkbox[id^=checkParticipant]').length);
+    if($('input:checkbox:checked[id^=checkParticipant]').length == 1) {
+        $('#numberParticipantsText').text("participant");
+    } else {
+        $('#numberParticipantsText').text("participants");
+    }
+    if($('input:checkbox[id^=checkParticipant]').length == 0){
+        $('#selectBar, #headParticipants').hide();
+        $('#noParticipantsInfo').show();
+    }else{
+        $('#selectBar, #headParticipants').show();
+        $('#noParticipantsInfo').hide();
+    }
+};
+
+var legends = {'confTitle':$T('field containing the conference title.'),
+        'name':$T('field containing the full name of the participant.'),
+        'url':$T('field containing the url of the event.'),
+        'urlRefusal':$T('field containing the direct url to refuse attendance.'),
+        'urlInvitation':$T('field containing the direct url for the meeting invitation.')};
+
+IndicoUI.executeOnLoad(function(){
+    var addParticipantMenu = null;
+    var attendanceMenu = null;
+
+    actionParticipantRows();
+    checkNumberParticipants();
+
+    $("#selectAll").click(function(){selectAll();});
+    $("#deselectAll").click(function(){deselectAll();});
+
+    var atLeastOneParticipantSelected = function(){
+        if ($("input:checkbox:checked[id^=checkParticipant]").length>0){
+            return true;
+        } else{
+            var dialog = new WarningPopup($T("Warning"), $T("No participant selected! Please select at least one."));
+            dialog.open();
+            return false;
+        }
+
+    };
+
+    var successAddParticipantsHandler = function(result){
+        if(result.infoWarning){
+            (new WarningPopup($T("Warning"),result.infoWarning)).open();
+        }
+        if(result.added)
+        {
+            $(result.added).insertAfter($("#headParticipants")).filter("tr[id^=participant]").effect("highlight",{},3000)
+            actionParticipantRows();
+            checkNumberParticipants();
+        }
+    };
+
+
+    var searchParticipants = function(method,peopleList){
+        var killProgress = IndicoUI.Dialogs.Util.progress("Processing...");
+        jsonRpc(Indico.Urls.JsonRpcService, method,
+                { confId: "${self_._conf.getId()}",
+                  userIds: peopleList },
+                function(result, error){
+                    killProgress();
+                    if (exists(error)) {
+                        IndicoUtil.errorReport(error);
+                    } else {
+                        successAddParticipantsHandler(result);
+                    }
+                });
+    };
+
+    var searchUsers = function(title, handler) {
+        var chooseUsersPopup = new ChooseUsersPopup(title, true, ${self_._conf.getId()}, false,
+                true, null, false, false, false, handler);
+        chooseUsersPopup.execute();
+        return false;
+    };
+
+    var removeParticipants = function(){
+        var arrayChecked=[];
+        if (atLeastOneParticipantSelected()){
+            $("input:checkbox:checked").each(function() {
+                   arrayChecked.push($(this).val());
+            });
+            var killProgress = IndicoUI.Dialogs.Util.progress("Processing...");
+            jsonRpc(Indico.Urls.JsonRpcService, "event.participation.removeParticipants",
+                    { confId: "${self_._conf.getId()}",
+                      userIds: arrayChecked },
+                    function(result, error){
+                        killProgress();
+                        if (exists(error)) {
+                            IndicoUtil.errorReport(error);
+                        } else {
+                            $("input:checkbox:checked").parents("tr[id^=participant]").remove();
+                            checkNumberParticipants();
+                        }
+                    });
+            }
+        return false;
+    };
+
+    var composeEmail = function(method){
+        var participantsChecked={};
+        if (atLeastOneParticipantSelected()){
+            $("input:checkbox:checked").each(function() {
+                participantsChecked[$(this).val()] = $(this).parent().siblings("[id^=nameParticipant]").children("[id^=participantEdit]").text();
+            });
+            var popup = new ParticipantsEmailPopup($T("Send mail to the participants"), ${conf.getTitle() | n,j}, ${conf.getId() | n,j},
+                                                   method, participantsChecked, "${currentUser.getStraightFullName() if currentUser else conf.getTitle()}",
+                                                   "", null, legends, function() {
+                                                       (new AlertPopup($T("E-mail sent"), $T('An e-mail has been sent to: ') + \
+                                                                       "<em>" + _.values(participantsChecked).join("</em>, <em>") + "</em>.")).open();
+                                                       deselectAll();
+                                                   });
+            popup.open();
+        }
+        return false;
+    };
+
+    var manageAttendance = function(method, target, type){
+        var arrayChecked=[];
+        if (atLeastOneParticipantSelected()){
+            $("input:checkbox:checked").each(function() {
+                   arrayChecked.push($(this).val());
+            });
+        var killProgress = IndicoUI.Dialogs.Util.progress("Processing...");
+        jsonRpc(Indico.Urls.JsonRpcService, method,
+                { confId: "${self_._conf.getId()}",
+                  userIds: arrayChecked },
+                function(result, error){
+                    killProgress();
+                    if (exists(error)) {
+                        IndicoUtil.errorReport(error);
+                    } else {
+                        $('input:checkbox:checked[id^=checkParticipant]').parent().siblings("td[id^="+target+"]").text(type);
+                        $('input:checkbox:checked[id^=checkParticipant]').parents('tr[id^=participant]').effect("highlight", {}, 1500, deselectAll());
+                    }
+                });
+        }
+        return false;
+    };
+
+    $('#button-menu').dropdown();
+
+    $('#add_existing_user').bind('menu_select', function() {
+        var peopleAddedHandler = function(peopleList){
+            searchParticipants("event.participation.addParticipants", peopleList);
+        };
+        return searchUsers("Add User(s)", peopleAddedHandler);
+    });
+
+    $('#add_new_user').bind('menu_select', function() {
+        var onSuccess = function(result){
+            $(result).insertAfter($("#headParticipants")).filter("tr[id^=participant]").effect("highlight",{},3000)
+            actionParticipantRows();
+            checkNumberParticipants();
+        };
+        new ApplyForParticipationPopup("${self_._conf.getId()}","event.participation.addParticipant",  $T("Add Participant"), {}, onSuccess, true);
+        return false;
+    });
+
+    $("#invite_users").bind('menu_select', function(){
+        var inviteHandler = function(peopleList){
+            var text = 'Dear {name}, the event manager of {confTitle} would like to invite you to take part in the event, ' +
+            'which will take place on ${conf.getAdjustedStartDate()}. Further information about this event is available <a href="{url}">in Indico</a>' +
+            '<br/><br/>' +
+            'You are kindly requested to either accept or decline your participation in this event by clicking on the relevant link below:<br/>' +
+            '<br><a href="{urlInvitation}">Accept or decline the invitation</a><br/><br>' +
+            'Looking forward to meeting you at {confTitle} <br/>' +
+            'Kindest regards';
+            var subject = ${"Invitation to {0}".format(conf.getTitle()) | n,j};
+            var popup = new ParticipantsInvitePopup($T("Send an Email to Selected Participants"), ${conf.getTitle() | n,j}, ${conf.getId() | n,j}, "event.participation.inviteParticipants", peopleList, ${currentUser.getFullName() if currentUser else conf.getTitle() | n,j}, 
+                subject, text, legends, successAddParticipantsHandler);
+            popup.open();
+        };
+        return searchUsers("Invite Participant(s)", inviteHandler);
+    });
+    $("#remove_users").bind('menu_select',
+                                  function(){
+                                      return removeParticipants();
+                                  });
+    $("#send_email").bind('menu_select', function(){
+        return composeEmail("event.participation.emailParticipants");
+    });
+
+    $("#set_present").bind('menu_select', function () {
+        return manageAttendance('event.participation.markPresent', 'presence',$T('Attended'));
+    });
+
+    $("#set_absent").bind('menu_select', function () {
+        return manageAttendance('event.participation.markAbsence', 'presence',$T("Didn't attend"));
+    });
+
+    $("#excuse_absence").bind('menu_select', function () {
+        return manageAttendance('event.participation.excuseAbsence', 'status','excused');
+    });
+
+    $("#export_csv").click(function(){
+        if(atLeastOneParticipantSelected()) {
+          $('#participantsForm').submit();
+        }
+    });
+
+    $(window).scroll(function(){
+        IndicoUI.Effect.followScroll();
+    });
+});
+
+</script>

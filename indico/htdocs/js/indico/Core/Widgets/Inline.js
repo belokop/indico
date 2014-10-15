@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 
 type("InlineWidget", ["IWidget"],
      {
@@ -42,7 +59,7 @@ type("InlineRemoteWidget", ["InlineWidget"],
 
              // if the widget is set to load on startup,
              // the content will be a 'loading' message
-             var wcanvas = Html.div({}, this.loadOnStartup?
+             this.wcanvas = Html.div({}, this.loadOnStartup?
                                    this._handleLoading():
                                    content);
 
@@ -51,20 +68,20 @@ type("InlineRemoteWidget", ["InlineWidget"],
              this.source.state.observe(function(state) {
                  if (state == SourceState.Error) {
                      self._handleError(self.source.error.get());
-                     wcanvas.set(content);
+                     self.wcanvas.set(content);
                      self.setMode('edit');
                      self._handleBackToEditMode();
                  } else if (state == SourceState.Loaded) {
                      self._handleLoaded(self.source.get());
-                     wcanvas.set(content);
+                     self.wcanvas.set(content);
                      self.setMode('display');
                      self._handleSuccess();
                  } else {
-                     wcanvas.set(self._handleLoading());
+                     self.wcanvas.set(self._handleLoading());
                  }
              });
 
-             return wcanvas;
+             return self.wcanvas;
          }
 
      },
@@ -82,82 +99,60 @@ type("InlineRemoteWidget", ["InlineWidget"],
          this.source = indicoSource(method, attributes, null, !loadOnStartup, callback);
      });
 
-type("InlineRemoteWidgetForOptionButton", ["InlineWidget"],
+type("SwitchOptionButton", ["InlineWidget"],
      {
          draw: function() {
              var self = this;
-             var canvas = Html.span({}, 'loading...');
-             canvas.set(self.drawContent());
-             var message = Html.span({style: {marginLeft:'10px'}},'\u00A0');
-             message.dom.id = this.messageId;
+             var checkbox = $("<input/>").attr("type","checkbox").css("vertical-align", "middle");
+             var message = $("<span/>").css({"color":"green", "margin-left":"10px", "vertical-align":"middle", "display": "none"}).append(self.savedMessage);
+             var tbody = $("<tbody/>");
+             tbody.append($("<tr/>").append($("<td/>").append(checkbox).append($("<span/>").css("vertical-align", "middle").append(this.caption))).append($("<td/>").append(message)));
 
-             var table = Html.table();
-             var tbody = Html.tbody();
-             var row1 = Html.tr();
-             var cell2 = Html.td();
+             var request = function(args, showSavedMessage) {
+                 indicoRequest(self.method,
+                         args, function(response, error){
+                       if (exists(error)) {
+                           self._error(error);
+                       }
+                       else {
+                           checkbox.prop("checked", response);
+                           if(showSavedMessage){
+                               message.show();
+                               setTimeout(function(){message.hide();}, 1000);
+                           }
+                       }
+                   });
+             };
 
-             table.dom.style.display = 'inline';
-             table.set(tbody);
 
-             cell2.append(canvas);
-             row1.append(cell2);
+             checkbox.prop('disabled', this.disabled);
 
-             cellMessage = Html.td();
-             cellMessage.dom.style.verticalAlign = "middle";
-             cellMessage.dom.rowSpan = 2;
-             cellMessage.append(message);
-             row1.append(cellMessage);
+             if(this.initState !== null){
+                 checkbox.prop("checked", this.initState);
+             } else{
+                 request(self.attributes, false);
+             }
 
-             tbody.append(row1);
+             if(this.disabled) {
+                 $(tbody).qtip({content: $T("You do not have access to modify the value of this checkbox"), position: {my: 'top middle', at: 'bottom middle'}});
+             }
 
-             this.source.state.observe(function(state) {
-                 var to = 0;
-                 if (state == SourceState.Error) {
-                     self.ready.set(true);
-                     self._error(self.source.error.get());
-                 } else if (state == SourceState.Committing) {
-                     self.ready.set(true);
-                     message.set('Saved');
-                     message.dom.style.color='green';
-                     to = setTimeout("$E(\""+self.messageId + "\").set(\'\u00A0\')", 2000);
-                 } else if (state == SourceState.Loaded) {
-                     clearTimeout(to);
-                 } else {
-                     message.set(' ');
-                 }
+             checkbox.click(function(){
+                 self.attributes.set('value', checkbox.is(":checked"));
+                 request(self.attributes, true);
              });
 
-             return table;
+             return $("<table/>").css("display","inline").append(tbody).get(0);
          }
 
      },
-     function(method, attributes) {
-         this.ready = new WatchValue();
-         this.ready.set(false);
-         this.source = indicoSource(method, attributes);
-     });
-
-type("SwitchOptionButton", ["InlineRemoteWidgetForOptionButton"],
-     {
-         error: function(error) {
-             this.checkbox.set(true);
-             alert(error.message);
-         },
-
-         drawContent: function() {
-             return Html.div({},
-                             this.checkbox,
-                             this.caption);
-
-         }
-     },
-     function(method, attributes, caption, messageId) {
-         this.InlineRemoteWidgetForOptionButton(method, attributes);
+     function(method, attributes, caption, savedMessage, initState, disabled) {
+         this.method = method;
+         this.attributes = $O(attributes);
          this.caption = caption;
-         this.checkbox = Html.checkbox({});
-         this.messageId = messageId;
-
-         $B(this.checkbox, this.source);
+         this.savedMessage = savedMessage;
+         this.initState = initState;
+         this.disabled = disabled;
      });
 
 
@@ -188,7 +183,9 @@ type("RemoteSwitchButton", ["InlineWidget"],
                                    else {
                                        chooser.set(targetState);
                                    }
-
+                                   if (exists(self.postRequest)) {
+                                       self.postRequest(response, error);
+                                   }
                                });
              };
 
@@ -231,12 +228,13 @@ type("RemoteSwitchButton", ["InlineWidget"],
       * disableMethod - remote method to be called in order to pass to "disabled state"
       * args - extra args to be passed to either method
       */
-     function(initState, imgEnabled, imgDisabled, enableMethod, disableMethod, args) {
+     function(initState, imgEnabled, imgDisabled, enableMethod, disableMethod, args, postRequest) {
          this.initState = initState;
          this.imgEnabled = imgEnabled;
          this.imgDisabled = imgDisabled;
          this.enableMethod = enableMethod;
          this.disableMethod = disableMethod;
+         this.postRequest = any(postRequest, null);
          this.args = args;
      });
 
@@ -340,6 +338,9 @@ type("RadioFieldWidget", ["InlineWidget", "WatchAccessor"],
              return selKey;
          },
 
+         getName: function() {
+             return this.name;
+         },
 
          enable: function() {
              each(this.radioDict,
@@ -372,6 +373,7 @@ type("RadioFieldWidget", ["InlineWidget", "WatchAccessor"],
                 structure should be updated according
                 to the widgets or not (useful for
                 distinguishing initialization)*/
+
 
              var self = this;
              var widget = this.items[state];
@@ -424,7 +426,7 @@ type("RadioFieldWidget", ["InlineWidget", "WatchAccessor"],
          }
      },
 
-     function(items, cssClassRadios) {
+     function(items, cssClassRadios, name) {
          this.items = {};
          this.radioDict = {};
          this.options = new WatchObject();
@@ -433,8 +435,7 @@ type("RadioFieldWidget", ["InlineWidget", "WatchAccessor"],
 
          var self = this;
 
-
-         var name = Html.generateId();
+         this.name = (name === undefined) ? Html.generateId() : name;
 
          this.orderedItems = $L();
          each(items,
@@ -446,7 +447,7 @@ type("RadioFieldWidget", ["InlineWidget", "WatchAccessor"],
                   // add some extra stuff, since we're in the loop
                   self.visibility.set(key, true);
                   self.options.set(key, false);
-                  self.radioDict[key] = Html.radio({'name': name,
+                  self.radioDict[key] = Html.radio({'name': self.name,
                                                     style: {verticalAlign: 'middle'}});
               });
 
@@ -458,11 +459,10 @@ type("RadioFieldWidget", ["InlineWidget", "WatchAccessor"],
 
      });
 
-type("SelectRemoteWidget", ["InlineRemoteWidget", "WatchAccessor"],
+type("SelectRemoteWidget", ["InlineRemoteWidget", "WatchAccessor", "ErrorAware"],
      {
          _drawItem: function(item) {
              var option = Widget.option(item);// Html.option({value: item.key}, item.get());
-             this.options.set(item.key, option);
 
              if (this.selected.get()) {
                  if (this.selected.get() == item.key) {
@@ -473,22 +473,44 @@ type("SelectRemoteWidget", ["InlineRemoteWidget", "WatchAccessor"],
              return option;
          },
 
+         _setErrorState: function(text) {
+             this._stopErrorList = this._setElementErrorState(this.select, text);
+         },
+
+         _drawNoItems: function() {
+             var option = Widget.option(new WatchPair("None", this.noOptionsText));
+             option.accessor('disabled').set("disabled");
+             option.accessor('selected').set("selected");
+             return option;
+         },
+
          _handleContent: function() {
              var self = this;
 
-             this.selected.observe(function(value) {
-                 var elem = self.options.get(value);
+             var options = this.source.get();
 
-                 if (elem) {
-                     elem.accessor('selected').set(true);
+             if(_.size(self.source.get()) > 0){
+                 bind.element(this.select,
+                                     this.source,
+                                     function(item) {
+                                         if ($.isArray(item)) {
+                                             item = new WatchPair(item[0], item[1]);
+                                         } else if(!item.key) {
+                                             item = new WatchPair(item, item);
+                                         }
+                                         return self._drawItem(item);
+                                     });
+                 if(self.select.dom.value != self.selected.get() && self.showNoValue){
+                     var option  = Widget.option(new WatchPair("", ""));
+                     self.select.append(option);
+                     option.accessor('selected').set("selected");
                  }
-             });
+                 return self.select;
+             } else{
+                 self.select.append(self._drawNoItems());
+                 return self.select;
 
-             return bind.element(this.select,
-                                 this.source,
-                                 function(item) {
-                                     return self._drawItem(item);
-                                 });
+             }
          },
 
          observe: function(func) {
@@ -511,16 +533,24 @@ type("SelectRemoteWidget", ["InlineRemoteWidget", "WatchAccessor"],
          },
          unbind: function() {
              bind.detach(this.select);
+         },
+         getName: function() {
+             return this.name;
          }
 
      },
-     function(method, args, callback) {
-         this.options = new WatchObject();
-         this.select = Html.select({});
+     function(method, args, callback, name, noOptionsText, defaultSelected, showNoValue) {
+         this.select = Html.select({'name':name});
          this.selected = new WatchValue();
+         if(defaultSelected !== undefined){
+             this.set(defaultSelected);
+         }
+         this.noOptionsText = any(noOptionsText,$T("No options"));
          // Load data source on startup
          this.InlineRemoteWidget(method, args, true, callback);
          this.loadOnStartup = false;
+         this.name = name;
+         this.showNoValue = any(showNoValue, true);
      });
 
 
@@ -624,6 +654,9 @@ type("RealtimeTextBox", ["IWidget", "WatchAccessor", "ErrorAware"],
 
 type("RealtimeTextArea", ["RealtimeTextBox"],
      {
+         onChange: function(callback){
+             this.input.observeEvent('change',callback);
+         }
      },
      function(args) {
 
@@ -1253,18 +1286,34 @@ type("InlineEditWidget", ["InlineRemoteWidget"],
      {
 
          setMode: function(mode) {
+             if(mode == 'edit' && isFunction(this.beforeEdit)) {
+                 if(this.beforeEdit(this) === false) {
+                     return;
+                 }
+             }
              this.modeChooser.set(mode);
          },
 
          _buildFrame: function(modeChooser, switchChooser) {
-             return Html.div({},
+             return Html.span({},
                              modeChooser,
-                             Html.div({style:{marginTop: '5px'}},
-                                      switchChooser));
+                              Html.div({style: this.frameAttrs},
+                                       switchChooser));
+
          },
 
          _handleError: function(error) {
              this._error(error);
+         },
+
+         /* By default, any check before save is accepted */
+         _handleSave: function() {
+             this._save();
+         },
+
+         _save: function() {
+             this._savedValue = this._getNewValue();
+             this.source.set(this._savedValue);
          },
 
          _handleContentEdit: function() {
@@ -1274,17 +1323,17 @@ type("InlineEditWidget", ["InlineRemoteWidget"],
              this.saveButton = Widget.button(command(function() {
                      if (self._verifyInput()){
                          // save it, in case we need to come back to edit mode;
-                         self._savedValue = self._getNewValue();
-                         self.source.set(self._savedValue);
+                         self._handleSave();
                      }
              }, 'Save'));
 
-             var editButtons = Html.div({},
-                 this.saveButton,
-                 Widget.button(command(function() {
-                     // back to the start
-                     self.setMode('display');
-                 }, 'Cancel')));
+             var editButtons = Html.span({},
+                                         this.saveButton,
+                                         Widget.button(command(function() {
+                                             // back to the start
+                                             self.setMode('display');
+                                         }, 'Cancel')));
+
 
              // there are two possible states for the "switch" area
 
@@ -1348,8 +1397,10 @@ type("InlineEditWidget", ["InlineRemoteWidget"],
          }
 
      },
-     function(method, attributes, initValue) {
+     function(method, attributes, initValue, beforeEdit) {
+         this.frameAttrs = {'display': 'inline', 'marginLeft': '5px'};
          this.value = initValue;
+         this.beforeEdit = beforeEdit;
          this.InlineRemoteWidget(method, attributes, false);
      });
 
@@ -1357,16 +1408,19 @@ type("SupportEditWidget", ["InlineEditWidget"],
         {
             /* builds the basic structure for both display and
                edit modes */
-            __buildStructure: function(captionValue, emailValue) {
+            __buildStructure: function(captionValue, emailValue, phoneValue) {
                 // keep everything in separate lines
                  return Html.table({},
                          Html.tbody({},
                                  Html.tr("support",
                                          Html.td("supportEntry", "Caption :"),
                                          Html.td({}, captionValue)),
-                                 Html.tr("support",
-                                         Html.td("supportEntry", "Email :"),
-                                         Html.td({}, emailValue))));
+                                         Html.tr("support",
+                                                 Html.td("supportEntry", "Email :"),
+                                                 Html.td({}, emailValue)),
+                                         Html.tr("support",
+                                                 Html.td("supportEntry", "Telephone :"),
+                                                 Html.td({}, phoneValue))));
             },
 
             _handleEditMode: function(value) {
@@ -1374,19 +1428,21 @@ type("SupportEditWidget", ["InlineEditWidget"],
                 // create support fields and set them to the values transmitted
                 this.caption = Html.edit({}, value.caption);
                 this.email = Html.edit({}, value.email);
+                this.phone = Html.edit({}, value.telephone);
 
 
                 // add the fields to the parameter manager
                 this.__parameterManager.add(this.caption, 'text', false);
                 this.__parameterManager.add(this.email, 'emaillist', true);
+                this.__parameterManager.add(this.phone, 'phone', true);
 
                 // call buildStructure with modification widgets
-                return this.__buildStructure(this.caption, this.email);
+                return this.__buildStructure(this.caption, this.email, this.phone);
             },
 
             _handleDisplayMode: function(value) {
                 // call buildStructure with spans
-                return this.__buildStructure(value.caption, value.email);
+                return this.__buildStructure(value.caption, value.email, value.telephone);
             },
 
             _getNewValue: function() {
@@ -1394,19 +1450,17 @@ type("SupportEditWidget", ["InlineEditWidget"],
                 // for formatting the list when saving support emails asynchronously
 
                 // removes separators at the beginning and at the end
-                emaillist = this.email.get().replace(/(^[ ,;]+)|([ ,;]+$)/g, '');
+                var emaillist = this.email.get().replace(/(^[ ,;]+)|([ ,;]+$)/g, '');
                 // replaces all the other groups of separators by commas
                 emaillist = emaillist.replace(/[ ,;]+/g, ',');
 
                 return {caption: this.caption.get(),
-                        email: emaillist};
+                        email: emaillist,
+                        telephone: this.phone.get()};
             },
 
             _verifyInput: function() {
-                if (!this.__parameterManager.check()) {
-                    return false;
-                }
-                return true;
+                return this.__parameterManager.check();
             }
         },
         function(method, attributes, initValue) {
@@ -1424,14 +1478,14 @@ type("SessionRenameWidget", ["InlineWidget"],
                 this.modeChooser.set(mode);
                 // Adjust the height of the parent container (which is a popup) and
                 // prevent the appearance of a scroll bar.
-                var contentHeight = this.parentContainer.content.dom.offsetHeight;
-                this.parentContainer.contentWrapper.setStyle('height', pixels(contentHeight));
+                //var contentHeight = this.parentContainer.content.dom.offsetHeight;
+                //this.parentContainer.contentWrapper.setStyle('height', pixels(contentHeight));
             },
 
             _buildFrame: function(modeChooser, switchChooser) {
                 return Html.div({},
                             modeChooser,
-                            Html.div({style:{marginTop: '5px', marginLeft: '5px', display: 'inline'}},
+                                Html.div({style:{marginTop: '5px', marginLeft: '5px', display: 'inline'}},
                                      switchChooser));
             },
 
@@ -1452,9 +1506,7 @@ type("SessionRenameWidget", ["InlineWidget"],
 
                 // if the widget is set to load on startup,
                 // the content will be a 'loading' message
-                var wcanvas = Html.div({}, content);
-
-                return wcanvas;
+                return Html.div({}, content);
             },
 
             _handleContent: function(mode) {
@@ -1526,21 +1578,32 @@ type("SessionRenameWidget", ["InlineWidget"],
 
 
 //Textarea widget
-
 type("TextAreaEditWidget", ["InlineEditWidget"],
         {
             _handleEditMode: function(value) {
-                // call buildStructure with modification widgets
 				this.textarea = Html.textarea({rows: 7, cols: 50}, value);
+				this.__parameterManager.add(this.textarea, 'text', true);
                 return this.textarea;
             },
 
             _handleDisplayMode: function(value) {
-                // call buildStructure with spans
-            	this.comments = Html.span({}, value);
-            	this.__parameterManager.add(this.comments, 'text', true);
+                if (value) {
+                    // start by escaping the input
+                    var dummy = $('<span/>').text(value);
+                    value = dummy.html();
 
-                return this.comments;
+                    // now transform double line breaks into paragraphs
+                    value = '<p>' + value.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br/>') + '</p>';
+                    return Html.unescaped.span({}, value);
+                } else {
+                    return;
+                }
+            },
+
+            _handleSuccess: function() {
+                if (this.successHandler) {
+                    return this.successHandler();
+                }
             },
 
             _getNewValue: function() {
@@ -1548,13 +1611,162 @@ type("TextAreaEditWidget", ["InlineEditWidget"],
             },
 
             _verifyInput: function() {
-                return true;
+                return this.__parameterManager.check();
             }
         },
-        function(method, attributes, initValue) {
-            this.InlineEditWidget(method, attributes, initValue);
+        function(method, attributes, initValue, successHandler, beforeEdit) {
+            this.InlineEditWidget(method, attributes, initValue, beforeEdit);
+            this.frameAttrs = {'display': 'block', 'marginTop': '5px'};
+            this.successHandler = successHandler;
             this.__parameterManager = new IndicoUtil.parameterManager();
         });
+
+
+// Select widget
+type("SelectEditWidget", ["InlineEditWidget"],
+        {
+            _handleEditMode: function(value) {
+                var content = Html.span({style:{paddingBottom:'3px'}});
+                var option;
+                this.select = Html.select();
+                var functionDict = function(key, caption) {
+                    option = Html.option({value:key}, caption);
+                    self.select.append(option);
+                    if (self.currentValue == caption) {
+                        option.dom.selected = true;
+                    }};
+                var self = this;
+                if(self.options.Dictionary){
+                    self.options.each(functionDict);
+                }
+                else{
+                    jQuery.each(this.options, functionDict);
+                }
+                content.append(this.select);
+                return content;
+            },
+
+            _handleDisplayMode: function(value) {
+                if(this.options.Dictionary){
+                    this.currentValue = this.options.get(value);
+                }
+                else{
+                    this.currentValue = this.options[value];
+                }
+                return Html.span({}, this.currentValue);
+            },
+
+            _getNewValue: function() {
+                return this.select.get();
+            },
+
+            _handleSuccess: function() {
+                if (this.successHandler) {
+                    return this.successHandler();
+                }
+            },
+
+            getCurrentValue: function() {
+                return this.currentValue;
+            }
+        },
+        function(method, attributes, options, initValue, successHandler) {
+            this.options = options;
+            this.initValue = initValue;
+            this.successHandler = successHandler;
+            this.currentValue = this.options[this.initValue];
+            this.InlineEditWidget(method, attributes, initValue);
+        });
+
+
+// Input edit widget
+type("InputEditWidget", ["InlineEditWidget", "ErrorAware"],
+        {
+            _handleEditMode: function(value) {
+                var content = Html.div({style:{paddingBottom:'3px', marginLeft: '5px'}});
+                this.input = Html.input('text', {size: 30}, value);
+                content.append(this.input);
+                if (this.helpMsg) {
+                    var help = Html.div({style:{paddingTop:'3px'}}, Html.small({}, this.helpMsg));
+                    content.append(help);
+                }
+                return content;
+            },
+
+            _handleDisplayMode: function(value) {
+                if(str(value)!=""){
+                    var content = Html.span({}, value);
+                }
+                else{
+                    var content = Html.em({}, "No text");
+                }
+                return content;
+            },
+
+            _getNewValue: function() {
+                return this.input.get();
+            },
+
+            _handleSuccess: function() {
+                if (this.successHandler) {
+                    return this.successHandler();
+                }
+            },
+
+            _checkErrorState: function() {
+                if (this.validation) {
+                    return !this.validation(this.input.get());
+                } else {
+                    // No validation function
+                    return false;
+                }
+            },
+
+            _setErrorState: function(text) {
+                this._stopErrorList = this._setElementErrorState(this.input, text);
+            },
+
+            _verifyInput: function() {
+                if (!this.allowEmpty && this.input.get() == '') {
+                    this._setErrorState($T('Field is mandatory'));
+                    return false;
+                }
+                if (this._checkErrorState()) {
+                    this._setErrorState(this.errorMsg);
+                    return false;
+                } else {
+                    return true;
+                }
+            }
+        },
+        function(method, attributes, initValue, allowEmpty, successHandler, validation, errorMsg, helpMsg, beforeEdit) {
+            this.attributes = attributes;
+            this.allowEmpty = allowEmpty;
+            this.successHandler = successHandler;
+            this.validation = validation;
+            this.errorMsg = errorMsg;
+            this.helpMsg = helpMsg;
+            this.InlineEditWidget(method, attributes, initValue, beforeEdit);
+        });
+
+type("URLPathEditWidget", ["InputEditWidget"],
+        {
+            _handleDisplayMode: function(value) {
+                var self = this;
+                var content = "";
+                if(value !=""){
+                    content = Html.span({}, self.basePath + value);
+                } else{
+                    content = Html.em({}, $T("There is not any short url yet. Click \"edit\" to setup."));
+                }
+                return content;
+            }
+        },
+        function(method, attributes, basePath, initValue, allowEmpty, successHandler, validation, errorMsg, helpMsg, beforeEdit) {
+            this.basePath = basePath;
+            this.InputEditWidget(method, attributes, initValue, allowEmpty, successHandler, validation, errorMsg, helpMsg, beforeEdit);
+        });
+
 
 
 type('AutocheckTextBox', ['RealtimeTextBox'],

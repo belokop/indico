@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is par{t of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is par{t of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 from MaKaC.webinterface.mail import GenericNotification
 
 from MaKaC.common.info import HelperMaKaCInfo
@@ -28,8 +27,9 @@ from MaKaC.common import info
 from MaKaC.common.utils import formatDateTime
 from MaKaC.common.timezoneUtils import getAdjustedDate
 from MaKaC.common.mail import GenericMailer
-from MaKaC.common.logger import Logger
+from indico.core.logger import Logger
 from MaKaC.common.TemplateExec import escape
+from indico.core.config import Config
 
 
 
@@ -48,7 +48,7 @@ class VidyoNotificationBase(GenericNotification):
 
         self._modifLink = str(booking.getModificationURL())
 
-        self.setFromAddr("Indico Mailer<%s>" % HelperMaKaCInfo.getMaKaCInfoInstance().getSupportEmail())
+        self.setFromAddr("Indico Mailer <%s>" % Config.getInstance().getSupportEmail())
         self.setContentType("text/html")
 
     def _getBookingDetails(self, typeOfMail):
@@ -224,33 +224,6 @@ Click <a href="%s">here</a> to see it in Indico.<br />
        self._getBookingDetails('new')
        ))
 
-#class NewVidyoPublicRoomNotificationManager(VidyoEventManagerNotificationBase):
-#    """ Template to build an email notification to the conference manager
-#    """
-#
-#    def __init__(self, booking):
-#        VidyoEventManagerNotificationBase.__init__(self, booking)
-#
-#        self.setSubject("""[Indico] New Vidyo meeting: %s (event id: %s)"""
-#                        % (self._conference.getTitle(), str(self._conference.getId())))
-#
-#        self.setBody("""Dear Conference Manager,<br />
-#<br />
-#There is a <strong>new Vidyo meeting</strong> in your conference.<br />
-#Click <a href="%s">here</a> to see it in Indico.<br />
-#<br />
-#%s
-#<br />
-#<br />
-#%s
-#<br />
-#Please note that the auto-join URL will not work until the Vidyo meeting time arrives.
-#""" % (self._modifLink,
-#        MailTools.eventDetails(self._conference),
-#        self._getBookingDetails('new')
-#        ))
-
-
 
 class VidyoPublicRoomModifiedNotificationAdmin(VidyoAdminNotificationBase):
     """ Template to build an email notification to the responsible
@@ -282,34 +255,6 @@ Click <a href="%s">here</a> to see it in Indico.<br />
        ))
 
 
-#class VidyoPublicRoomModifiedNotificationManager(VidyoEventManagerNotificationBase):
-#    """ Template to build an email notification to the event manager
-#    """
-#
-#    def __init__(self, booking):
-#        VidyoEventManagerNotificationBase.__init__(self, booking)
-#
-#        self.setSubject("""[Indico] Vidyo meeting modified: %s (event id: %s)"""
-#                        % (self._conference.getTitle(), str(self._conference.getId())))
-#
-#        self.setBody("""Dear Conference Manager,<br />
-#<br />
-#An Vidyo meeting <strong>was modified</strong> in your conference.<br />
-#Click <a href="%s">here</a> to see it in Indico.<br />
-#<br />
-#%s
-#<br />
-#<br />
-#%s
-#<br />
-#Please note that the auto-join URL will not work until the Vidyo meeting time arrives.
-#""" % (self._modifLink,
-#        MailTools.eventDetails(self._conference),
-#        self._getBookingDetails('modify')
-#        ))
-
-
-
 class VidyoPublicRoomRemovalNotificationAdmin(VidyoAdminNotificationBase):
     """ Template to build an email notification to the responsible
     """
@@ -336,30 +281,6 @@ A Vidyo public room <strong>was deleted</strong> in <a href="%s">%s</a><br />
        MailTools.organizerDetails(self._conference),
        self._getBookingDetails('remove')
        ))
-
-#class VidyoPublicRoomRemovalNotificationManager(VidyoEventManagerNotificationBase):
-#    """ Template to build an email notification to the responsible
-#    """
-#
-#    def __init__(self, booking):
-#        VidyoEventManagerNotificationBase.__init__(self, booking)
-#
-#        self.setSubject("""[Indico] Vidyo public room deleted %s (event id: %s)"""
-#                        % (self._conference.getTitle(), str(self._conference.getId())))
-#
-#        self.setBody("""Dear Conference Manager,<br />
-#<br />
-#An Vidyo meeting <strong>was deleted</strong> in your conference.<br />
-#<br />
-#%s
-#<br />
-#You also can see a list of all the Vidyo meetings here: (not implemented yet).<br />
-#<br />
-#<br />
-#%s
-#""" % (MailTools.eventDetails(self._conference),
-#        self._getBookingDetails('remove')
-#        ))
 
 
 class VidyoCleaningNotification(VidyoAdminNotificationBase):
@@ -395,7 +316,7 @@ class VidyoCleaningDoneNotification(GenericNotification):
 
     def __init__(self, maxDate, previousTotal, newTotal, error = None, attainedDate = None):
         GenericNotification.__init__(self)
-        self.setFromAddr("Indico Mailer<%s>" % HelperMaKaCInfo.getMaKaCInfoInstance().getSupportEmail())
+        self.setFromAddr("Indico Mailer <%s>" % Config.getInstance().getSupportEmail())
         self.setContentType("text/html")
         self.setToList(MailTools.getAdminEmailList('Vidyo'))
         serverTimezone = info.HelperMaKaCInfo.getMaKaCInfoInstance().getTimezone()
@@ -450,7 +371,7 @@ class VidyoOwnerChosenNotification(VidyoOwnerNotificationBase):
         self._booking = booking
         self._owner = booking.getOwnerObject()
 
-        self.setFromAddr("Indico Mailer<%s>" % HelperMaKaCInfo.getMaKaCInfoInstance().getSupportEmail())
+        self.setFromAddr("Indico Mailer <%s>" % Config.getInstance().getSupportEmail())
         self.setContentType("text/html")
 
         event = booking.getConference()
@@ -507,7 +428,7 @@ class VidyoOwnerRemovedNotification(VidyoOwnerNotificationBase):
     def __init__(self, booking, oldOwner):
         VidyoOwnerNotificationBase.__init__(self)
         self._owner = oldOwner
-        self.setFromAddr("Indico Mailer<%s>" % HelperMaKaCInfo.getMaKaCInfoInstance().getSupportEmail())
+        self.setFromAddr("Indico Mailer <%s>" % Config.getInstance().getSupportEmail())
         self.setContentType("text/html")
 
         event = booking.getConference()
@@ -518,7 +439,7 @@ class VidyoOwnerRemovedNotification(VidyoOwnerNotificationBase):
 
         self.setBody("""Dear %s%s,<br />
 <br />
-We are sorry to inform you that you are no longer the owner of the Vidyo room with name "%s" in the event <a href="%s">%s</a>.<br />
+This is an automatic email to inform you that you are no longer the owner of the Vidyo room with name "%s" in the event <a href="%s">%s</a>. The new owner is %s.<br />
 <br />
 Thank you for using our system.<br />
 """ %
@@ -526,7 +447,8 @@ Thank you for using our system.<br />
                       oldOwner.getStraightFullName(),
                       booking.getBookingParamByName("roomName"),
                       urlHandlers.UHConferenceDisplay.getURL(event),
-                      event.getTitle()))
+                      event.getTitle(),
+                      booking.getOwner()["name"]))
 
 
 class VidyoRoomDeletedOwnerNotification(VidyoOwnerNotificationBase):
@@ -537,7 +459,7 @@ class VidyoRoomDeletedOwnerNotification(VidyoOwnerNotificationBase):
         VidyoOwnerNotificationBase.__init__(self)
         self._owner = booking.getOwnerObject()
 
-        self.setFromAddr("Indico Mailer<%s>" % HelperMaKaCInfo.getMaKaCInfoInstance().getSupportEmail())
+        self.setFromAddr("Indico Mailer <%s>" % Config.getInstance().getSupportEmail())
         self.setContentType("text/html")
 
         owner = booking.getOwnerObject()
@@ -549,11 +471,10 @@ class VidyoRoomDeletedOwnerNotification(VidyoOwnerNotificationBase):
 
         self.setBody("""Dear %s%s,<br />
 <br />
-We are sorry to inform you that you are the Vidyo room with name "%s" in the event <a href="%s">%s</a>,
-of which you were the owner, has been deleted by a manager of the event.<br />
+Please note that the Vidyo room named "%s" associated with the Indico event <a href="%s">%s</a>, of which you were the owner, has been deleted by a manager of this event.<br />
 <br />
-Thank you for using our system.<br />
-""" %
+Thank you for using Vidyo and Indico<br />
+"""%
                      (self._getOwnerTitleText(),
                       owner.getStraightFullName(),
                       booking.getBookingParamByName("roomName"),

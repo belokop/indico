@@ -1,91 +1,100 @@
-<%!
+<%
 owner = conf.getOwnerList()[0]
 
-prev, next, first, last = owner.getNeighborEvents(conf)
+first = owner.getRelativeEvent('first')
+last = owner.getRelativeEvent('last')
+
+if first == conf:
+   first = None
+if last == conf:
+   last = None
 
 # If printURL is set then show the print button
-try:
-	printURL
-	showPrintButton = True
-except NameError:
-	showPrintButton = False
+if printURL is not UNDEFINED:
+    showPrintButton = True
+    printURL_ = printURL
+else:
+    showPrintButton = False
 
 # Check if the header should be in dark colors
-try:
-    dark
-except NameError:
-    dark = False;
-
+if dark is not UNDEFINED:
+    dark_ = dark
+else:
+    dark_ = False;
 %>
+% if Config.getInstance().getMobileURL():
+    <%include file="MobileDetection.tpl" args="conf=conf"/>
+% endif
+<%include file="Announcement.tpl"/>
 
-<% includeTpl('Announcement') %>
+<div class="page-header ${"page-header-dark" if dark_ else ""}">
 
-<div class="pageHeader <% if dark: %>pageHeaderDark<% end %>">
-
-    <% includeTpl('SessionBar', dark=dark) %>
+    <%include file="SessionBar.tpl" args="dark=dark_"/>
 
     <div class="eventHeaderButtonBar" >
 
-    <% if 'needsBackButton' in locals() and needsBackButton: %>
-        <a href="<%= urlHandlers.UHConferenceDisplay.getURL(self._conf) %>" style=class="eventHeaderButtonBar"><%= _('Go back to Conference') %><div class="leftCorner"></div></a>
-    <% end %>
-    <% elif conf.getType() != "conference" or displayNavigationBar: %>
-        <a id="homeButton" href="<%= urlHandlers.UHWelcome.getURL() %>"
-           style="background-image: url(<%= systemIcon('home') %>); margin-left: 10px"></a>
+    % if 'needsBackButton' in locals() and needsBackButton:
+        <a href="${ urlHandlers.UHConferenceDisplay.getURL(self_._conf) }" style=class="eventHeaderButtonBar">${ _('Go back to Conference') }<div class="leftCorner"></div></a>
+    % elif conf.getType() != "conference" or displayNavigationBar:
+        <a id="homeButton" href="${ urlHandlers.UHWelcome.getURL() }"
+           style="background-image: url(${ systemIcon('home') }); margin-left: 10px"></a>
 
         <div class="separator"></div>
 
-        <%if first != None: %>
-            <a id="firstEventButton" href="<%= urlHandlers.UHConferenceDisplay.getURL(first) %>"
-               style="background-image: url(<%= systemIcon('first_arrow') %>)"></a>
-        <% end %>
+        %if first != None:
+            <a id="firstEventButton" href="${ urlHandlers.UHConferenceDisplay.getURL(first) }"
+               style="background-image: url(${ systemIcon('first_arrow') })"></a>
+            <a id="previousEventButton" href="${ urlHandlers.UHPreviousEvent.getURL(conf) }"
+               style="background-image: url(${ systemIcon('left_arrow') })"></a>
+        % endif
 
-        <%if prev != None: %>
-            <a id="previousEventButton" href="<%= urlHandlers.UHConferenceDisplay.getURL(prev) %>"
-               style="background-image: url(<%= systemIcon('left_arrow') %>)"></a>
-        <% end %>
+        <a id="upToCategoryButton" href="${ categurl }"
+           style="background-image: url(${ systemIcon('upCategory') })"></a>
 
-        <a id="upToCategoryButton" href="<%= categurl %>"
-           style="background-image: url(<%= systemIcon('upCategory') %>)"></a>
+        %if last != None:
+            <a id="nextEventButton" href="${ urlHandlers.UHNextEvent.getURL(conf) }"
+               style="background-image: url(${ systemIcon('right_arrow') })"></a>
+            <a id="lastEventButton" href="${ urlHandlers.UHConferenceDisplay.getURL(last) }"
+               style="background-image: url(${ systemIcon('last_arrow') })"></a>
+        % endif
 
-        <%if next != None: %>
-            <a id="nextEventButton" href="<%= urlHandlers.UHConferenceDisplay.getURL(next) %>"
-               style="background-image: url(<%= systemIcon('right_arrow') %>)"></a>
-        <% end %>
-
-        <%if last != None: %>
-            <a id="lastEventButton" href="<%= urlHandlers.UHConferenceDisplay.getURL(last) %>"
-               style="background-image: url(<%= systemIcon('last_arrow') %>)"></a>
-        <% end %>
-
-		<% if showPrintButton or showMoreButton or showFilterButton: %>
+        % if showPrintButton or showMoreButton or showFilterButton:
             <div class="separator"></div>
-        <% end %>
+        % endif
 
-    <% end %>
+    % endif
 
-        <% if showPrintButton : %>
-            <a id="printButton" href="<%= printURL %>"
-               style="background-image: url(<%= systemIcon('printer') %>)"></a>
-		<% end %>
+        % if showPrintButton :
+            <a id="printButton" href="${ printURL_ }"
+               style="background-image: url(${ systemIcon('printer') })"></a>
+        % endif
 
-        <% if showFilterButton: %>
-            <% includeTpl('MeetingFilter') %>
-        <% end %>
+        % if showFilterButton:
+            <%include file="MeetingFilter.tpl"/>
+        % endif
+        % if showExportToICal:
+            <a id="exportIcal${self_._conf.getUniqueId()}" href="#" class="exportIcal" data-id="${self_._conf.getUniqueId()}">
+                ${ _("iCal export") }
+                <div class="leftCorner"></div>
+            </a>
+                <%include file="ConferenceICalExport.tpl" args="item=self_._conf"/>
+        % endif
 
-		<% if showMoreButton: %>
-            <% includeTpl('HeaderMoreMenu', viewoptions = viewoptions, \
-                SelectedStyle = SelectedStyle, pdfURL=pdfURL, \
-                showExportToICal=showExportToICal, showExportToPDF=showExportToPDF, \
-                showDLMaterial=showDLMaterial, showLayout=showLayout, \
-                displayURL=displayURL) %>
-		<% end %>
+        % if showMoreButton:
+            <%include file="HeaderMoreMenu.tpl" args="viewoptions = viewoptions,
+                SelectedStyle = SelectedStyle, pdfURL=pdfURL,
+                showExportToPDF=showExportToPDF,
+                showDLMaterial=showDLMaterial, showLayout=showLayout,
+                displayURL=displayURL"/>
+        % endif
 
         <div class="separator"></div>
 
-        <a id="manageEventButton" href="<% if usingModifKey: %><%= urlHandlers.UHConferenceModification.getURL(conf) %><%end%><%else:%><%= urlHandlers.UHConfManagementAccess.getURL(conf) %><%end%>"
-           style="background-image: url(<%= systemIcon('manage') %>)"></a>
-        <% if usingModifKey: %><a href="<%= urlHandlers.UHConfCloseModifKey.getURL(self._conf) %>" style=class="eventHeaderButtonBar"><%= _('exit manage') %><div class="leftCorner"></div></a><% end %>
+        <a id="manageEventButton" href="${ urlHandlers.UHConferenceModification.getURL(conf)  if usingModifKey else  urlHandlers.UHConfManagementAccess.getURL(conf) }"
+           style="background-image: url(${ systemIcon('manage') })"></a>
+        % if usingModifKey:
+            <a href="${urlHandlers.UHConfCloseModifKey.getURL(self_._conf)}" style=class="eventHeaderButtonBar"> ${_('exit manage')} <div class="leftCorner"></div></a>
+        % endif
     </div>
 
 
@@ -93,55 +102,41 @@ except NameError:
          such as the filtering optionsfor meetings -->
     <div id="pageSubHeader"></div>
 
-    <% if showFilterButton and filterActive == "1": %>
+    % if showFilterButton and filterActive == "1":
         <script type="text/javascript">
             // If the filter is active show the div.
             // This is done here since it has to be
             // done after the declaration of pageSubHeader
             filterToggle();
         </script>
-    <% end %>
+    % endif
 
 </div>
 
 
 <script type="text/javascript">
-
-    function setMouseEvents(element, tooltipText) {
-        var tooltipText = "<span style='padding:3px'>" + tooltipText + "</span>";
-        element.dom.onmouseover = function(event) {
-            IndicoUI.Widgets.Generic.tooltip(element.dom, event, tooltipText);
-        }
+$(function() {
+    function createTooltip(element, tooltipText) {
+        element.qtip({
+            content: {
+                text: $("<span style='padding:3px' />").append(tooltipText)
+            }
+        });
     }
 
-    setMouseEvents($E('homeButton'), '<%= _("Go to Indico Home Page")%>');
+    createTooltip($('#homeButton'), '${ _("Go to Indico Home Page")}');
+    createTooltip($('#firstEventButton'), '${ _("Oldest event")}');
+    createTooltip($('#previousEventButton'), '${ _("Older event")}');
+    createTooltip($('#upToCategoryButton'), '${ _("Up to category")}');
+    createTooltip($('#nextEventButton'), '${ _("Newer event")}');
+    createTooltip($('#lastEventButton'), '${ _("Newest event")}');
+    createTooltip($('#printButton'), '${ _("Printable version")}');
+    createTooltip($('#manageEventButton'), '${ _("Switch to management area for this event")}');
 
-    if (exists($E('firstEventButton'))) {
-        setMouseEvents($E('firstEventButton'), '<%= _("Oldest event")%>');
-    }
+    $(".exportIcal").click(function(){
+        $(this).trigger('menu_select');
+    });
 
-    if (exists($E('previousEventButton'))) {
-        setMouseEvents($E('previousEventButton'), '<%= _("Older event")%>');
-    }
-
-    setMouseEvents($E('upToCategoryButton'), '<%= _("Up to category")%>');
-
-    if (exists($E('nextEventButton'))) {
-        setMouseEvents($E('nextEventButton'), '<%= _("Newer event")%>');
-    }
-
-    if (exists($E('lastEventButton'))) {
-        setMouseEvents($E('lastEventButton'), '<%= _("Newest event")%>');
-    }
-
-    if (exists($E('printButton'))) {
-        setMouseEvents($E('printButton'), '<%= _("Printable version")%>');
-    }
-
-    setMouseEvents($E('manageEventButton'), '<%= _("Switch to management area for this event")%>');
+});
 
 </script>
-
-<%= errorMsg %>
-<%= infoMsg %>
-

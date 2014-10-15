@@ -1,42 +1,36 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
-
-# system imports
-import contextlib
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 # ZODB imports
 import ZODB
 from ZODB import ConflictResolution, MappingStorage
+from indico.tests.python.functional.seleniumTestCase import SeleniumTestCase
 import transaction
+from ZODB.POSException import ConflictError
 
 # legacy imports
-from MaKaC.common.db import DBMgr
-from MaKaC.conference import CategoryManager, DefaultConference
+from indico.core.db import DBMgr
 
-from MaKaC import user
-from MaKaC.authentication import AuthenticatorMgr
-from MaKaC.common import HelperMaKaCInfo
-from MaKaC.common.info import HelperMaKaCInfo
 
 # indico imports
 from indico.tests.python.unit.util import IndicoTestFeature
+from indico.tests import default_actions
 
 
 class TestMemStorage(MappingStorage.MappingStorage,
@@ -78,36 +72,39 @@ class Database_Feature(IndicoTestFeature):
     def start(self, obj):
         super(Database_Feature, self).start(obj)
 
-        obj._dbi = DBMgr.getInstance()
+        obj._dbmgr = DBMgr.getInstance()
 
-        # Reset everything
-        with obj._context('database'):
-            conn = obj._dbi._getConnObject()
-            r = conn.root._root
-
-            for e in r.keys():
-                del r[e]
-
-            # initialize db root
-            cm = CategoryManager()
-            cm.getRoot()
-
-            obj._home = cm.getById('0')
+        retries = 10
+        # quite prone to DB conflicts
+        while retries:
+            try:
+                with obj._context('database', sync=True) as conn:
+                    obj._home = default_actions.initialize_new_db(conn.root())
+                break
+            except ConflictError:
+                retries -= 1
 
     def _action_startDBReq(obj):
-        obj._dbi.startRequest()
+        obj._dbmgr.startRequest()
+        obj._conn = obj._dbmgr.getDBConnection()
+        return obj._conn
 
     def _action_stopDBReq(obj):
-        obj._dbi.endRequest()
+        transaction.commit()
+        obj._conn.close()
+        obj._conn = None
 
-    def _context_database(self):
-        if DBMgr.getInstance().isConnected():
-            yield
-            return
+    def _context_database(self, sync=False):
+        conn = self._startDBReq()
+        if sync:
+            conn.sync()
+        try:
+            yield conn
+        finally:
+            self._stopDBReq()
 
-        self._startDBReq()
-        yield
-        self._stopDBReq()
+    def destroy(self, obj):
+        obj._conn = None
 
 
 class DummyUser_Feature(IndicoTestFeature):
@@ -120,36 +117,11 @@ class DummyUser_Feature(IndicoTestFeature):
 
     def start(self, obj):
         super(DummyUser_Feature, self).start(obj)
-        with obj._context('database'):
 
-            #filling info to new user
-            avatar = user.Avatar()
-            avatar.setName( "fake" )
-            avatar.setSurName( "fake" )
-            avatar.setOrganisation( "fake" )
-            avatar.setLang( "en_US" )
-            avatar.setEmail( "fake@fake.fake" )
+        use_password = isinstance(obj, SeleniumTestCase)
 
-            #registering user
-            ah = user.AvatarHolder()
-            ah.add(avatar)
-
-            #setting up the login info
-            li = user.LoginInfo( "dummyuser", "dummyuser" )
-            ih = AuthenticatorMgr()
-            userid = ih.createIdentity( li, avatar, "Local" )
-            ih.add( userid )
-
-            #activate the account
-            avatar.activateAccount()
-
-            #since the DB is empty, we have to add dummy user as admin
-            minfo = HelperMaKaCInfo.getMaKaCInfoInstance()
-            al = minfo.getAdminList()
-            al.grant( avatar )
-
-            obj._dummy = avatar
-
-            HelperMaKaCInfo.getMaKaCInfoInstance().setDefaultConference(DefaultConference())
-
-
+        with obj._context('database', sync=True):
+            obj._avatars = default_actions.create_dummy_users(use_password)
+            for i in xrange(1, 5):
+                setattr(obj, '_avatar%d' % i, obj._avatars[i])
+            setattr(obj, '_dummy', obj._avatars[0])

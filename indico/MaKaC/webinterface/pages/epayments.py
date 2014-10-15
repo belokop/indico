@@ -1,38 +1,39 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
-import MaKaC.webinterface.pages.conferences as conferences
-import MaKaC.webinterface.pages.registrationForm as registrationForm
-import MaKaC.webinterface.urlHandlers as urlHandlers
-import MaKaC.webinterface.navigation as navigation
 import string
+
 from MaKaC import epayment
+from MaKaC.webinterface.pages import conferences
+from MaKaC.webinterface.pages import registrationForm
+from MaKaC.webinterface import urlHandlers
+from MaKaC.webinterface import navigation
 from MaKaC.webinterface import wcomponents
 from xml.sax.saxutils import quoteattr
-from MaKaC.common import Configuration
+from indico.core import config as Configuration
 from datetime import timedelta,datetime
 from MaKaC.webinterface.common.countries import CountryHolder
-import MaKaC.webinterface.pages.registrationForm as registrationForm
+from MaKaC.webinterface.pages import registrationForm
 from MaKaC.conference import Session
 from MaKaC.i18n import _
 from MaKaC.common import HelperMaKaCInfo
+from MaKaC.webinterface.common.currency import CurrencyRegistry
 # ----------------- MANAGEMENT AREA ---------------------------
 class WPConfModifEPaymentBase( registrationForm.WPConfModifRegFormBase ):
 
@@ -42,14 +43,14 @@ class WPConfModifEPaymentBase( registrationForm.WPConfModifRegFormBase ):
 class WPConfModifEPayment( WPConfModifEPaymentBase ):
 
     def _getTabContent( self, params ):
-        wc = WConfModifEPayment(self._conf, self._getAW().getUser())
+        wc = WConfModifEPayment(self._conf, self._getAW())
         return wc.getHTML()
 
 class WConfModifEPayment( wcomponents.WTemplated ):
 
-    def __init__( self, conference, user ):
+    def __init__( self, conference, aw ):
         self._conf = conference
-        self._user = user
+        self._aw = aw
 
     def _getSectionsHTML(self):
         modPay=self._conf.getModPay()
@@ -63,48 +64,19 @@ class WConfModifEPayment( wcomponents.WTemplated ):
             urlStatus = urlHandlers.UHConfModifEPaymentEnableSection.getURL(self._conf)
             urlStatus.addParam("epayment", gs.getId())
             urlModif = gs.getConfModifEPaymentURL(self._conf)
+
             img = enabledBulb
             text = enabledText
             if not gs.isEnabled():
                 img = notEnabledBulb
                 text = disabledText
 
-            # CERN Plugin: Just admins can see and modify it
-            from MaKaC.plugins.EPayment.CERNYellowPay import  MODULE_ID
-            if gs.getId() == MODULE_ID:
-                minfo = HelperMaKaCInfo.getMaKaCInfoInstance()
-                al = minfo.getAdminList()
-                if not al.isAdmin( self._user ):
-                    from MaKaC.plugins.base import PluginsHolder
-                    endis="enable"
-                    departmentName = PluginsHolder().getPluginType("EPayment").getPlugin(MODULE_ID).getOption("FPDepartmentName").getValue()
-                    emailAddress = PluginsHolder().getPluginType("EPayment").getPlugin(MODULE_ID).getOption("FPEmaillAddress").getValue()
-                    if gs.isEnabled():
-                        endis="disable"
-                        emailAddress = minfo.getSupportEmail()
-                        departmentName = "Indico support"
-                    html.insert(0, """
-                        <tr>
-                        <td>
-                            <img src=%s alt="%s" class="imglink">&nbsp;&nbsp;<b>CERN E-Payment</b> <small>
-                            (please, contact <a href="mailto:%s?subject=Indico Epayment - Conference ID: %s">%s</a> to %s
-                            the CERN e-payment module)</small>
-                        </td>
-                        </tr>
-                        """%(img, text, emailAddress, self._conf.getId(), departmentName, endis))
-                    continue
-            #################################################
+            pluginHTML = gs.getPluginSectionHTML(self._conf, self._aw, urlStatus, urlModif, img, text)
+            html.append(pluginHTML)
 
-            selbox = ""
-            html.append("""
-                        <tr>
-                        <td>
-                            <a href=%s><img src=%s alt="%s" class="imglink"></a>&nbsp;%s&nbsp;<a href=%s>%s</a>
-                        </td>
-                        </tr>
-                        """%(quoteattr(str(urlStatus)), img, text, selbox, quoteattr(str(urlModif)), gs.getTitle()) )
         html.insert(0, """<a href="" name="sections"></a><input type="hidden" name="oldpos"><table align="left">""")
         html.append("</table>")
+
         return "".join(html)
 
 
@@ -115,9 +87,8 @@ class WConfModifEPayment( wcomponents.WTemplated ):
         vars["enablePic"]=quoteattr(str(Configuration.Config.getInstance().getSystemIconURL( "enabledSection" )))
         vars["disablePic"]=quoteattr(str(Configuration.Config.getInstance().getSystemIconURL( "disabledSection" )))
         if modPay.isActivated():
+            vars["activated"] = True
             vars["changeTo"] = "False"
-            vars["status"] = _("ENABLED")
-            vars["changeStatus"] = _("DISABLE")
             vars["disabled"] = ""
             vars["detailPayment"] = self._conf.getModPay().getPaymentDetails()
             vars["conditionsPayment"] = self._conf.getModPay().getPaymentConditions()
@@ -127,10 +98,10 @@ class WConfModifEPayment( wcomponents.WTemplated ):
             vars["conditionsEnabled"] = "DISABLED"
             if self._conf.getModPay().arePaymentConditionsEnabled():
                 vars["conditionsEnabled"] = "ENABLED"
+            vars["Currency"]=self._conf.getRegistrationForm().getCurrency() or _("not selected")
         else:
+            vars["activated"] = False
             vars["changeTo"] = "True"
-            vars["status"] = _("DISABLED")
-            vars["changeStatus"] = _("ENABLE")
             vars["disabled"] = "disabled"
             vars["detailPayment"] = ""
             vars["conditionsPayment"] = ""
@@ -138,6 +109,7 @@ class WConfModifEPayment( wcomponents.WTemplated ):
             vars["specificConditionsPayment"] = ""
             vars["successMsgPayment"] = ""
             vars["receiptMsgPayment"] = ""
+            vars["Currency"] = ""
         vars["dataModificationURL"]=urlHandlers.UHConfModifEPaymentdetailPaymentModification.getURL(self._conf)
         vars["sections"] = self._getSectionsHTML()
         return vars
@@ -168,5 +140,6 @@ class WConfModifEPaymentDataModification( wcomponents.WTemplated ):
         regForm = self._conf.getRegistrationForm()
         vars["successMsgPaymentEnabled"] = regForm.isSendPaidEmail() and _("ENABLED") or _("DISABLED")
         vars["receiptMsgPaymentEnabled"] = regForm.isSendReceiptEmail() and _("ENABLED") or _("DISABLED")
+        vars["Currency"]=CurrencyRegistry.getSelectItemsHTML(regForm.getCurrency())
         return vars
 

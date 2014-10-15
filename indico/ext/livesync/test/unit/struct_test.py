@@ -1,24 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
-
-import unittest
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 from indico.ext.livesync.struct import ListMultiPointerTrack, SetMultiPointerTrack, \
      timestamp
@@ -26,6 +23,7 @@ from indico.tests.python.unit.db import TestMemStorage
 
 import transaction
 from ZODB.POSException import ConflictError
+from indico.tests.python.unit.util import IndicoTestCase
 
 
 class DummyType(object):
@@ -38,10 +36,18 @@ class DummyType(object):
     def __str__(self):
         return "<DT %s>" % self._value
 
+    def __cmp__(self, obj):
+        val = cmp(self._value, obj._value)
+        if val == 0:
+            return cmp(id(self), id(obj))
+        else:
+            return val
 
-class TestMultiPointerTrack(unittest.TestCase):
+
+class TestMultiPointerTrack(IndicoTestCase):
 
     def setUp(self):
+        super(TestMultiPointerTrack, self).setUp()
         self._mpt = ListMultiPointerTrack()
         self._a = DummyType(1)
         self._b = DummyType(2)
@@ -100,6 +106,14 @@ class TestMultiPointerTrack(unittest.TestCase):
         del self._mpt[1]
         self.assertEqual(len(self._mpt), 1)
 
+    def test_track_empty(self):
+        """
+        checking that track is empty
+        """
+        self.assertEqual(self._mpt.is_empty(), True)
+        self._addSome()
+        self.assertEqual(self._mpt.is_empty(), False)
+
     def testMovePointer(self):
         """
         moving the pointer
@@ -140,9 +154,13 @@ class TestMultiPointerTrack(unittest.TestCase):
         self.assertRaises(KeyError, self._mpt.movePointer, self._a, 1 )
 
 
-class TestSetMultiPointerTrack(unittest.TestCase):
+class TestSetMultiPointerTrack(IndicoTestCase):
+
+    def _val(self, iter):
+        return list(e._value for e in iter)
 
     def setUp(self):
+        super(TestSetMultiPointerTrack, self).setUp()
         self._mpt = SetMultiPointerTrack()
         self._a = DummyType(1  + 2)
         self._b = DummyType(2  + 2)
@@ -163,8 +181,8 @@ class TestSetMultiPointerTrack(unittest.TestCase):
         self._addSome()
 
         self.assertEqual(
-            list(e for ts, e in self._mpt),
-            [self._f, self._b, self._e, self._a, self._c, self._d])
+            list(e._value for ts, e in self._mpt),
+            [7, 3, 4, 2, 3, 3])
 
     def testPointerIterator(self):
         self._addSome()
@@ -172,28 +190,28 @@ class TestSetMultiPointerTrack(unittest.TestCase):
         self._mpt.addPointer("foo")
         self._mpt.addPointer("bar", 2)
 
-        self.assertEqual(list(self._mpt.pointerIterValues("foo")),
-                         [self._f, self._b, self._e, self._a, self._c, self._d])
+        self.assertEqual(self._val(self._mpt.pointerIterValues("foo")),
+                         [7, 3, 4, 2, 3, 3])
 
-        self.assertEqual(list(self._mpt.pointerIterValues("bar")),
-                         [self._f])
+        self.assertEqual(self._val(self._mpt.pointerIterValues("bar")),
+                         [7])
 
     def testPointerIteratorTill(self):
+        """
+        Iterate till a certain timestamp
+        """
         self._addSome()
 
         self._mpt.addPointer("foo")
-        self._mpt.addPointer("bar", 2 )
 
-        self.assertEqual(
-            list(self._mpt.pointerIterValues(
-                "foo",
-                till=2 )),
-            [self._b, self._e, self._a, self._c, self._d])
+        self.assertEqual(self._val(self._mpt.pointerIterValues("foo", till=2 )),
+                         [3, 4, 2, 3, 3])
 
 
-class TestSetMultiPointerTrackDB(unittest.TestCase):
+class TestSetMultiPointerTrackDB(IndicoTestCase):
 
     def setUp(self):
+        super(TestSetMultiPointerTrackDB, self).setUp()
 
         from ZODB import DB
         db = DB(TestMemStorage('test'))

@@ -1,11 +1,5 @@
-<% if material: %>\
-    <div>
-		<%= material %>
-	</div>
-<% end %>
-
-<ul class="list">
-<% for item in items: %>
-	<% includeTpl('CategoryListItem', lItem=item, categoryDisplayURLGen=categoryDisplayURLGen) %>
-<% end %>
+<ul class="category-list">
+% for item in items:
+    <%include file="CategoryListItem.tpl" args="lItem=item, categoryDisplayURLGen=categoryDisplayURLGen"/>
+% endfor
 </ul>

@@ -1,38 +1,64 @@
+# -*- coding: utf-8 -*-
+##
+##
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+##
+## Indico is free software; you can redistribute it and/or
+## modify it under the terms of the GNU General Public License as
+## published by the Free Software Foundation; either version 3 of the
+## License, or (at your option) any later version.
+##
+## Indico is distributed in the hope that it will be useful, but
+## WITHOUT ANY WARRANTY; without even the implied warranty of
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+## General Public License for more details.
+##
+## You should have received a copy of the GNU General Public License
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
+
 """
 Schedule-related services
 """
+from flask import session
 
 from MaKaC.services.implementation.base import ParameterManager
 
 import MaKaC.conference as conference
 import MaKaC.schedule as schedule
 
+from MaKaC.common import log
 from MaKaC.common.PickleJar import DictPickler
 from MaKaC.common.fossilize import fossilize
 from MaKaC.fossils.schedule import IConferenceScheduleDisplayFossil
 
 from MaKaC.services.interface.rpc.common import ServiceError, TimingNoReportError,\
-    NoReportError
+    NoReportError, ServiceAccessError
 
 from MaKaC.services.implementation import conference as conferenceServices
 from MaKaC.services.implementation import base
-from MaKaC.services.implementation import roomBooking
 from MaKaC.services.implementation import session as sessionServices
 from MaKaC.common.timezoneUtils import setAdjustedDate
 from MaKaC.common.utils import getHierarchicalId, formatTime, formatDateTime, parseDate
 from MaKaC.common.contextManager import ContextManager
+import MaKaC.common.info as info
 from MaKaC.errors import TimingError
 from MaKaC.fossils.schedule import ILinkedTimeSchEntryMgmtFossil, IBreakTimeSchEntryMgmtFossil, \
         IContribSchEntryMgmtFossil
 from MaKaC.fossils.contribution import IContributionParticipationTTMgmtFossil, IContributionFossil
 from MaKaC.fossils.conference import IConferenceParticipationFossil,\
     ISessionFossil
-from MaKaC.common import timezoneUtils
 from MaKaC.common.Conversion import Conversion
 from MaKaC.schedule import BreakTimeSchEntry
-from MaKaC.conference import SessionSlot
+from MaKaC.conference import SessionSlot, Material, Link
+from MaKaC.webinterface.pages.sessions import WSessionICalExport
+from MaKaC.webinterface.pages.contributions import WContributionICalExport
+from indico.web.http_api.util import generate_public_auth_request
 
-import time, datetime, pytz, copy
+import datetime
+import pytz
+import copy
+from indico.core.config import Config
 
 def translateAutoOps(autoOps):
 
@@ -80,6 +106,11 @@ class LocationSetter:
                 r = conference.CustomRoom()
             target.setRoom(r)
             r.setName(room)
+            if Config.getInstance().getIsRoomBookingActive():
+                r.retrieveFullName(location)
+            else:
+                # invalidate full name, as we have no way to know it
+                r.fullName = None
 
 class ScheduleOperation:
 
@@ -90,7 +121,7 @@ class ScheduleOperation:
         try:
             return self._performOperation()
         except TimingError, e:
-            raise TimingNoReportError(e.getMsg())
+            raise TimingNoReportError(e.getMessage())
 
     def initializeAutoOps(self):
         ContextManager.set('autoOps',[])
@@ -99,34 +130,94 @@ class ScheduleOperation:
         return ContextManager.get('autoOps')
 
 
-class ScheduleAddContribution(ScheduleOperation, LocationSetter):
+class ScheduleEditContributionBase(ScheduleOperation, LocationSetter):
 
-    def __addPeople(self, contribution, pManager, elemType, method):
-        """ Generic method for adding presenters, authors and
-        co-authors. """
+    def __addPeople(self, contribution, pManager, elemType, addMethod, deleteMethod, getListMethod, allParticipantEmails):
+        """ Generic method for adding presenters, authors and co-authors. """
+
+        def __findPerson(personDict, peopleList):
+            for person in peopleList:
+                # TODO: Remove this hack when refactoring Users.js
+                personDict["id"] = personDict["id"].replace('edited','')
+                ##
+                if person.getId() == personDict["id"]:
+                    return person
+            return None
 
         pList = pManager.extract("%ss" % elemType, pType=list,
                                  allowEmpty=True)
 
+        peopleIds = []
+        currentParticipants = getListMethod(contribution)
+        currentParticipantEmails = [p.getEmail() for p in currentParticipants]
+
         for elemValues in pList:
-            element = conference.ContributionParticipation()
-            DictPickler.update(element, elemValues)
+            # Already existing participants have a type 'ContributionParticipation', while
+            # added users can be 'Avatar'(search) or no-type (new).
+            if elemValues.get("_type", "Avatar") == "ContributionParticipation": # udpate
+                element = __findPerson(elemValues, currentParticipants)
+                peopleIds.append(elemValues["id"])
+                if element is None: continue # Most probably the part was removed in the meanwhile
+                DictPickler.update(element, elemValues)
+            else: # new
 
-            # call the appropriate method
-            method(contribution, element)
+                # Do not add the same participant twice
+                if elemValues.get("email") in currentParticipantEmails: # if it is already a participant
+                    continue
+                elif elemValues.get("email","").strip() != "": # keep track in case, the user is trying to add 2 times the same participant
+                    currentParticipantEmails.append(elemValues["email"])
 
-            if self._privileges is not None:
-                if self._privileges.get('%s-grant-submission' % elemType, False):
+                element = conference.ContributionParticipation()
+                DictPickler.update(element, elemValues)
+                # call the appropriate method
+                addMethod(contribution, element)
+                peopleIds.append(element.getId())
+
+            # rights that are set individually per participant
+            if self._updateRights:
+                if elemValues.get("isSubmitter"):
                     contribution.grantSubmission(element)
+                else:
+                    contribution.revokeSubmission(element)
+
+        for person in getListMethod(contribution)[:]: #delete
+            if str(person.getId()) not in peopleIds:
+                deleteMethod(contribution, person)
+                if person.getEmail() not in allParticipantEmails:
+                    contribution.revokeSubmission(person)
+            elif self._privileges[elemType] is not None:
+                # rights that are set to a group of participants
+                if self._privileges[elemType].get('%s-grant-submission' % elemType, False):
+                    contribution.grantSubmission(person)
+        allParticipantEmails += currentParticipantEmails
+
+    def _addReportNumbers(self):
+        reportNumbersSet = []
+        if self._reportNumbers:
+            for reportNumber in self._reportNumbers:
+                system = reportNumber["system"]
+                number_list = reportNumber["number"] #sometimes it is a list (e.g. from Importer)
+                if type(number_list) != list:
+                    number_list = [number_list]
+                for number in number_list:
+                    if not self._contribution.getReportNumberHolder().hasReportNumberOnSystem(system, number):
+                        self._contribution.getReportNumberHolder().addReportNumber(system, number)
+                    reportNumbersSet.append("""s%sr%s"""%(system, number))
+
+        for system in self._contribution.getReportNumberHolder().getReportNumberKeys():
+            for number in self._contribution.getReportNumberHolder().getReportNumbersBySystem(system):
+                if """s%sr%s"""%(system, number) not in reportNumbersSet:
+                    self._contribution.getReportNumberHolder().removeReportNumber(system, number)
 
     def _checkParams(self):
-
         self._pManager = ParameterManager(self._params)
 
         self._roomInfo = self._pManager.extract("roomInfo", pType=dict, allowEmpty=True)
         self._keywords = self._pManager.extract("keywords", pType=list,
                                           allowEmpty=True)
         self._boardNumber = self._pManager.extract("boardNumber", pType=str, allowEmpty=True, defaultValue="")
+        self._reportNumbers = self._pManager.extract("reportNumbers", pType=list, allowEmpty=True, defaultValue=[])
+
         self._needsToBeScheduled = self._params.get("schedule", True)
         if self._needsToBeScheduled:
             self._dateTime = self._pManager.extract("startDate", pType=datetime.datetime)
@@ -138,51 +229,66 @@ class ScheduleAddContribution(ScheduleOperation, LocationSetter):
         for field in self._target.getConference().getAbstractMgr().getAbstractFieldsMgr().getFields():
             self._fields[field.getId()] = self._pManager.extract("field_%s"%field.getId(), pType=str,
                                                      allowEmpty=True, defaultValue='')
-        self._privileges = self._pManager.extract("privileges", pType=dict,                                                  allowEmpty=True)
-        self._contribTypeId = self._pManager.extract("type", pType=str, allowEmpty=True)
+
+        self._privileges = {}
+        for elemType in ["presenter", "author", "coauthor"]:
+            self._privileges[elemType] = self._pManager.extract("%s-privileges"%elemType, pType=dict, allowEmpty=True)
+
+        self._contribTypeId = self._pManager.extract("contributionType", pType=str, allowEmpty=True)
+        self._materials = self._pManager.extract("materials", pType=dict, allowEmpty=True)
+        self._updateRights = self._params.get("updateRights", False)
+
 
     def _performOperation(self):
+        self._contribution.setTitle(self._title, notify = False)
 
-        contribution = conference.Contribution()
+        self._contribution.setKeywords('\n'.join(self._keywords))
 
-        self._addToParent(contribution)
+        self._contribution.setBoardNumber(self._boardNumber)
+        self._contribution.setDuration(self._duration/60, self._duration%60)
+        self._addReportNumbers()
 
-        contribution.setTitle(self._title, notify = False)
-
-        contribution.setKeywords('\n'.join(self._keywords))
-
-        contribution.setBoardNumber(self._boardNumber)
-        contribution.setDuration(self._duration/60, self._duration%60)
 
         if self._needsToBeScheduled:
             checkFlag = self._getCheckFlag()
             adjDate = setAdjustedDate(self._dateTime, self._conf)
-            contribution.setStartDate(adjDate, check = checkFlag)
+            self._contribution.setStartDate(adjDate, check = checkFlag)
 
-        self._schedule(contribution)
+        if self._materials:
+            for material in self._materials.keys():
+                newMaterial = Material()
+                newMaterial.setTitle(material)
+                for resource in self._materials[material]:
+                    newLink = Link()
+                    newLink.setURL(resource)
+                    newLink.setName(resource)
+                    newMaterial.addResource(newLink)
+                self._contribution.addMaterial(newMaterial)
+
+        self._schedule(self._contribution)
 
         for field, value in self._fields.iteritems():
-            contribution.setField(field, value)
+            self._contribution.setField(field, value)
 
+        allParticipantEmails = []
         if (self._target.getConference().getType() == "conference"):
             # for conferences, add authors and coauthors
-            self.__addPeople(contribution, self._pManager, "author", conference.Contribution.addPrimaryAuthor)
-            self.__addPeople(contribution, self._pManager, "coauthor", conference.Contribution.addCoAuthor)
-            # and also set type if it exists
-            if (self._contribTypeId):
-                contribution.setType(self._target.getConference().getContribTypeById(self._contribTypeId))
+            self.__addPeople(self._contribution, self._pManager, "author", conference.Contribution.addPrimaryAuthor, conference.Contribution.removePrimaryAuthor, conference.Contribution.getPrimaryAuthorList, allParticipantEmails)
+            self.__addPeople(self._contribution, self._pManager, "coauthor", conference.Contribution.addCoAuthor, conference.Contribution.removeCoAuthor, conference.Contribution.getCoAuthorList, allParticipantEmails)
+            # set type, if does not exist,
+            self._contribution.setType(self._target.getConference().getContribTypeById(self._contribTypeId))
 
 
-        self.__addPeople(contribution, self._pManager, "presenter", conference.Contribution.newSpeaker)
+        self.__addPeople(self._contribution, self._pManager, "presenter", conference.Contribution.newSpeaker, conference.Contribution.removeSpeaker, conference.Contribution.getSpeakerList, allParticipantEmails)
 
-        self._setLocationInfo(contribution)
+        self._setLocationInfo(self._contribution)
 
-        schEntry = contribution.getSchEntry()
+        schEntry = self._contribution.getSchEntry()
         fossilizedData = schEntry.fossilize({"MaKaC.schedule.LinkedTimeSchEntry": ILinkedTimeSchEntryMgmtFossil,
                                                "MaKaC.schedule.BreakTimeSchEntry" : IBreakTimeSchEntryMgmtFossil,
                                                "MaKaC.schedule.ContribSchEntry"   : IContribSchEntryMgmtFossil},
                                             tz=self._conf.getTimezone())
-        fossilizedDataSlotSchEntry = self._getSlotEntry()
+        fossilizedDataSlotSchEntry = self._getSlotEntryFossil()
 
         result = {'id': fossilizedData['id'],
                 'entry': fossilizedData,
@@ -195,11 +301,13 @@ class ScheduleAddContribution(ScheduleOperation, LocationSetter):
         return result
 
 
-class ConferenceScheduleAddContribution(ScheduleAddContribution, conferenceServices.ConferenceModifBase):
+class ConferenceScheduleAddContribution(ScheduleEditContributionBase, conferenceServices.ConferenceModifBase):
 
     def _checkParams(self):
         conferenceServices.ConferenceModifBase._checkParams(self)
-        ScheduleAddContribution._checkParams(self)
+        ScheduleEditContributionBase._checkParams(self)
+        self._contribution = conference.Contribution()
+        self._addToParent(self._contribution)
 
     def _addToParent(self, contribution):
         self._target.addContribution( contribution )
@@ -209,15 +317,17 @@ class ConferenceScheduleAddContribution(ScheduleAddContribution, conferenceServi
         if self._needsToBeScheduled:
             self._target.getSchedule().addEntry(contribution.getSchEntry(), 2)
 
-    def _getSlotEntry(self):
+    def _getSlotEntryFossil(self):
         return None
 
 
-class SessionSlotScheduleAddContribution(ScheduleAddContribution, sessionServices.SessionSlotModifCoordinationBase):
+class SessionSlotScheduleAddContribution(ScheduleEditContributionBase, sessionServices.SessionSlotModifCoordinationBase):
 
     def _checkParams(self):
         sessionServices.SessionSlotModifCoordinationBase._checkParams(self)
-        ScheduleAddContribution._checkParams(self)
+        ScheduleEditContributionBase._checkParams(self)
+        self._contribution = conference.Contribution()
+        self._addToParent(self._contribution)
 
     def _addToParent(self, contribution):
         self._session.addContribution( contribution )
@@ -227,28 +337,49 @@ class SessionSlotScheduleAddContribution(ScheduleAddContribution, sessionService
         return  self._slot.getSchedule().addEntry(contribution.getSchEntry(),
                                                   check = self._getCheckFlag())
 
-    def _getSlotEntry(self):
+    def _getSlotEntryFossil(self):
         return self._slot.getConfSchEntry().fossilize({"MaKaC.schedule.LinkedTimeSchEntry": ILinkedTimeSchEntryMgmtFossil,
                                                "MaKaC.schedule.BreakTimeSchEntry" : IBreakTimeSchEntryMgmtFossil,
                                                "MaKaC.schedule.ContribSchEntry"   : IContribSchEntryMgmtFossil},
                                                tz=self._conf.getTimezone())
 
+class ConferenceScheduleEditContribution(ScheduleEditContributionBase, conferenceServices.ConferenceScheduleModifBase):
+
+    def _checkParams(self):
+        conferenceServices.ConferenceScheduleModifBase._checkParams(self)
+        ScheduleEditContributionBase._checkParams(self)
+        self._contribution = self._schEntry.getOwner()
+
+    def _addToParent(self, contribution):
+        pass
+
+    def _schedule(self, contribution):
+        pass
+
+    def _getSlotEntryFossil(self):
+        return None
+
+
+class SessionSlotScheduleEditContribution(ScheduleEditContributionBase, sessionServices.SessionSlotModifCoordinationBase):
+
+    def _checkParams(self):
+        sessionServices.SessionSlotModifCoordinationBase._checkParams(self)
+        ScheduleEditContributionBase._checkParams(self)
+        self._contribution = self._schEntry.getOwner()
+
+    def _addToParent(self, contribution):
+        pass
+
+    def _schedule(self, contribution):
+        pass
+
+    def _getSlotEntryFossil(self):
+        return self._slot.getConfSchEntry().fossilize({"MaKaC.schedule.LinkedTimeSchEntry": ILinkedTimeSchEntryMgmtFossil,
+                                               "MaKaC.schedule.BreakTimeSchEntry" : IBreakTimeSchEntryMgmtFossil,
+                                               "MaKaC.schedule.ContribSchEntry"   : IContribSchEntryMgmtFossil},
+                                               tz=self._conf.getTimezone())
 
 class ConferenceScheduleAddSession(ScheduleOperation, conferenceServices.ConferenceModifBase, LocationSetter):
-
-    def __addConveners(self, session):
-
-        for convenerValues in self._conveners:
-
-            convener = conference.SessionChair()
-            DictPickler.update(convener, convenerValues)
-
-            session.addConvener(convener)
-            if convenerValues.get('email','').strip() != '':
-                session._addCoordinatorEmail(convenerValues['email'])
-            if convenerValues.has_key("submission") and \
-                convenerValues['submission'] :
-                session.grantModification(convener)
 
     def __addConveners2Slot(self, slot):
         for convenerValues in self._conveners:
@@ -277,6 +408,7 @@ class ConferenceScheduleAddSession(ScheduleOperation, conferenceServices.Confere
         self._scheduleType = pManager.extract("sessionType", pType=str,
                                           allowEmpty=False)
 
+
     def _performOperation(self):
 
         conf = self._target
@@ -294,13 +426,13 @@ class ConferenceScheduleAddSession(ScheduleOperation, conferenceServices.Confere
         session.setBgColor(self._bgColor)
 
         slot = conference.SessionSlot(session)
-
+        slot.setScheduleType(self._scheduleType)
         slot.setTitle(self._subtitle or "")
         slot.setStartDate(session.getStartDate())
 
         tz = pytz.timezone(self._conf.getTimezone())
         if session.getEndDate().astimezone(tz).date() > session.getStartDate().astimezone(tz).date():
-            newEndDate = session.getStartDate().astimezone(tz).replace(hour=23,minute=59).astimezone(timezone('UTC'))
+            newEndDate = session.getStartDate().astimezone(tz).replace(hour=23,minute=59).astimezone(pytz.timezone('UTC'))
         else:
             newEndDate = session.getEndDate()
         dur = newEndDate - session.getStartDate()
@@ -310,13 +442,12 @@ class ConferenceScheduleAddSession(ScheduleOperation, conferenceServices.Confere
         slot.setDuration(dur=dur)
         session.addSlot(slot)
 
-        self.__addConveners(session)
         self.__addConveners2Slot(slot)
-        self._setLocationInfo(session)
+        self._setLocationInfo(slot)
 
         logInfo = session.getLogInfo()
-        logInfo["subject"] =  _("Create new session: %s")%session.getTitle()
-        self._conf.getLogHandler().logAction(logInfo,"Timetable/Session",self._getUser())
+        logInfo["subject"] =  _("Created new session: %s")%session.getTitle()
+        self._conf.getLogHandler().logAction(logInfo, log.ModuleNames.TIMETABLE)
 
         schEntry = slot.getConfSchEntry()
         fossilizedData = schEntry.fossilize(ILinkedTimeSchEntryMgmtFossil, tz=conf.getTimezone())
@@ -332,18 +463,14 @@ class ConferenceScheduleAddSession(ScheduleOperation, conferenceServices.Confere
 
     def initializeFilteringCriteria(self, sessionId, conferenceId):
         # Filtering criteria: by default make new session type checked
-        websession = self._getSession()
-        sessionDict = websession.getVar("ContributionFilterConf%s"%conferenceId)
-        if not sessionDict:
-            #Create a new dictionary
-            sessionDict = {}
-        if sessionDict.has_key('sessions'):
+        sessionDict = session.setdefault('ContributionFilterConf%s' % conferenceId, {})
+        if 'sessions' in sessionDict:
             #Append the new type to the existing list
             sessionDict['sessions'].append(sessionId)
-            websession._p_changed = 1
         else:
             #Create a new entry for the dictionary containing the new type
             sessionDict['sessions'] = [sessionId]
+        session.modified = True
 
 class ConferenceScheduleDeleteSession(ScheduleOperation, conferenceServices.ConferenceScheduleModifBase):
 
@@ -351,32 +478,42 @@ class ConferenceScheduleDeleteSession(ScheduleOperation, conferenceServices.Conf
         sessionSlot = self._schEntry.getOwner()
         session = sessionSlot.getSession()
 
-        logInfo = self._target.getLogInfo()
-        logInfo["subject"] = "Deleted session: %s"%self._target.getTitle()
-        self._conf.getLogHandler().logAction(logInfo,"Timetable/Session",self._getUser())
+        if session.isClosed():
+            raise ServiceAccessError(_("""The modification of the session "%s" is not allowed because it is closed""")%session.getTitle())
+
+        logInfo = session.getLogInfo()
+        logInfo["subject"] = "Deleted session: %s"%session.getTitle()
+        self._conf.getLogHandler().logAction(logInfo, log.ModuleNames.TIMETABLE)
 
         self._conf.removeSession(session)
 
 class ConferenceScheduleDeleteContribution(ScheduleOperation, conferenceServices.ConferenceScheduleModifBase):
 
     def _performOperation(self):
-
         contrib = self._schEntry.getOwner()
         logInfo = contrib.getLogInfo()
+
+        contrib._notify("contributionUnscheduled")
+        self._conf.getSchedule().removeEntry(self._schEntry)
 
         if self._conf.getType() == "meeting":
             logInfo["subject"] =  _("Deleted contribution: %s")%contrib.getTitle()
             contrib.delete()
         else:
             logInfo["subject"] =  _("Unscheduled contribution: %s")%contrib.getTitle()
-        self._conf.getLogHandler().logAction(logInfo,"Timetable/Contribution",self._getUser())
+        self._conf.getLogHandler().logAction(logInfo, log.ModuleNames.TIMETABLE)
 
-        self._conf.getSchedule().removeEntry(self._schEntry)
 
 class SessionScheduleDeleteSessionSlot(ScheduleOperation, sessionServices.SessionModifUnrestrictedTTCoordinationBase):
 
     def _performOperation(self):
-        self._session.removeSlot(self._slot)
+        if len(self._session.getSlotList()) > 1:
+            self._session.removeSlot(self._slot)
+        else:
+            logInfo = self._session.getLogInfo()
+            logInfo["subject"] = "Deleted session: %s"%self._session.getTitle()
+            self._conf.getLogHandler().logAction(logInfo, log.ModuleNames.TIMETABLE)
+            self._conf.removeSession(self._session)
 
 class SessionScheduleChangeSessionColors(ScheduleOperation, sessionServices.SessionModifBase):
 
@@ -425,7 +562,7 @@ class ScheduleEditBreakBase(ScheduleOperation, LocationSetter):
         self._setLocationInfo(self._brk)
         self._addToSchedule(self._brk)
 
-        fossilizedDataSlotSchEntry = self._getSlotEntry()
+        fossilizedDataSlotSchEntry = self._getSlotEntryFossil()
         fossilizedData = self._brk.fossilize(IBreakTimeSchEntryMgmtFossil, tz=self._conf.getTimezone())
 
         res = {'day': self._brk.getAdjustedStartDate().strftime("%Y%m%d"),
@@ -449,7 +586,7 @@ class ConferenceScheduleAddBreak(ScheduleEditBreakBase, conferenceServices.Confe
     def _addToSchedule(self, b):
         self._target.getSchedule().addEntry(b, 2)
 
-    def _getSlotEntry(self):
+    def _getSlotEntryFossil(self):
         return None
 
 
@@ -463,7 +600,7 @@ class ConferenceScheduleEditBreak(ScheduleEditBreakBase, conferenceServices.Conf
     def _addToSchedule(self, b):
         pass
 
-    def _getSlotEntry(self):
+    def _getSlotEntryFossil(self):
         return None
 
 class ConferenceScheduleDeleteBreak(ScheduleOperation, conferenceServices.ConferenceScheduleModifBase):
@@ -481,7 +618,7 @@ class SessionSlotScheduleAddBreak(ScheduleEditBreakBase, sessionServices.Session
     def _addToSchedule(self, b):
         self._slot.getSchedule().addEntry(b, check = self._getCheckFlag())
 
-    def _getSlotEntry(self):
+    def _getSlotEntryFossil(self):
         return self._slot.getConfSchEntry().fossilize({"MaKaC.schedule.LinkedTimeSchEntry": ILinkedTimeSchEntryMgmtFossil,
                                                "MaKaC.schedule.BreakTimeSchEntry" : IBreakTimeSchEntryMgmtFossil,
                                                "MaKaC.schedule.ContribSchEntry"   : IContribSchEntryMgmtFossil},
@@ -509,7 +646,7 @@ class SessionSlotScheduleEditBreak(ScheduleEditBreakBase, sessionServices.Sessio
             # add it on the new date
             self._conf.getSchedule().addEntry(self._schEntry, check=2)
 
-    def _getSlotEntry(self):
+    def _getSlotEntryFossil(self):
         return self._slot.getConfSchEntry().fossilize({"MaKaC.schedule.LinkedTimeSchEntry": ILinkedTimeSchEntryMgmtFossil,
                                                "MaKaC.schedule.BreakTimeSchEntry" : IBreakTimeSchEntryMgmtFossil,
                                                "MaKaC.schedule.ContribSchEntry"   : IContribSchEntryMgmtFossil},
@@ -534,6 +671,8 @@ class SessionSlotScheduleDeleteContribution(ScheduleOperation, sessionServices.S
         contrib = self._schEntry.getOwner()
 
         logInfo = contrib.getLogInfo()
+        contrib._notify("contributionUnscheduled")
+        self._slot.getSchedule().removeEntry(self._schEntry)
 
         if type == "meeting":
             logInfo["subject"] = "Deleted contribution: %s" %contrib.getTitle()
@@ -541,9 +680,7 @@ class SessionSlotScheduleDeleteContribution(ScheduleOperation, sessionServices.S
         else:
             logInfo["subject"] = "Unscheduled contribution: %s"%contrib.getTitle()
 
-        self._slot.getSchedule().removeEntry(self._schEntry)
-        self._conf.getLogHandler().logAction(logInfo,"Timetable/Contribution",self._getUser())
-        self._slot.getSchedule().removeEntry(self._schEntry)
+        self._conf.getLogHandler().logAction(logInfo, log.ModuleNames.TIMETABLE)
 
 
 class ModifyStartEndDate(ScheduleOperation):
@@ -561,21 +698,24 @@ class ModifyStartEndDate(ScheduleOperation):
 
         # if we want to reschedule other entries, let's store the old parameters
         # and the list of entries that will be rescheduled (after this one)
+
         if self._reschedule:
             oldStartDate=copy.copy(self._schEntry.getStartDate())
             oldDuration=copy.copy(self._schEntry.getDuration())
             i = self._schEntry.getSchedule().getEntries().index(self._schEntry) + 1
-            while(i < len(self._schEntry.getSchedule().getEntries()) and
-                  self._schEntry.getStartDate() >= self._schEntry.getSchedule().getEntries()[i].getStartDate()):
+            lentries = len(self._schEntry.getSchedule().getEntries())
+            while i < lentries and self._schEntry.getStartDate() >= self._schEntry.getSchedule().getEntries()[i].getStartDate():
                 i += 1
             j = i
-            while(j < len(self._schEntry.getSchedule().getEntries()) and
-                  self._schEntry.getStartDate().date() == self._schEntry.getSchedule().getEntries()[j].getStartDate().date()):
+            while j < lentries and self._schEntry.getAdjustedStartDate().date() == \
+                      self._schEntry.getSchedule().getEntries()[j].getAdjustedStartDate().date():
                 j += 1
             entriesList = self._schEntry.getSchedule().getEntries()[i:j]
 
         duration = self._endDate - self._startDate
         owner = self._schEntry.getOwner()
+        if isinstance(owner, SessionSlot) and owner.getSession().isClosed():
+            raise ServiceAccessError(_("""The modification of the session "%s" is not allowed because it is closed""")%owner.getSession().getTitle())
         if isinstance(owner, SessionSlot) and owner.getSession().getScheduleType() == "poster":
             # If it is a poster session we must modify the size of all the contributions inside it.
             for entry in owner.getSchedule().getEntries():
@@ -614,13 +754,22 @@ class SessionSlotScheduleModifyStartEndDate(ModifyStartEndDate, sessionServices.
     def _checkParams(self):
         sessionServices.SessionSlotModifCoordinationBase._checkParams(self)
         ModifyStartEndDate._checkParams(self)
+        pm = ParameterManager(self._params)
+        self._isSessionTimetable = pm.extract("sessionTimetable", pType=bool, allowEmpty=True)
 
 
     def _performOperation(self):
 
         result = ModifyStartEndDate._performOperation(self)
 
-        fossilizedDataSlotSchEntry = self._slot.getConfSchEntry().fossilize({"MaKaC.schedule.LinkedTimeSchEntry": ILinkedTimeSchEntryMgmtFossil,
+        if self._isSessionTimetable:
+            schEntry = self._slot.getSessionSchEntry()
+        else:
+            schEntry = self._slot.getConfSchEntry()
+
+        self._slot.cleanCache()
+
+        fossilizedDataSlotSchEntry = schEntry.fossilize({"MaKaC.schedule.LinkedTimeSchEntry": ILinkedTimeSchEntryMgmtFossil,
                                                "MaKaC.schedule.BreakTimeSchEntry" : IBreakTimeSchEntryMgmtFossil,
                                                "MaKaC.schedule.ContribSchEntry"   : IContribSchEntryMgmtFossil},
                                                tz=self._conf.getTimezone())
@@ -672,10 +821,6 @@ class SessionSlotGetFossil(sessionServices.SessionSlotDisplayBase):
 
     def _getAnswer(self):
         return fossilize(self._slot)
-
-class SessionSlotGetBooking(ScheduleOperation, sessionServices.SessionSlotDisplayBase, roomBooking.GetBookingBase):
-    def _performOperation(self):
-        return self._getRoomInfo(self._target)
 
 class SessionScheduleGetDayEndDate(ScheduleOperation, sessionServices.SessionModifUnrestrictedTTCoordinationBase):
 
@@ -729,8 +874,8 @@ class ScheduleEditSlotBase(ScheduleOperation, LocationSetter):
         self._addToSchedule()
 
         logInfo = self._slot.getLogInfo()
-        logInfo["subject"] = "Create new slot: %s"%self._slot.getTitle()
-        self._conf.getLogHandler().logAction(logInfo,"Timetable/Contribution",self._getUser())
+        logInfo["subject"] = "Created new session block: %s" % self._slot.getTitle()
+        self._conf.getLogHandler().logAction(logInfo, log.ModuleNames.TIMETABLE)
 
         if self._isSessionTimetable:
             schEntry = self._slot.getSessionSchEntry()
@@ -751,6 +896,8 @@ class SessionScheduleAddSessionSlot(ScheduleEditSlotBase, sessionServices.Sessio
         sessionServices.SessionModifUnrestrictedTTCoordinationBase._checkParams(self)
         ScheduleEditSlotBase._checkParams(self)
         self._slot = conference.SessionSlot(self._target)
+        self._sessionTitle = self.pManager.extract("sessionTitle", pType = str, allowEmpty=False)
+
 
     def _addToSchedule(self):
         self._target.addSlot(self._slot)
@@ -761,12 +908,16 @@ class SessionScheduleAddSessionSlot(ScheduleEditSlotBase, sessionServices.Sessio
             DictPickler.update(convener, convenerValues)
             slot.addConvener(convener)
 
+    def _setSessionTitle(self, slot):
+        slot.getSession().setTitle(self._sessionTitle)
+
 class SessionScheduleEditSessionSlot(ScheduleEditSlotBase, sessionServices.SessionModifUnrestrictedTTCoordinationBase):
 
     def _checkParams(self):
         sessionServices.SessionModifUnrestrictedTTCoordinationBase._checkParams(self)
         ScheduleEditSlotBase._checkParams(self)
         self._sessionTitle = self.pManager.extract("sessionTitle", pType = str, allowEmpty=False)
+        self._subtitle = self.pManager.extract("subtitle", pType = str, allowEmpty=True)
 
     def _addToSchedule(self):
         pass
@@ -789,7 +940,6 @@ class SessionScheduleEditSessionSlot(ScheduleEditSlotBase, sessionServices.Sessi
 
     def _setSessionTitle(self, slot):
         slot.getSession().setTitle(self._sessionTitle)
-
 
 class SessionScheduleEditSessionSlotById(SessionScheduleEditSessionSlot):
     """
@@ -915,11 +1065,6 @@ class BreakDisplayBase(base.ProtectedDisplayService, BreakBase):
         base.ProtectedDisplayService._checkParams(self)
 
 
-class BreakGetBooking(BreakDisplayBase, roomBooking.GetBookingBase):
-    def _getAnswer(self):
-        return self._getRoomInfo(self._break)
-
-
 class GetUnscheduledContributions(ScheduleOperation):
 
     """ Returns the list of unscheduled contributions for the target """
@@ -958,8 +1103,7 @@ class ScheduleContributions(ScheduleOperation):
                                     timezone = self._target.getTimezone())
 
         self._ids = pManager.extract("ids", pType=list, allowEmpty=False)
-        date = pManager.extract("date", pType=datetime.date,
-                                            allowEmpty=False)
+        date = pManager.extract("date", pType=datetime.date, allowEmpty=False)
 
         # convert date to datetime
         self._date = pytz.timezone(self._target.getTimezone()).localize(datetime.datetime(*(date.timetuple()[:6]+(0,))))
@@ -978,13 +1122,15 @@ class ScheduleContributions(ScheduleOperation):
             if not isPoster:
                 d = self._target.getSchedule().calculateDayEndDate(self._date)
                 contrib.setStartDate(d)
+                if isinstance(self._target, conference.SessionSlot):
+                    contrib.setDuration(dur=self._target.getSession().getContribDuration())
 
             schEntry = contrib.getSchEntry()
 
             self._target.getSchedule().addEntry(schEntry, check = self._getCheckFlag())
 
             fossilizedData = schEntry.fossilize(IContribSchEntryMgmtFossil, tz=self._conf.getTimezone())
-            fossilizedDataSlotSchEntry = self._getSlotEntry()
+            fossilizedDataSlotSchEntry = self._getSlotEntryFossil()
 
             entries.append({'day': schEntry.getAdjustedStartDate().strftime("%Y%m%d"),
                             'id': fossilizedData['id'],
@@ -1016,7 +1162,7 @@ class SessionSlotScheduleContributions(ScheduleContributions, sessionServices.Se
             return True
         return False
 
-    def _getSlotEntry(self):
+    def _getSlotEntryFossil(self):
 
         if self._isSessionTimetable:
             entry = self._slot.getSessionSchEntry()
@@ -1039,7 +1185,7 @@ class ConferenceScheduleContributions(ScheduleContributions, conferenceServices.
     def _handlePosterContributions(self, contrib):
         pass
 
-    def _getSlotEntry(self):
+    def _getSlotEntryFossil(self):
         return None
 
 class MoveEntryBase(ScheduleOperation):
@@ -1050,14 +1196,17 @@ class MoveEntryBase(ScheduleOperation):
         self._schEntryId = pManager.extract("scheduleEntryId", pType=int, allowEmpty=False)
         self._sessionId = pManager.extract("sessionId", pType=str, allowEmpty=True, defaultValue=None)
         self._sessionSlotId = pManager.extract("sessionSlotId", pType=str, allowEmpty=True, defaultValue=None)
+        self._newTime = pManager.extract("newTime", pType=datetime.datetime, allowEmpty=True, defaultValue=None)
 
     def _performOperation(self):
-
+        utc = pytz.timezone('UTC')
         if (self._sessionId != None and self._sessionSlotId != None):
             self._schEntry = self._conf.getSessionById(self._sessionId).getSlotById(self._sessionSlotId).getSchedule().getEntryById(self._schEntryId)
         else:
             self._schEntry = self._conf.getSchedule().getEntryById(self._schEntryId)
 
+        if self._schEntry is None:
+            raise NoReportError("It seems that the entry has been deleted or already moved. Please refresh the page.")
         owner = self._schEntry.getOwner()
 
         if self._contribPlace.strip() != "":
@@ -1073,11 +1222,14 @@ class MoveEntryBase(ScheduleOperation):
             if sessionId != "conf":
                 # Moving inside a session
                 session = self._conf.getSessionById(sessionId)
-
-                if session.getScheduleType() == "poster" and isinstance(self._schEntry, BreakTimeSchEntry):
-                    raise NoReportError(_("It is not possible to move a break inside a poster session"))
-
                 if session is not None:
+
+                    if session.isClosed():
+                        raise ServiceAccessError(_("""The modification of the session "%s" is not allowed because it is closed""")%session.getTitle())
+
+                    if session.getScheduleType() == "poster" and isinstance(self._schEntry, BreakTimeSchEntry):
+                        raise NoReportError(_("It is not possible to move a break inside a poster session"))
+
                     slot = session.getSlotById(sessionSlotId)
                     if slot is not None:
                         fossilizedDataSession = session.fossilize(ISessionFossil, tz=self._conf.getTimezone())
@@ -1089,15 +1241,20 @@ class MoveEntryBase(ScheduleOperation):
                             self._schEntry.setStartDate(slot.getStartDate())
                             self._schEntry.setDuration(dur=slot.getDuration())
                         else:
-                            self._schEntry.setStartDate(slot.getSchedule().calculateEndDate())
+                            if self._newTime:
+                                self._schEntry.setStartDate(self._newTime.astimezone(utc))
+                            else:
+                                # if we have no clear indication of where we should place this,
+                                # put it after everything else
+                                self._schEntry.setStartDate(slot.getSchedule().calculateEndDate())
                             #self._schEntry.setDuration(dur=session.getContribDuration())
                         # add it to new container
                         slot.getSchedule().addEntry(self._schEntry, check=2)
                         fossilizedDataSlotSchEntry = slot.getConfSchEntry().fossilize(entriesFossilsDict, tz=self._conf.getTimezone())
                     else:
-                        raise ServiceError("ERR-S3","Invalid slot ID")
+                        raise NoReportError(_("It seems that the session slot has been deleted, please refresh the page"))
                 else:
-                    raise ServiceError("ERR-S4","Invalid session ID")
+                    raise NoReportError(_("It seems that the session has been deleted, please refresh the page"))
             else:
                 # Moving inside the top-level timetable
 
@@ -1110,14 +1267,12 @@ class MoveEntryBase(ScheduleOperation):
                 # the target date/time
                 parsedDate = parseDate(sessionSlotId, format="%Y%m%d")
 
-                # oldDate is in UTC
-                adjustedOldDate = oldDate.astimezone(pytz.timezone(owner.getTimezone()))
-
-                # newStartDate will result in a naive date (but relative to the evt's timezone)
-                newStartDate = datetime.datetime.combine(parsedDate, adjustedOldDate.time())
-                newStartDate = pytz.timezone(owner.getTimezone()).localize(newStartDate)
-                # convert to UTC for storage
-                newStartDate = newStartDate.astimezone(pytz.timezone('UTC'))
+                if self._newTime:
+                    newStartDate = self._newTime.astimezone(utc)
+                else:
+                    owner_tz = pytz.timezone(owner.getTimezone())
+                    newStartDate = owner_tz.localize(datetime.datetime.combine(parsedDate,
+                                                                               oldDate.astimezone(owner_tz).time())).astimezone(utc)
 
                 self._schEntry.getSchedule().removeEntry(self._schEntry)
 
@@ -1230,16 +1385,6 @@ class SessionEditRoomLocation(EditRoomLocationBase, sessionServices.SessionModif
                 self._schEntry = self._slot._confSchEntry
         self._entry = self._slot
 
-    def _performOperation(self):
-        result = EditRoomLocationBase._performOperation(self)
-
-        pickledDataSlotSchEntry = fossilize(self._slot.getConfSchEntry(), tz=self._conf.getTimezone())
-        pickledDataSession = fossilize(self._session, tz=self._conf.getTimezone())
-        result.update({'slotEntry': pickledDataSlotSchEntry,
-                       'session': pickledDataSession})
-
-        return result
-
 class SessionSlotEditRoomLocation(EditRoomLocationBase, sessionServices.SessionSlotModifCoordinationBase):
 
     def _checkParams(self):
@@ -1257,10 +1402,66 @@ class SessionSlotEditRoomLocation(EditRoomLocationBase, sessionServices.SessionS
         return result
 
 
+class SessionGetExportPopup(conferenceServices.ConferenceDisplayBase):
+
+    def _checkParams(self):
+        conferenceServices.ConferenceDisplayBase._checkParams(self)
+        pm = ParameterManager(self._params)
+        sessionId = pm.extract("sessionId", str, False, "")
+        self._session = self._conf.getSessionById(sessionId)
+
+    def _getAnswer(self):
+        return WSessionICalExport( self._session, self._getUser() ).getHTML().replace("\n","")
+
+class SessionExportURLs(conferenceServices.ConferenceDisplayBase, base.ExportToICalBase):
+
+    def _checkParams(self):
+        conferenceServices.ConferenceDisplayBase._checkParams(self)
+        base.ExportToICalBase._checkParams(self)
+        pm = ParameterManager(self._params)
+        self._sessionId = pm.extract("sessionId", str, False, "")
+
+    def _getAnswer(self):
+        minfo = info.HelperMaKaCInfo.getMaKaCInfoInstance()
+
+        return generate_public_auth_request(self._apiMode, self._apiKey, '/export/event/%s/session/%s.ics'%(self._target.getId(), self._sessionId), {}, minfo.isAPIPersistentAllowed() and self._apiKey.isPersistentAllowed(), minfo.isAPIHTTPSRequired())
+
+
+class ContributionGetExportPopup(conferenceServices.ConferenceDisplayBase):
+
+    def _checkParams(self):
+        conferenceServices.ConferenceDisplayBase._checkParams(self)
+        pm = ParameterManager(self._params)
+        contribId = pm.extract("contribId", str, False, "")
+        self._contribution = self._conf.getContributionById(contribId)
+
+    def _getAnswer(self):
+        return WContributionICalExport( self._contribution, self._getUser() ).getHTML().replace("\n","")
+
+class ContributionExportURLs(conferenceServices.ConferenceDisplayBase, base.ExportToICalBase):
+
+    def _checkParams(self):
+        conferenceServices.ConferenceDisplayBase._checkParams(self)
+        base.ExportToICalBase._checkParams(self)
+        pm = ParameterManager(self._params)
+        self._contribId = pm.extract("contribId", str, False, "")
+
+    def _getAnswer(self):
+        result = {}
+
+        minfo = info.HelperMaKaCInfo.getMaKaCInfoInstance()
+
+        urls = generate_public_auth_request(self._apiMode, self._apiKey, '/export/event/%s/contribution/%s.ics'%(self._target.getId(), self._contribId), {}, minfo.isAPIPersistentAllowed() and self._apiKey.isPersistentAllowed(), minfo.isAPIHTTPSRequired())
+        result["publicRequestURL"] = urls["publicRequestURL"]
+        result["authRequestURL"] =  urls["authRequestURL"]
+
+        return result
+
 methodMap = {
     "get": ConferenceGetSchedule,
 
     "event.addContribution": ConferenceScheduleAddContribution,
+    "event.editContribution": ConferenceScheduleEditContribution,
     "event.addSession": ConferenceScheduleAddSession,
     "event.addBreak": ConferenceScheduleAddBreak,
     "event.editBreak": ConferenceScheduleEditBreak,
@@ -1274,12 +1475,12 @@ methodMap = {
     "event.moveEntry": MoveEntry,
 
     "slot.addContribution": SessionSlotScheduleAddContribution,
+    "slot.editContribution": SessionSlotScheduleEditContribution,
     "slot.addBreak": SessionSlotScheduleAddBreak,
     "slot.editBreak": SessionSlotScheduleEditBreak,
     "slot.deleteContribution": SessionSlotScheduleDeleteContribution,
     "slot.deleteBreak": SessionSlotScheduleDeleteBreak,
     "slot.getDayEndDate": SessionSlotScheduleGetDayEndDate,
-    "slot.getBooking": SessionSlotGetBooking,
     "slot.getFossil": SessionSlotGetFossil,
     "slot.modifyStartEndDate": SessionSlotScheduleModifyStartEndDate,
     "slot.moveEntry": MoveEntryFromSessionBlock,
@@ -1296,8 +1497,6 @@ methodMap = {
     "session.getUnscheduledContributions": SessionGetUnscheduledContributions,
     "slot.scheduleContributions": SessionSlotScheduleContributions,
 
-    "break.getBooking": BreakGetBooking,
-
     "setSessionSlots": ConferenceSetSessionSlots,
     "setScheduleSessions": ConferenceSetScheduleSessions,
 
@@ -1310,5 +1509,10 @@ methodMap = {
 
     "event.editRoomLocation": EventEditRoomLocation,
     "session.editRoomLocation": SessionEditRoomLocation,
-    "slot.editRoomLocation": SessionSlotEditRoomLocation
+    "slot.editRoomLocation": SessionSlotEditRoomLocation,
+
+    "api.getSessionExportPopup": SessionGetExportPopup,
+    "api.getSessionExportURLs": SessionExportURLs,
+    "api.getContribExportPopup": ContributionGetExportPopup,
+    "api.getContribExportURLs": ContributionExportURLs
 }

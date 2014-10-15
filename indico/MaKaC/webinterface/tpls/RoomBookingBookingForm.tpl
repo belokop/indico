@@ -1,314 +1,74 @@
-<script type="text/javascript">
+<h2 class="page-title">
+    % if reservation:
+        ${ _('Modify booking') }
+    % else:
+        ${ _('Book a room') }
+    % endif
+</h2>
 
-    // Function for checking and submitting the form when the user presses Enter.
-    // The JavaScript doesn't behave as expected in this case, since the checking is
-    // skipped.
-    function submit_on_enter(ev) {
+<%include file="ErrorList.tpl" args='errors=form.error_list, msg=_("There are some errors in the data you submitted")'/>
 
-        var kc, e;
-        if (window.event) {
-            e = window.event;
-            kc = window.event.keyCode;
-        }
-        else if (ev) {
-            e = ev;
-            kc = ev.which;
-        }
-        else {
-            return true;
-        }
+<form id="bookingForm" method="POST" data-only-conflicts="${ int(only_conflicts) }">
+    <h2 class="group-title">
+    <i class="icon-location"></i>
+        ${ _('Room details') }
+    </h2>
+    <%include file="RoomBookingRoomMiniDetails.tpl" args="room=room, event=event, endpoints=endpoints,
+                    allow_room_change=not bool(reservation), clone_booking=clone_booking"/>
 
-        if (kc == 13) {
-            // If Enter was pressed in the "Reason" textarea, we don't want
-            // to submit the form
-            if (e.target == $('reason')) {
-                 return true;
-            }
-            if (forms_are_valid( true )) {
-                submit_booking();
-            }
-            else {
-                alert( <%= _("'There are errors in the form. Please correct fields with red background.'")%> );
-            }
-            return false;
-        }
-        else {
-            return true;
-        }
-    }
+    % if reservation or form.submit_book or form.submit_prebook:
+        <h2 class="group-title">
+            <i class="icon-time"></i>
+            ${ _('Booking time & date') }
+        </h2>
+        <%include file="RoomBookingNewBookingPeriodWidget.tpl"
+                  args="form=form, can_override=can_override, min_date=(reservation.start_dt if reservation else None),
+                        date_changed=date_changed, past_date=past_date"/>
 
-    // Reds out the invalid textboxes and returns false if something is invalid.
-    // Returns true if form may be submited.
-    function forms_are_valid( onSubmit )
-    {
-        if ( onSubmit != true )
-            onSubmit = false;
+        % if calendar:
+            <h2 class="group-title">
+                <i class="icon-calendar"></i>
+                ${ _('Calendar preview') }
+            </h2>
+            ${ calendar }
+        % endif
 
-        // Init, clean up (make all textboxes white again)
-        var f1 = $('bookingForm')
-        period_clean_redouts( f1 )
-        f1.bookedForName.className = f1.contactEmail.className = f1.contactPhone.className = f1.reason.className = ''
+        <h2 class="group-title">
+            <i class="icon-user"></i>
+            ${ _('Booked for user') }
+        </h2>
+        <%include file="RoomBookingNewBookingInfoWidget.tpl" args="form=form"/>
 
-        var isValid = true
-        isValid = validate_period( f1, true, <%= allowPast %>  ) && isValid
-        isValid = required_fields( ['bookedForName', 'contactEmail', 'reason'] ) && isValid
+        % if list(form.used_equipment) or form.needs_assistance:
+            <h2 class="group-title">
+                <i class="icon-projector"></i>
+                ${ _('Collaboration & assistance') }
+            </h2>
+            <%include file="RoomBookingNewBookingCollaborationWidget.tpl" args="form=form"/>
+        % endif
+    % endif
 
-        if ( !Util.Validation.isEmailList( $F( 'contactEmail' ) ) )
-        {
-            isValid = false
-            $('contactEmail').className = 'invalid'
-        }
+    <h2 class="group-title"></h2>
+    <%include file="RoomBookingNewBookingConflictsWidget.tpl" args="form=form, reservation=reservation"/>
 
-        // Holidays warning
-        if ( isValid && !onSubmit )
-        {
-            var holidaysWarning = indicoSource('roomBooking.getDateWarning', $(f1).serialize(true));
+    % if form.submit_book or form.submit_prebook or (hasattr(form, 'submit_update') and form.submit_update):
+        ${ form.submit_check(**{'class_': 'i-button', 'data-validation': 'check'}) }
+    % endif
 
-            holidaysWarning.state.observe(function(state) {
-                if (state == SourceState.Loaded) {
-                    $E('holidays-warning').set(holidaysWarning.get());
-                }
-            });
-        }
-
-	<% if candResv.room.needsAVCSetup: %>
-
-	$('vcSystemList').className=''
-
-	if ($('usesAVC').checked) {
-
-  	  var oneChecked = false;
-
-	  $$('input.videoConferenceOption').each(function(elem){
-	    if (elem.checked)
-	    {
-	      oneChecked = true;
-	    }
-	  });
-
-	  if (!oneChecked) {
-	    $( 'vcSystemList' ).className = 'invalid';
-	    isValid = false;
-	  }
-
-	}
-	<% end %>
-
-
-        return isValid;
-    }
-
-    function submit_booking()
-    {
-        $('bookingForm').action = "<%= saveBookingUH.getURL( conf ) %>"
-        $('bookingForm').submit()
-    }
-
-
-
-
-</script>
-
-    <!-- CONTEXT HELP DIVS -->
-	<div id="tooltipPool" style="display: none">
-        <!-- Where is key? -->
-        <div id="whereIsKeyHelp" class="tip">
-             <%= _("How to obtain a key? Often just a phone number.")%>
+    % if form.submit_book:
+        ${ form.submit_book(class_='i-button highlight js-submit-booking', disabled=only_conflicts) }
+    % endif
+    % if form.submit_prebook:
+        ${ form.submit_prebook(class_='i-button highlight js-submit-booking') }
+    % endif
+    % if hasattr(form, 'submit_update') and form.submit_update:
+        ${ form.submit_update(class_='i-button highlight js-submit-booking') }
+    % endif
+    % if not reservation and not form.submit_book and not form.submit_prebook:
+        <div class="info-message-box">
+            <div class="message-text">
+                ${ _("You don't have rights to book this room") }
+            </div>
         </div>
-        <div id="skipConflictsHelp" class="tip">
-             <%= _("Creates or saves your booking only for available dates. All conflicting days will be excluded.")%>
-        </div>
-        <div id="iWillUseVideoConferencing" class="tip">
-             <%= _("Check <b>if</b> you are going to use video-conferencing equipment.")%><br />
-        </div>
-        <div id="iNeedAVCSupport" class="tip">
-             <%= _("Check <b>if</b> you need AVC Support to help you with video-conferencing equipment.")%><br />
-        </div>
-        <% includeTpl( 'CHBookingRepeatition' ) %>
-    </div>
-    <!-- END OF CONTEXT HELP DIVS -->
-
-    <form id="bookingForm" action="<%= bookingFormURL %>#conflicts" method="post" onkeypress="return submit_on_enter(event);">
-    <input type="hidden" id="afterCalPreview" name="afterCalPreview" value="True" />
-    <table cellpadding="0" cellspacing="0" border="0" width="80%">
-		<% if standalone: %>
-		    <tr>
-		    <td class="intermediateleftvtab" style="border-left: 2px solid #777777; border-right: 2px solid #777777; font-size: xx-small;" width="100%">&nbsp;</td> <!-- lastvtabtitle -->
-		    </tr>
-		<% end %>
-        <tr>
-            <td class="bottomvtab" width="100%">
-                <table width="100%" cellpadding="0" cellspacing="0" class="htab" border="0">
-                    <tr>
-                        <td class="maincell">
-                            <span class="formTitle" style="border-bottom-width: 0px">
-                            <input type="hidden" name="roomID" id="roomID" value="<%=candResv.room.id%>" />
-                            <input type="hidden" name="roomLocation" id="roomLocation" value="<%=candResv.room.locationName%>" />
-                            <% if formMode == FormMode.NEW: %>
-                                 <%= _("New")%>&nbsp;<%=bookingMessage%>ing
-                            <% end %>
-                            <% if formMode == FormMode.MODIF: %>
-                                 <%= _("Modify")%>&nbsp;<%=bookingMessage%>ing
-                                <input type="hidden" name="resvID" id="resvID" value="<%=candResv.id%>" />
-                            <% end %>
-                            </span><br />
-                            <% if showErrors: %>
-                                <br /><a href="#conflicts" style="color: Red; margin-left: 6px;"> <%= _("Saving failed. Please review details below.")%></a><br /><br />
-                            <% end %>
-                            <br />
-                            <table width="100%" align="left" border="0">
-                              <% includeTpl( "RoomBookingRoomMiniDetails", room = candResv.room ) %>
-                              <tr><td>&nbsp;</td></tr>
-                              <!-- WHEN -->
-                              <tr>
-                                <td class="titleUpCellTD"><span class="titleCellFormat"> <%= _("When")%></span></td>
-                                <td>
-                                    <table width="100%">
-                                        <% includeTpl( "RoomBookingPeriodForm", repeatability = candResv.repeatability, form = 0, unavailableDates = candResv.room.getNonBookableDates() ) %>
-                                    </table>
-                                </td>
-                            </tr>
-                            <tr><td>&nbsp;</td></tr>
-                            <!-- BOOKED FOR -->
-                            <tr>
-                                <td class="titleUpCellTD"><span class="titleCellFormat"> <%= _("Booked for")%></span></td>
-                                <td>
-                                    <table width="100%">
-                                        <% if rh._requireRealUsers: %>
-                                            <tr>
-                                                <td class="subFieldWidth" align="right" valign="top"><small> <%= _("User")%>&nbsp;&nbsp;</small></td>
-                                                <td align="left" class="blacktext">
-                                                    <input type="hidden" id="bookedForId" name="bookedForId" value="<%= candResv.bookedForId or '' %>" />
-                                                    <input type="text" id="bookedForName" name="bookedForName" style="width: 240px;" value="<%= candResv.bookedForUser.getFullName() if candResv.bookedForId else candResv.bookedForName %>" onclick="searchForUsers();" readonly="readonly" />
-                                                    <input type="button" value="Search" onclick="searchForUsers();" />
-                                                    <% inlineContextHelp( _("<b>Required.</b> For whom the booking is made.") ) %>
-                                                </td>
-                                            </tr>
-                                        <% end %>
-                                        <% else: %>
-                                            <tr>
-                                                <td class="subFieldWidth" align="right" valign="top"><small> <%= _("Name")%>&nbsp;&nbsp;</small></td>
-                                                <td align="left" class="blacktext">
-                                                    <input type="text" id="bookedForName" name="bookedForName" style="width: 240px;" value="<%= verbose( candResv.bookedForName ) %>" />
-                                                    <% inlineContextHelp( _("<b>Required.</b> For whom the booking is made.") ) %>
-                                                </td>
-                                            </tr>
-                                        <% end %>
-                                        <tr>
-                                            <td class="subFieldWidth" align="right" valign="top"><small> <%= _("E-mail")%>&nbsp;&nbsp;</small></td>
-                                            <td align="left" class="blacktext">
-                                                <input type="text" id="contactEmail" name="contactEmail" style="width: 240px;" value="<%= verbose( candResv.contactEmail )%>" />
-                                                <% inlineContextHelp( '<b>Required.</b> Contact email. You can specify more than one email address by separating them with commas, semicolons or whitespaces.' ) %>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td align="right" class="subFieldWidth" valign="top"><small> <%= _("Telephone")%>&nbsp;&nbsp;</small></td>
-                                            <td align="left" class="blacktext">
-                                                <input type="text" id="contactPhone" name="contactPhone" style="width: 240px;" value="<%= verbose( candResv.contactPhone ) %>" />
-                                                <% inlineContextHelp( 'Contact telephone.' ) %>
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td align="right" class="subFieldWidth" valign="top"><small> <%= _("Reason")%>&nbsp;&nbsp;</small></td>
-                                            <td align="left" class="blacktext">
-                                                <textarea rows="3" cols="50" id="reason" name="reason" ><%= verbose( candResv.reason ) %></textarea>
-                                                <% inlineContextHelp( _("<b>Required.</b> The justification for booking. Why do you need this room?")) %>
-                                            </td>
-                                        </tr>
-                                        <% if candResv.room.needsAVCSetup: %>
-                                            <tr>
-                                                <td align="right" class="subFieldWidth" valign="top"><small><span style="color: Red;"><%= _("I will use video-conf. equipment (please check only what you need)")%></span>&nbsp;&nbsp;</small></td>
-                                                <td align="left" class="blacktext">
-                                                    <input id="usesAVC" name="usesAVC" type="checkbox" <% if candResv.usesAVC: %> checked="checked" <% end%> />
-                                                    <% contextHelp( 'iWillUseVideoConferencing' ) %>
-
-
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td align="right" class="subFieldWidth" valign="middle"><small><span style="color: Red;">I will use video-conf. system</span>&nbsp;&nbsp;</small></td>
-                                                <td align="left" id="vcSystemList" class="blacktext">
-                                                    <% for vc in candResv.room.getAvailableVC(): %>
-                                                        <% checked = "" %>
-                                                        <% if vc in candResv.getUseVC(): %>
-                                                            <% checked = """checked="checked" """ %>
-                                                        <% end %>
-                                                        <%= """<br>\n<input id="vc_%s" name="vc_%s" class="videoConferenceOption" type="checkbox" onclick="if(this.checked){$(usesAVC).checked=true;}" %s /> %s"""%(vc[:3], vc[:3], checked, vc) %>
-                                                    <% end %>
-                                                    <br><br>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td align="right" class="subFieldWidth" valign="top"><small><span style="color: Red;"> <%= _("I need assistance")%></span>&nbsp;&nbsp;</small></td>
-                                                <td align="left" class="blacktext">
-                                                    <input id="needsAVCSupport" name="needsAVCSupport" type="checkbox" <% if candResv.needsAVCSupport: %> checked="checked" <%end%> onclick="if ( this.checked ) { $( 'usesAVC' ).checked = true; }" />
-                                                    <% contextHelp( 'iNeedAVCSupport' ) %>
-                                                </td>
-                                            </tr>
-                                        <% end %>
-                                    </table>
-                                </td>
-                            </tr>
-                            <tr><td>&nbsp;</td></tr>
-                            <!-- ACTIONS -->
-                            <tr>
-                                <td class="titleUpCellTD"><span class="titleCellFormat"> <%= _("Actions")%></span></td>
-                                <td>
-	                               	<input type="hidden" name="conf" value="<%if conf:%><%= conf.getId() %><%end%>" />
-									<input type="hidden" name="standalone" value="<%= standalone %>" />
-	                               	<input type="submit" class="btn" value="<%= _("Re-check for conflicts")%>" onclick="if (!validate_period(document.forms[0], true, <%= allowPast %>)) { alert( <%= _("'There are errors in the form. Please correct fields with red background.'")%> ); return false; }"/>
-	                               	<input type="submit" class="btn"  <% if formMode==FormMode.MODIF: %> value="Save" <% end %> value="<%= bookingMessage %>" onclick="if (forms_are_valid( true )) { submit_booking(); } else { alert( <%= _("'There are errors in the form. Please correct fields with red background.'")%> ); }; return false;" />
-                                    (
-                                    <input type="checkbox" name="skipConflicting" id="skipConflicting" <% if skipConflicting: %> checked="checked" <% end %> />
-                                     <%= _("skip conflicting dates")%>
-                                    <% contextHelp( 'skipConflictsHelp' ) %>
-                                    )
-                                </td>
-                            </tr>
-                            <tr>
-                                <td colspan="2">
-                                    <a name="conflicts"></a>
-                                    <%= roomBookingRoomCalendar %>
-                                </td>
-                            </tr>
-                        </table>
-                        </td>
-                    </tr>
-                </table>
-
-            </td>
-        </tr>
-    </table>
-    </form>
-    <br />
-    <!-- Just to initialize -->
-    <script type="text/javascript">
-        Event.observe( window, 'load',
-            function ()
-            {
-                if ( forms_are_valid() )
-                    set_repeatition_comment();
-                new Form.Observer( 'bookingForm', 0.4, forms_are_valid );
-            }
-        );
-
-        function searchForUsers() {
-            var popup = new ChooseUsersPopup($T('Select a user'),
-                                         true,
-                                         null, false,
-                                         true, null,
-                                         true, true,
-                                         function(users) {
-                                             $E('bookedForName').set(users[0].name);
-                                             $E('bookedForId').set(users[0].id);
-                                             $E('contactEmail').set(users[0].email);
-                                         });
-
-            popup.execute();
-        }
-
-        <% if candResv.room.needsAVCSetup: %>
-            alert("The conference room you have chosen is equiped\\nfor video-conferencing and video-projection.\\nIf you need this equipment, DO NOT FORGET to select it.\\nIf you don't need any of this equipment please choose\\nanother room, if a suitable one is free on a suitable\\nlocation for your meeting.\\n\\n\\n                    Thank you for your understanding.")
-        <% end %>
-
-    </script>
+    % endif
+</form>

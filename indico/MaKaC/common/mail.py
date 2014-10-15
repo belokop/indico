@@ -1,35 +1,122 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 import smtplib
-from MaKaC.common import Config
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+from email.mime.text import MIMEText
+from email import charset
+
+from indico.core.config import Config
 from MaKaC.errors import MaKaCError
 from MaKaC.i18n import _
 
-from MaKaC.common.logger import Logger
+from indico.core.logger import Logger
+from MaKaC.common.contextManager import ContextManager
+
+# Prevent base64 encoding of utf-8 e-mails
+charset.add_charset('utf-8', charset.SHORTEST)
+
 
 class GenericMailer:
 
+    @classmethod
+    def send(cls, notification, skipQueue=False):
+        if isinstance(notification, dict):
+            # Wrap a raw dictionary in a notification class
+            from MaKaC.webinterface.mail import GenericNotification
+            notification = GenericNotification(notification)
+        # enqueue emails if we have a rh and do not skip queuing, otherwise send immediately
+        rh = ContextManager.get('currentRH', None)
+        mailData = cls._prepare(notification)
+
+        if mailData:
+            if skipQueue or not rh:
+                cls._send(mailData)
+            else:
+                ContextManager.setdefault('emailQueue', []).append(mailData)
+
+    @classmethod
+    def flushQueue(cls, send):
+        queue = ContextManager.get('emailQueue', None)
+        if not queue:
+            return
+        if send:
+            # send all emails
+            for mail in queue:
+                cls._send(mail)
+        # clear the queue no matter if emails were sent or not
+        del queue[:]
+
     @staticmethod
-    def send(notification):
-        server=smtplib.SMTP(Config.getInstance().getSmtpServer())
+    def _prepare(notification):
+        fromAddr = notification.getFromAddr()
+        toList = notification.getToList()
+        ccList = notification.getCCList()
+        if hasattr(notification, "getBCCList"):
+            bccList = notification.getBCCList()
+        else:
+            bccList = []
+
+        msg = MIMEMultipart()
+        msg["Subject"] = notification.getSubject()
+        msg["From"] = fromAddr
+        # Filter out empty strings from the lists before join
+        msg["To"] = ', '.join(filter(None, toList))
+        msg["Cc"] = ', '.join(filter(None, ccList))
+
+        if not (msg["To"] or msg["Cc"]):
+            return
+
+        try:
+            ct = notification.getContentType()
+        except:
+            ct = "text/plain"
+
+        body = notification.getBody()
+        if ct == "text/plain":
+            part1 = MIMEText(body, "plain", "utf-8")
+        elif ct == "text/html":
+            part1 = MIMEText(body, "html", "utf-8")
+        else:
+            raise MaKaCError(_("Unknown MIME type: %s") % (ct))
+        msg.attach(part1)
+
+        if hasattr(notification, 'getAttachments'):
+            attachments = notification.getAttachments() or []
+            for attachment in attachments:
+                part2 = MIMEApplication(attachment["binary"])
+                part2.add_header("Content-Disposition",
+                                 'attachment;filename="%s"' % (attachment["name"]))
+                msg.attach(part2)
+
+        return {
+            'msg': msg.as_string(),
+            'toList': toList,
+            'ccList': ccList,
+            'bccList': bccList,
+            'fromAddr': fromAddr,
+        }
+
+    @staticmethod
+    def _send(msgData):
+        server=smtplib.SMTP(*Config.getInstance().getSmtpServer())
         if Config.getInstance().getSmtpUseTLS():
             server.ehlo()
             (code, errormsg) = server.starttls()
@@ -41,45 +128,31 @@ class GenericMailer:
             (code, errormsg) = server.login(login, password)
             if code != 235:
                 raise MaKaCError( _("Can't login on SMTP server: %d, %s")%(code, errormsg))
-        fromAddr=notification.getFromAddr()
-        for to in notification.getToList() :
-            if len(to) == 0 :
-                notification.getToList().remove(to)
-        for cc in notification.getCCList() :
-            if len(cc) == 0 :
-                notification.getCCList().remove(cc)
 
-        to=", ".join(notification.getToList())
-        if not to:
-            return
-        cc=""
-        if len(notification.getCCList())>0:
-            cc="Cc: %s\r\n"%", ".join(notification.getCCList())
+        # XXX: Does this actually use BCC/CC properly?!
+        to_addrs = set(msgData['toList']) | set(msgData['ccList']) | set(msgData['bccList'])
         try:
-            ct=notification.getContentType()
-        except:
-            ct = "text/plain"
-        subject=notification.getSubject()
-        body=notification.getBody()
-        msg="""Content-Type: %s; charset=\"utf-8\"\r\nFrom: %s\r\nTo: %s\r\n%sSubject: %s\r\n\r\n%s"""%(ct, fromAddr,\
-                to,cc,subject,body)
-        try:
-            Logger.get('mail').info("Mailing %s  CC: %s" % (notification.getToList(), notification.getCCList()))
-            server.sendmail(fromAddr,notification.getToList()+notification.getCCList(),msg)
+            Logger.get('mail').info("Mailing %s  CC: %s" % (msgData['toList'], msgData['ccList']))
+            server.sendmail(msgData['fromAddr'], to_addrs, msgData['msg'])
         except smtplib.SMTPRecipientsRefused,e:
             server.quit()
-            raise MaKaCError( _("Email address is not valid: ")+str(e.recipients))
+            raise MaKaCError("Email address is not valid: %s" % e.recipients)
         server.quit()
+        Logger.get('mail').info('Mail sent to %s' % msgData['toList'])
 
-        Logger.get('mail').info('Mail sent to %s' % to)
+    @classmethod
+    def _log(cls, data):
+        data['conference'].getLogHandler().logEmail(data['data'], data['module'], data['user'])
 
-    def sendAndLog(notification, conference, module="", user = None):
-        GenericMailer.send(notification)
-        logData = {}
-        logData["fromAddr"] = notification.getFromAddr()
-        logData["toList"] = notification.getToList()
-        logData["ccList"] = notification.getCCList()
-        logData["subject"] = notification.getSubject()
-        logData["body"] = notification.getBody()
-        conference.getLogHandler().logEmail(logData,module,user)
-    sendAndLog = staticmethod(sendAndLog)
+    @classmethod
+    def sendAndLog(cls, notification, conference, module='', user=None, skipQueue=False):
+        cls.send(notification, skipQueue=skipQueue)
+        logData = {
+            'contentType': notification.getContentType(),
+            'fromAddr': notification.getFromAddr(),
+            'toList': notification.getToList(),
+            'ccList': notification.getCCList(),
+            'subject': notification.getSubject(),
+            'body': notification.getBody()
+        }
+        conference.getLogHandler().logEmail(logData, module, user)

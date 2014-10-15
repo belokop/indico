@@ -1,2 +1,9 @@
+<%inherit file="ConfDisplayBodyBase.tpl"/>
 
-    <%= items %>
+<%block name="title">
+    ${body_title}
+</%block>
+
+<%block name="content">
+    ${ items }
+</%block>

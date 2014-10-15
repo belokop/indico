@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 var currentArea;
 var inputCursor = 0;
 
@@ -28,7 +45,7 @@ function insertTag(tag) {
             currentArea.dom.focus();
         }
     } else {
-        alert("You can only insert tags in Subject or Body.\nPlease click in the Subject or Body text box before inserting.");
+        new AlertPopup($T("Warning"), $T("You can only insert tags in Subject or Body.\nPlease click in the Subject or Body text box before inserting.")).open();
     }
 }
 
@@ -111,9 +128,58 @@ function getInputPosition () {
 
 function checkID() {
     if (currentArea == null)
-        return false
-        else if (currentArea.dom.id == 'notificationTplBody' || currentArea.dom.id == 'notificationTplSubject')
-            return true;
-        else
-            return false;
+        return false;
+    return currentArea.dom.id == 'notificationTplBody' || currentArea.dom.id == 'notificationTplSubject';
 }
+
+
+//Manager to add/modify notificaton templates
+type("NotificationTemplateManager", [],
+        {
+            // Add elements to the PM
+            addToPM: function(elem, type, allowEmpty) {
+                this.__parameterManager.add(elem, type, allowEmpty);
+            },
+
+			// Check if there are some erros in the fields of the form
+			checkFields: function() {
+			    // Make sure that both functions are executed
+                var checkPM = this.__parameterManager.check();
+
+                if (checkPM) {
+                    this.errorElement.dom.style.display = 'none';
+                    return true;
+                } else {
+                    this.errorElement.dom.style.display = '';
+                    return false;
+                }
+             },
+
+             removeCheckBoxError: function() {
+                 if (this.cbParent.dom.className.slice(-7) == "invalid") {
+                     this.cbParent.dom.className = "";
+                 }
+             },
+
+             // Check the condition of the select in the 3rd step
+             checkSelectCondition: function(mainSelect, elem1, elem2) {
+                 if (mainSelect.dom.value != 'accepted') {
+                     elem1.dom.style.display = 'none';
+                     elem2.dom.style.display = 'none';
+                 } else {
+                     elem1.dom.style.display = '';
+                     elem2.dom.style.display = '';
+                 }
+             }
+        },
+
+
+        /* Manage the
+        @param cbParent: parent of the checkboxes element
+        @return the manager class for the ConfModCFANotifTplNew.tpl and ConfModCFANotifTplEditData
+        */
+		function(cbParent, errorElement) {
+            this.__parameterManager = new IndicoUtil.parameterManager();
+            this.cbParent = cbParent;
+            this.errorElement = errorElement;
+		});

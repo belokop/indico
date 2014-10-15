@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 /**
      @namespace Simple effects
     */
@@ -103,7 +120,7 @@ IndicoUI.Effect = {
      * Utility function used by highLight to remove the highlight safely (the element may have disappeared during the timeout)
      */
     removeHighLight: function(elementId) {
-        element = $E(elementId);
+        var element = $E(elementId);
         if (exists(element)) {
             element.dom.style.color = '';
         }
@@ -140,7 +157,7 @@ IndicoUI.Effect = {
 
     fade: function(element, TimeToFade) {
         if (!exists(TimeToFade))
-            TimeToFade = 500.0
+            TimeToFade = 500.0;
 
         if (typeof element == "string")
             element = $E(element);
@@ -169,7 +186,7 @@ IndicoUI.Effect = {
             setTimeout(function() {animateFade(new Date().getTime(), element);}, 33);
         }
 
-        animateFade = function(lastTick, element) {
+        var animateFade = function(lastTick, element) {
             var curTick = new Date().getTime();
             var elapsedTicks = curTick - lastTick;
 
@@ -315,6 +332,7 @@ IndicoUI.Effect = {
          * have to put the Javascript code measuring the height later in the DOM tree.
          *
          */
+
         var elem = $E(elemId);
         elem.dom.style.overflow = 'hidden';
         var elemDivHeight = elemHeight;
@@ -352,8 +370,34 @@ IndicoUI.Effect = {
             setTimeout(function(){decHeight();}, 20);
         }
 
+    },
+
+    followScroll: function() {
+        $.each($('.follow-scroll'),function(){
+            if (!$(this).data('original-offset')) {
+                $(this).data('original-offset', $(this).offset());
+            }
+
+            var eloffset = $(this).data('original-offset');
+            var windowpos = $(window).scrollTop();
+            if(windowpos > eloffset.top) {
+                if (!$(this).hasClass("scrolling")) {
+                    $(this).data({
+                        "original-left": $(this).css("left"),
+                        "original-width": $(this).css("width")
+                    });
+                    $(this).css("width", $(this).width());
+                    $(this).css("left", eloffset.left);
+                    $(this).addClass('scrolling');
+                }
+            } else {
+                if ($(this).hasClass("scrolling")) {
+                    $(this).css("left", $(this).data("original-left"));
+                    $(this).css("width", $(this).data("original-width"));
+                    $(this).removeClass('scrolling');
+                }
+            }
+        });
     }
-
-
 };
 

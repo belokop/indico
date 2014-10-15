@@ -1,58 +1,40 @@
-<% if not isFrontPage and navigation: %>
-    <%= navigation %>
-<% end %>
-<% else: %>
+% if not isFrontPage and navigation:
+    ${ navigation }
+% else:
     <div class="mainNoBreadcrumb">
     </div>
-<% end %>
+% endif
 
 <div class="clearfix">
-    <% if isRoomBooking: %>
-        <% if sideMenu: %>
+    % if isRoomBooking:
+        % if sideMenu:
             <div class="emptyVerticalGap"></div>
-        <% end%>
+        % endif
         <table border="0" cellSpacing="0" cellPadding="0">
             <tr>
-                <% if sideMenu: %>
+                % if sideMenu:
                 <td style="vertical-align: top;">
-    		        <%= sideMenu %>
+                    ${ sideMenu }
                 </td>
-                <% end %>
+                % endif
                 <td style="vertical-align: top; width: 100%;">
-                	<div class="body clearfix <% if sideMenu: %>bodyWithSideMenu<% end %><%= " " %><% if isFrontPage: %>bodyWithSideBar<% end %>" style="margin-left:0px;">
-                        <%= body %>
+                    <div class="body clearfix${" bodyWithSideMenu" if sideMenu else ""}${" bodyWithSideBar" if isFrontPage else ""}" style="margin-left:0px;">
+                        ${ render_template('flashed_messages.html') }
+                        ${ body }
                     </div>
                 </td>
             </tr>
         </table>
 
-    <% end %>
-    <% else: %>
+    % else:
 
-	   <% if sideMenu: %>
-
+       % if sideMenu:
            <div class="emptyVerticalGap"></div>
-	       <%= sideMenu %>
+           ${ sideMenu }
+       % endif
 
-	   <% end %>
-
-        <% if isFrontPage: %>
-            <div class="frontPageSideBarContainer">
-                <div class="sideBar">
-                    <div class="leftCorner"></div>
-                    <div class="rightCorner"></div>
-                    <div class="content">
-                    <h1><%= _("News") %></h1>
-                        <% includeTpl('WelcomeHeader', tz = timezone) %>
-                    <h1><%= _("Upcoming events") %></h1>
-                        <%= upcomingEvents %>
-                    </div>
-                </div>
-            </div>
-        <% end %>
-
-    	<div class="body clearfix <% if sideMenu: %>bodyWithSideMenu<% end %><%= " " %><% if isFrontPage: %>bodyWithSideBar<% end %>">
-            <%= body %>
+        <div class="body clearfix${" bodyWithSideMenu" if sideMenu else ""}">
+            ${ body }
         </div>
-    <% end %>
+    % endif
 </div>

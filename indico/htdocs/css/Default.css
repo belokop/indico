@@ -1,18 +1,42 @@
 /*
+* -*- mode: text; coding: utf-8; -*-
+
+
+   This file is part of Indico.
+   Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+
+   Indico is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 3 of the
+   License, or (at your option) any later version.
+
+   Indico is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with Indico; if not, see <http://www.gnu.org/licenses/>.
+*/
+
+/*
    A wrapper that wraps around everything except the footer.
    Used to place the footer correctly at the bottom
 */
 div.wrapper {
-    height: auto !important;
     min-height: 100%;
+    height: auto !important;
+    height: 100%;
 }
+
+div.main {
+    padding-bottom: 60px;
+}
+
 /*
     Used to create empty space in end of wrapper
     which is used but the footer
 */
-div.wrapper .emptyFooter {
-    height: 50px; /* The height of the footer */
-}
 
 .smallLabel {
     font-size: 10px;
@@ -77,39 +101,27 @@ a.note:hover {
 
 
 /*For the big-conferences interface pages*/
-.confSupportEmailBox {  text-align: center;
-                        font-size: 16px }
+.confSupportEmailBox {  text-align: center}
 
 
 /*
     Used for meeting and lectures
 */
 .eventWrapper {
-    background-color: white;
     width: 1000px;
     margin: 30px auto;
     margin-top: 18px;
-    min-height: 500px;
-}
-
-
-/* News styles*/
-
-body {
-    font-family: arial, serif;
-    background: #fff;
-    padding: 0px;
-    margin: 0px;
-    font-size: 13px;
 }
 
 body, html {
     height: 100%;
 }
 
-p,br,dl,em,h1,h2,h3,h4,h5,h6,td,blockquote,ol,a {
-   font-size: 13px;
+br,dl,h1,h2,h3,h4,h5,h6,td,blockquote,ol {
    color: #444444;
+}
+br,dl,td,blockquote,ol {
+   font-size: 13px;
 }
 
 form {
@@ -128,7 +140,6 @@ pre {
    font-family: arial, serif;
    white-space: pre-wrap;       /* css-3 */
    white-space: -moz-pre-wrap;  /* Mozilla, since 1999 */
-   white-space: -pre-wrap;      /* Opera 4-6 */
    white-space: -o-pre-wrap;    /* Opera 7 */
    word-wrap: break-word;       /* Internet Explorer 5.5+ */
    margin: 0px;
@@ -148,6 +159,28 @@ a:link, .fakeLink {
    color: #0b63a5;
    text-decoration: none;
 }
+
+a.fakeLink span.infoBubble{
+    display: None;
+    margin-top: -7px;
+    visibility: hidden;
+}
+
+a.fakeLink:hover span.infoBubble{
+    display: inline;
+    position: absolute;
+    left: 102%;
+    background: white;
+    color: #777;
+    font-weight: normal;
+    font-style: normal;
+    font-size: 12px;
+    padding: 3px;
+    border: 1px solid #0b63a5;
+    border-left: 4px solid #0b63a5;
+    /*height: 150px; /* to decide the max */
+}
+
 a:visited {
    color: #0b63a5;
    text-decoration: none;
@@ -198,6 +231,12 @@ a.img:active {
     cursor: pointer;
     padding-right: 12px;
     padding-top: 6px;
+}
+
+.iconContribGoTo {
+  float: left;
+  padding: 0px 5px 0px 5px;
+  cursor: pointer;
 }
 
 .dropDownMenu, .dropDownMenuGrey, .dropUpMenu, .dropDownMenuWhite {
@@ -257,7 +296,7 @@ a.img:active {
 .categoryTitle {
     border-bottom: 2px solid rgb(170, 170, 170);
     font-size: 34px;
-    font-family: Times New Roman;
+    font-family: Georgia, Times, Times New Roman;
     color: #B14300;
     font-weight: normal;
     margin: 0;
@@ -265,13 +304,13 @@ a.img:active {
     padding: 0;
 }
 
+
 .categoryHeader {
     margin-bottom: 0px;
 }
 
 .categoryHeader a {
     font-size: 14px;
-    margin: 0 10px;
 }
 
 .categoryHeader ul {
@@ -285,7 +324,6 @@ a.img:active {
     display: inline;
     padding: 3px 0;
 }
-
 
 .categoryMap {
 }
@@ -563,8 +601,6 @@ a.menuaddlink:hover {
    /*border-left: 2px solid #777777;*/
 }
 
-
-
 .tabbarseparator {
    background: #F2F2F2;
    border-right: 2px solid #777777;
@@ -718,13 +754,50 @@ a.menuaddlink:hover {
    text-align: left;
 }
 
-.resvTable {
+.resvTable, .blockingTable {
     border-collapse: collapse;
 }
 
-.resvHover:hover {
+.resvHover:hover, .blockingHover:hover {
     background-color: #f0f0f0;
 }
+
+/* tables used for room blocking. */
+.blockingTable td {
+    padding: 0px 5px;
+}
+/* some space between table header and body */
+.blockingTable thead tr td {
+    padding-bottom: 5px;
+}
+/* "my blocking" row blocks (per room) have a border */
+.blockingTable tbody.blockingForMyRoom {
+    border: 1px solid transparent;
+}
+
+.blockingTable tbody.blockingForMyRoom:hover {
+    border: 1px solid #aaa;
+}
+/* separate simply table rows with some more padding */
+.blockingTable tr.blockingPadding td {
+    padding: 2px 5px 3px 5px;
+}
+/* blocking room list is hidden by default */
+.blockingTable tr.blockingRoomList {
+    display:none;
+}
+/* since TBODY cannot have a padding/margin, we use an empty row for it */
+.blockingTable .blockingSpacer td {
+    height: 10px;
+}
+/* blockings with an open room list have a border */
+.blockingTable tbody.hasRoomList {
+    border: 1px solid transparent;
+}
+.blockingTable tbody.hasRoomList:hover {
+    border: 1px solid #aaa;
+}
+
 
 /*All used styles*/
 /* TODO: should probably be removed...
@@ -935,57 +1008,6 @@ a.confSubSection:hover {
     /* border-top: 1px solid #777777; */
 }
 
-.groupTitle, .groupTitleNoBorder, .groupSubTitle {
-   font-family: "Times New Roman", Verdana, Arial;
-   font-size: 24px;
-   color: #4E4C46;
-   letter-spacing: 1px;
-   padding: 3px 3px 5px 3px;
-   border-bottom: 1px solid #777777;
-   margin: 10px 0;
-}
-
-.reviewingsubtitle {
-   font-family: "Times New Roman", Verdana, Arial;
-   font-size: 15pt;
-   color: #4E4C46;
-   letter-spacing: 1px;
-   padding: 3px;
-   margin: 10px 0;
-}
-
-.groupTitleNoBorder {
-   border-bottom: none;
-}
-
-.groupSubTitle {
-    font-size: 20px;
-}
-
-.groupTitleSmall, .groupTitleSmallNoBackground {
-   font-weight: bold;
-   font-size: 14px;
-   color: #777777;
-   background: #EBEBEB;
-   padding: 3px;
-}
-
-.groupTitleSmallNoBackground {
-   background: none;
-}
-
-
-.greyGroupTitle{
-    font-weight: bold;
-    font-size: 16px;
-    color: #FFFFFF;
-    background: #777777;
-    letter-spacing: 6px;
-    padding: 3px;
-    background: #EBEBEB none repeat scroll 0 0;
-    color: gray;
-    text-align:left;
-}
 
 .groupLink {
    font-weight: normal;
@@ -1012,18 +1034,6 @@ a.confSubSection:hover {
     color: black;
 }
 
-.subgroupTitle, .subgroupTitleNoBorder {
-   font-weight: bold;
-   font-size: 18px;
-   color: #888888;
-   padding: 3px;
-   border-bottom: 2px solid #777777;
-   vertical-align: bottom;
-}
-
-.subgroupTitleNoBorder {
-   border-bottom: none;
-}
 
 .abstractLeftDataCell {
     padding-right:5px;
@@ -1038,21 +1048,6 @@ a.confSubSection:hover {
     vertical-align: top;
 }
 
-.displayTitle {
-   font-size: 18px;
-   color: #5294CC;
-   padding: 3px;
-   vertical-align: bottom;
-}
-
-.formTitle {
-   font-weight: bold;
-   font-size: 18px;
-   color: #888888;
-   padding: 3px;
-   border-bottom: 2px solid #777777;
-   vertical-align: bottom;
-}
 
 .buttonBar {
    background: #F0F0F0;
@@ -1115,13 +1110,6 @@ a.confSubSection:hover {
    background:#F6F6F6;
 }*/
 
-.categoryInfo {
-    font-size: 13px;
-    font-style: italic;
-    color: #444;
-    margin-top: 5px;
-}
-
 .categoryManagers {
     font-size: 13px;
     color: #444;
@@ -1168,11 +1156,6 @@ a.confSubSection:hover {
    background-repeat: no-repeat;
 }
 
-.confirmTab {
-   background-image: url(../images/warning.png);
-   background-repeat: no-repeat;
-}
-
 .moveTab {
    background-image: url(../images/greenarrow.png);
    background-repeat: no-repeat;
@@ -1200,10 +1183,14 @@ input.smallbtn {
 
 .yellowButton {
     background: white url(../images/sprites.png) repeat-x scroll 0 -90px;
-    padding: 2px;
 }
 
 .yellowButton input {
+    cursor: pointer;
+    font-weight: bold !important;
+    padding: 2px;
+    height: 21px;
+    font-size: 12px;
     background-color: transparent;
     border: 0;
     color: black;
@@ -1261,168 +1248,6 @@ span.horizontalSeparator {
     padding-right: 5px;
 }
 
-
-
-/* ===== ROOM BOOKING ================= */
-
-.tip {
-    border:solid 1px #888888;
-    color:#222222;
-    background-color:#f0f0f0;
-    font-size: 11px;
-}
-
-.tip ul, .tip strong, .tip em {
-    color:#222222;
-    font-size:11px;
-}
-
-.tip a {
-    font-size:11px;
-}
-
-.tip-no-borders {
-    border: none;
-    color:#222222;
-    background-color:#f0f0f0;
-    font-size: 11px;
-}
-
-/* Room booking - calendar bar */
-.barUnaval { /* Bar representing unavailable period */
-    position: absolute;
-    background-color: #FFE0C5;
-    border: solid 1px #CCC;
-    height: 10px;
-}
-.barCand { /* Bar representing candidate reservation */
-    position: absolute;
-    background-color: #A7FFD0;
-    border: solid 1px #CCC;
-    height: 10px;
-}
-.barConf { /* Bar representing conflict */
-    position: absolute;
-    background-color: #D0000A;
-    border: solid 1px #CCC;
-    height: 10px;
-}
-
-.barPreB { /* Bar representing PRE-booking */
-    position: absolute;
-    background-color: #FFFEB1;
-    border: solid 1px #CCC;
-    height: 10px;
-}
-
-.barPreC { /* Bar representing conflict with PRE-booking */
-    position: absolute;
-    background-color: #FFB1F1;
-    border: solid 1px #CCC;
-    height: 10px;
-}
-
-.barPreConc { /* Bar representing concurrent PRE-bookings */
-    position: absolute;
-    background-color: #D1F3FF;
-    border: solid 1px #CCC;
-    height: 10px;
-}
-
-.dayDiv {
-    position: relative;
-    height: 10px;
-    font-size:0px;
-    margin-top: 6px;
-}
-
-.calHour {
-    position: absolute;
-    font-size: 8px;
-    height: 10px;
-    color: Black;
-}
-
-/* Form fields: field description width. */
-.subFieldWidth {
-    width: 84px;
-}
-.subFieldWidthSmaller
-{
-    width: 60px;
-}
-
-.actionSucceeded
-{
-    color: Green; margin-left: 6px; font-weight: bold;
-}
-
-.actionFailed
-{
-    color: Red; margin-left: 6px; font-weight: bold;
-}
-
-a.roomLink:hover, a.dateLink:hover {
-    text-decoration: underline;
-}
-
-a.basicRoom {
-    color: #0b63a5;
-}
-
-option.publicRoom, span.publicRoom, a.publicRoom {
-    color: Green;
-}
-
-option.moderatedRoom, span.moderatedRoom, a.moderatedRoom {
-    color: #D37209;
-}
-
-option.privateRoom, span.privateRoom, a.privateRoom, a.weekend {
-    color: Red;
-}
-
-span.unavailable {
-    background-color: #881122;
-    color: white;
-    padding: 1px;
-}
-
-a.weekday {
-    color: Black;
-}
-
-.bookingDisplayTitleCell {
-    width: 25%;
-}
-
-.bookingShowHideHistory {
-    margin-top: 9px;
-}
-
-.bookingDisplayEntryMoreInfo, .bookingDisplayEntryHideInfo {
-    white-space: nowrap;
-    padding-left: 7px;
-}
-
-.bookingDisplayHistoryTimestamp {
-    color: #999;
-    font-size: 11px;
-    display: table-cell;
-    white-space: pre;
-    padding-right: 10px;
-}
-
-.bookingDisplayHistoryInfo {
-    display: table-cell;
-    /* For GChrome and Safari*/
-    width: 1000px;
-}
-
-.bookingHistoryTooltip {
-    padding: 3px;
-    background-color: white;
-}
 /********************/
 /**** Evaluation ****/
 /********************/
@@ -1702,12 +1527,6 @@ table.noticeMain td.td{
 table.noticeMain td.title{
     text-align:center;
 }
-table.noticeInside {
-    border:2px solid #777777;
-}
-table.noticeInside td{
-    padding:10px;
-}
 
 /* Results */
 fieldset.evalationResultsFieldset{
@@ -1783,6 +1602,11 @@ img {
     border: 0px;
 }
 
+.dialog-content {
+    font-size: 1.1em;
+    margin: 17px;
+    max-width: 600px;
+}
 
 div.UISimpleDialogMainPanel {
     background: #FFFFFF;
@@ -1792,7 +1616,7 @@ div.UISimpleDialogMainPanel {
     font-size: 13px;
 }
 
-label {
+label, .label {
     font-weight: bold;
 }
 
@@ -1913,11 +1737,11 @@ ul.CategoryList li:hover{
 
 /* ListWidget, list of users styles */
 
-li.selectedListItem {
+.selectedListItem {
     background-color: #CDEB8B;
 }
 
-li.unselectedListItem {
+.unselectedListItem {
     background-color: #FFFFFF;
 }
 
@@ -1960,7 +1784,7 @@ div.UISuggestedPeopleListDiv {
     height: 300px;
 }
 
-ul.PeopleList, ul.UIPeopleList, ul.UISuggestedPeopleList { /* UIPeopleList: for all lists of users, among them, found users */
+ul.PeopleList, ul.UIPeopleList, ul.UISuggestedPeopleList, ul.UIAuthorList { /* UIPeopleList: for all lists of users, among them, found users */
     border: none;
     display: block;
     list-style-type: none;
@@ -1968,26 +1792,27 @@ ul.PeopleList, ul.UIPeopleList, ul.UISuggestedPeopleList { /* UIPeopleList: for 
     margin: 0;
 }
 
-ul.PeopleList li, ul.UIPeopleList li, ul.UISuggestedPeopleList li {
+ul.PeopleList li, ul.UIPeopleList li, ul.UISuggestedPeopleList li, ul.UIAuthorList li {
     margin: 0;
     display: block;
     margin-bottom: 0px;
     line-height: 25px;
     padding-left: 5px;
+    padding-right: 5px;
     vertical-align: middle;
 }
 
-ul.UIPeopleList li, ul.UISuggestedPeopleList li {
+ul.UIPeopleList li, ul.UISuggestedPeopleList, ul.UIAuthorList li {
     border-bottom: 1px dotted #DDDDDD;
     cursor: pointer;
 }
 
 ul.PeopleList li:hover {
-    background-color: #ECECEC;
+    background: #ECECEC;
 }
 
 ul.UIPeopleList li:hover, ul.UISuggestedPeopleList li:hover {
-    background-color: #FFF6DF;
+    background-color: #FFF6DF !important;
 }
 
 ul.UIPeopleList li.listMessage, ul.UISuggestedPeopleList li.listMessage {
@@ -1998,12 +1823,12 @@ ul.UIPeopleList li.listMessage, ul.UISuggestedPeopleList li.listMessage {
     line-height: normal;
 }
 
-ul.UIPeopleList li.listMessage, ul.UISuggestedPeopleList li.listMessage {
-    background-color: transparent;
+ul.UIPeopleList li.listMessage:hover, ul.UISuggestedPeopleList li.listMessage:hover
+{
+    background-color: transparent !important;
 }
-
-ul.UIPeopleList li .nameLink {
-    padding: 4px 30px;
+ul.UIPeopleList li .nameLink, ul.UIAuthorList li .nameLink {
+    padding: 0px 0px 4px 30px;
 }
 
 ul.UIPeopleList li .foundUserEmail, ul.UISuggestedPeopleList li .foundUserEmail {
@@ -2019,7 +1844,7 @@ ul.UIPeopleList li:hover > .foundUserEmail, ul.UISuggestedPeopleList li:hover > 
 }
 
 ul.UIPeopleList li.selectedUser {
-    background-color: #CDEB8B;
+    background-color: #CDEB8B !important;
 }
 
 ul.UIPeopleList li.unselectedUser {
@@ -2051,14 +1876,13 @@ td.searchUsersGroupsPanel, td.suggestedUsersPanel {
 td.searchUsersGroupsPanel {
     width: 450px;
     padding-left: 10px;
-    background-color: white;
     padding-top: 10px;
     padding-right:10px;
 }
 
 td.suggestedUsersPanel {
     width: 250px;
-    background-color: #F8F8F8;
+    background-color: #FCFCFC;
     border-left: 1px dotted #CCCCCC;
 }
 
@@ -2115,12 +1939,12 @@ div#UILoadDiv h1{
 
 ul.UIPeopleList li.UIPerson
 {
-    background: url("../images/user.png") left top no-repeat;
+    background: transparent url("../images/user.png") left top no-repeat;
 }
 
 ul.UIPeopleList li.UIGroup
 {
-    background: url("../images/group.png") left top no-repeat;
+    background: transparent url("../images/group.png") left top no-repeat;
 
 }
 
@@ -2134,11 +1958,23 @@ ul.UIPeopleList li.UIError
 {
 }
 
+#search-advanced-help-tooltip code {
+    font-size: 1.1em;
+}
+
+#search-advanced-help-tooltip .field {
+    color: #8a8a45;
+}
+
+#search-advanced-help-tooltip .negation {
+    color: #b00;
+}
+
 div#UISearchBox
 {
     position: absolute;
-    right: 30px;
-    top: 36px;
+    right: 0.5em;
+    top: 50px;
     border: none;
     font-size: 13px;
     z-index: 1;
@@ -2146,15 +1982,21 @@ div#UISearchBox
 
 div#UISearchBox .searchButton
 {
-    float:right;
-    border-left: 1px solid #888;
-    width: auto;
+    float: right;
+    border-left: 1px solid #003042;
+    width: 28px;
+    height: 21px;
+    line-height: 21px;
+    cursor: pointer;
+    background: #444;
+    text-align: center;
+    color: #fafafa;
 }
 
 div#UISearchBox #searchControls
 {
-    width: 250px;
-    border: 1px solid #888;
+    width: auto;
+    border: 1px solid #003042;
     height: 21px;
     overflow: hidden;
     background-color: white;
@@ -2163,20 +2005,23 @@ div#UISearchBox #searchControls
 div#UISearchBox #searchControls input
 {
     border: 0;
-    color: black;
     font-weight: normal;
+    color: #333;
 }
 
 div#UISearchBox #searchText
 {
-    width: 130px;
+    margin-left: 3px;
+    min-width: 150px;
+    width: auto;
+    height: 19px;
 }
 
 div#UISearchBox #extraOptions
 {
     border: 1px solid #888888;
-    border-top: none;
-    width: 250px;
+    border-radius: 6px;
+    min-width: 250px;
     display: none;
     position: absolute;
     top: 23px;
@@ -2186,13 +2031,17 @@ div#UISearchBox #extraOptions
 
 
 div#UISearchBox #extraOptions table {
-    margin: 10px;
+    width:auto;
+}
+
+div#UISearchBox #extraOptions table td:first-child {
+    padding-left: 10px;
 }
 
 div#UISearchBox #extraOptions input {
     margin-left: 8px;
     font-size: 12px;
-    width: 119px;
+    width: 148px;
 }
 
 div#UISearchBox #extraOptions select {
@@ -2209,11 +2058,112 @@ div#UISearchBox #extraOptions td {
 div#UISearchBox #advancedOptionsLabel {
     text-align: center;
     padding: 5px;
+    border-radius: 6px 6px 0 0;
     background-color: #ECECEC;
     font-style: italic;
     border-bottom: 1px solid #AAAAAA;
 }
 
+div#UISearch
+{
+    position:relative;
+    border: none;
+    font-size: 13px;
+    z-index: 1;
+}
+
+div#UISearch .searchButton
+{
+    float:right;
+    border-left: 1px solid #888;
+    width: auto;
+}
+
+div#UISearch #searchText2
+{
+    padding:3px;
+    width: auto;
+}
+
+div#UISearch #searchControls
+{
+    width: auto;
+    border: 1px solid #888;
+    height: 21px;
+    overflow: hidden;
+    background-color: white;
+}
+
+div#UISearch #searchControls input
+{
+    border: 0;
+    color: black;
+    font-weight: normal;
+}
+
+div.searchTag
+{
+    max-width:112px;
+    display:table-cell;
+    line-height: 13px;
+    height: 13px;
+    vertical-align: middle;
+    margin: 1px 1px 1px 1px;
+    padding: 2px 5px;
+    float: left;
+    user-select: none;
+    -ms-user-select:none;
+    -o-user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: -moz-none;
+    font-size: 11px;
+    overflow: hidden;
+    opacity: 0.6;
+}
+
+.searchTag .where
+{
+    max-width:100px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow:ellipsis;
+    float:left;
+}
+
+.everywhere
+{
+    color: #fff !important;
+    border: 1px solid #566E89;
+    text-shadow: 0 1px 0 #666;
+    background-color: #aaa;
+    cursor: default;
+
+}
+.inCategory
+{
+    color: #fff;
+    border: 1px solid #566E89;
+    background-color: #8EA1B7;
+    text-shadow: 0 1px 0 #666;
+    cursor: default;
+}
+.inCategoryOver
+{
+    color: #566E89;
+    border: 1px solid #566E89;
+    background-color: #8EA1B7;
+    cursor: pointer;
+}
+.cross
+{
+    font-weight:bold;
+    color: #566E89;
+    float: right;
+    cursor: pointer;
+    font-size: 10px;
+    margin-left:4px;
+    line-height: 12px;
+}
 
 .arrowExpandIcon
 {
@@ -2255,11 +2205,6 @@ a.meetingHeaderSearchBox
 {
     border-bottom: 1px solid #777777;
 }
-
-/*.container
-{
-    overflow: hidden;
-}*/
 
 .leftFloat
 {
@@ -2340,7 +2285,7 @@ ul.UIUserEvtList li
 .UIRowButton2
 {
     margin-left: 10px;
-    padding-top: 4px;
+    padding-top: 6px;
 }
 
 .favoriteItem
@@ -2385,7 +2330,10 @@ ul.UIUserEvtList li
 
 .bookedItemCollision:hover + div{
     display: block;
-    position: absolute; top: 25px; left: 0px; width: 100% - 6;
+    position: absolute;
+    top: 25px;
+    left: 0px;
+    width: 100%;
     color: #AAA;
     background-color: #FFF6DF;
     padding: 3px;
@@ -2394,7 +2342,10 @@ ul.UIUserEvtList li
 
 .bookedItemOutsideBooking:hover + div{
     display: block;
-    position: absolute; top: 25px; left: 0px; width: 100% - 6;
+    position: absolute;
+    top: 25px;
+    left: 0px;
+    width: 100%;
     color: #AAA;
     background-color: #FFF6DF;
     padding: 3px;
@@ -2511,171 +2462,47 @@ img.clickableImage
 
 /* New CSS */
 
-
-/* HEADER */
-
-div.pageHeader {
-    position: relative;
-    width: 100%;
-}
-
-div.pageHeaderDark {
-    background-color: #424242;
-}
-
-div.pageHeaderMainPage {
-    background: white url("../images/indico_bg.gif") repeat 0 0;
-}
-
 div.pageOverHeader
 {
-    background: #F6E8BD url(../images/sprites.png) repeat-x scroll 0 -210px;
+    background-color: #F6E8C3;
     border-bottom: 1px solid #A2905A;
     padding: 7px 10px;
     color: #2f2506;
     font-family: Verdana;
     font-size: 12px;
     font-weight: bold;
+    display: none;
 }
 
-/* Styles for the main menu */
 
-div.globalMenu
-{
-    background: #0b63a5 url(../images/sprites.png) repeat-x scroll 0 0;
-    border-top: 1px solid #999999;
-    border-bottom: 1px solid #999999;
-    height: 30px;
-    width: 100%;
+/* Mobile Header */
+
+div.mobile-device-header{
+    display: none;
+    width:100%;
+    z-index: 10;
+    padding: 15px 5px;
+    border: 1px solid #AAA;
+    background-color: #F4F4F4;
+    color: #666;
+    text-align: center;
+    border-top: none;
+    box-shadow: 0 1px 8px rgba(100, 100, 100, 0.4);
+    box-sizing: border-box;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
 }
 
-div.globalMenu ul {
-    margin: 0;
-    padding: 0;
-    display: inline;
-    list-style-type: none;
-}
-
-div.globalMenu li {
+div.mobile-device-header > .text{
     display: block;
-    float: left;
-    position: relative;
-    height: 30px;
-    cursor: pointer;
+    margin-bottom: 1em;
+    font-size: 3em;
 }
 
-div.globalMenu li.mouseover {
-    background: #439ddc url(../images/sprites.png) repeat-x scroll 0 -30px;
+div.mobile-device-header .i-button {
+    font-size: 3em;
 }
 
-div.globalMenu a
-{
-    font-weight: bold;
-    font-family: Verdana;
-    font-size: 11px;
-    color: white;
-    letter-spacing: 0.04em;
-    display: block;
-    padding: 8px 15px;
-}
-
-div.globalMenu span
-{
-    font-weight: bold;
-    font-family: Verdana;
-    font-size: 11px;
-    color: white;
-    padding-top: 8px;
-    padding-bottom: 8px;
-    padding-left: 15px;
-    margin-right: 15px;
-    letter-spacing: 0.04em;
-    display: block;
-}
-
-div.globalMenu .dropDownMenu {
-    padding-right: 20px;
-    background: transparent url(../images/menu_arrow_white.png) scroll no-repeat center right;
-}
-
-/* Styles for the session bar at the top right corner */
-
-div.sessionBar {
-    height: 25px;
-    float: right;
-    font-size: 13px;
-}
-
-div.sessionBar .links
-{
-    background: transparent url(../images/sprites.png) repeat-x scroll 0 -60px;
-    margin-left: 25px;
-    padding-top: 0px;
-    height: 25px;
-}
-
-.loginHighlighted {
-    background: transparent url(../images/sprites.png) repeat-x scroll 0 -150px;
-}
-
-div.sessionBar .corner
-{
-    background: transparent url(../images/session_bar_corner.png) repeat-x scroll 0 0;
-    height: 25px;
-    width: 25px;
-    float: left;
-}
-
-
-div.sessionBar ul
-{
-    margin: 0;
-    padding: 0;
-    display: inline;
-    list-style-type: none;
-}
-
-div.sessionBar li {
-    display: inline;
-    margin: 0;
-    padding: 4px 17px;
-    float: left;
-    border-right: 1px solid #C7C7C7;
-}
-
-div.sessionBar span {
-    color: #444444;
-    font-size: 11px;
-    margin-right: 5px;
-}
-
-div.sessionBarDark .corner {
-    background-position: -25px 0;
-}
-
-div.sessionBarDark .links {
-    background-position: 0 -180px;
-}
-
-div.sessionBarDark span {
-    color: #BCBCBC
-}
-
-div.sessionBarDark .links a {
-    color: #DFDFDF;
-}
-
-div.sessionBarDark .links a:hover {
-    color: white;
-}
-
-div.sessionBarDark li {
-    border-color: #777;
-}
-
-div.sessionBarDark .dropDownMenu {
-    background: transparent url(../images/menu_arrow_white.png) scroll no-repeat center right;
-}
 
 /* Breadcrumb styles */
 
@@ -2701,22 +2528,6 @@ div.sessionBarDark .dropDownMenu {
     padding-left: 7px;
 }
 
-div.mainBreadcrumb {
-    background-color: #ECECEC;
-    padding: 4px 15px;
-    border-bottom: 1px solid #AAAAAA;
-}
-
-div.mainNoBreadcrumb {
-    background: transparent url(../images/sprites.png) scroll repeat-x 0 -120px;
-    height: 10px;
-}
-
-div.noBreadcrumb {
-    padding-top: 5px;
-    padding-bottom: 10px;
-}
-
 ul.horizontalMenu
 {
     margin: 0;
@@ -2733,14 +2544,6 @@ ul.horizontalMenu li{
     padding: 2px 6px;
     border-right: 1px solid #DDDDDD;
     line-height: 1.5;
-}
-
-img.headerLogo {
-
-    margin: 7px 10px;
-    border: none;
-    width: 196px;
-    height: 52px;
 }
 
 div.headerAboutIndico
@@ -2760,9 +2563,9 @@ img.centeredImg {
 }
 
 div.eventHeaderButtonBar {
-	padding: 6px 0;
-	min-height: 24px;
-	min-width: 200px;
+    padding: 6px 0;
+    min-height: 24px;
+    min-width: 200px;
 }
 
 div.eventHeaderButtonBar a {
@@ -2772,8 +2575,8 @@ div.eventHeaderButtonBar a {
     height: 13px;
     padding: 4px 10px 7px 10px;
     min-width: 4px;
-	margin-left: 4px;
-	background: transparent url(../images/button_bg.png) repeat-y scroll 0 0;
+    margin-left: 4px;
+    background: transparent url(../images/button_bg.png) repeat-y scroll 0 0;
     font-size: 13px;
     font-family: arial, helvetica, sans-serif;
     color: #cfcfcf;
@@ -2825,6 +2628,7 @@ div.filterDiv
     overflow: hidden;
 }
 
+
 .body
 {
 }
@@ -2852,81 +2656,25 @@ div.filterDiv
     margin: 30px 80px 30px 60px;
 }
 
-.sideBar {
-    float: right;
-    font-size: 14px;
-    width: 340px;
-    float: right;
-    width: 340px;
+.smallSideBox {
+    font-family: Georgia, Times, Times New Roman;
+    padding: 15px 15px 10px 15px;
+    background: #f8f8f8;
 }
 
-.sideMenu {
-    float: left;
-    width: 200px;
-    padding-right: 15px;
-    margin-left:30px;
-}
-
-.managementSideMenu {
-    margin-left:0px;
-}
-
-.sideMenu .separator {
-    font-weight: normal;
-    font-style: italic;
-    font-size: 12px;
-    color: #777;
-    padding: 7px 0;
-    border-bottom: 1px dotted #999;
-}
-
-.sideMenu .separatorNoText {
-    font-size: 1px;
-    height: 1px;
-    padding: 0;
-    margin-top: 0;
-    border-bottom: 1px dotted #999;
-}
-
-.sideBar .leftCorner {
-    width: 15px;
-    height: 15px;
-    float: left;
-    background: transparent url('../images/grey_corners.png') scroll no-repeat 0 0;
-}
-
-.sideBar .rightCorner {
-    width: 15px;
-    height: 15px;
-    float: right;
-    background: transparent url('../images/grey_corners.png') scroll no-repeat -15px 0;
-}
-
-.sideMenu .corner {
-    width: 15px;
-    height: 15px;
-    float: right;
-    background: transparent url('../images/grey_corners.png') scroll no-repeat -30px 0;
-}
-
-.sideBar .content {
-    background: #ECECEC url('../images/grey_gradient.png') scroll repeat-x bottom left;
-    padding: 20px 20px 50px 20px;
-}
-.sideMenu .content {
-    padding-top: 10px;
-}
-
-.managementSideMenu .content {
-    min-height: 200px;
-}
-
-.managementSideMenu .content {
-    margin-right: 15px;
+.smallSideBox h1 {
+    font-family: 'Special Elite', arial, serif;
 }
 
 .topBar {
     margin-bottom: 0px;
+}
+
+.topBar h1 {
+    margin: 0;
+    padding: 0;
+    color: #777;
+    font-size: 15px;
 }
 
 .topBar .content {
@@ -2940,59 +2688,6 @@ div.filterDiv
 .topBar .smaller {
     padding: 10px;
     margin-top: 10px;
-}
-
-.sideBar h1, .topBar h1 {
-    margin: 0;
-    padding: 0;
-    color: #777;
-    font-size: 15px;
-}
-
-.sideBar ul {
-    margin: 10px 10px 20px 10px;
-    padding: 0;
-    list-style-type: none;
-}
-
-.sideBar li {
-    margin-bottom: 10px;
-    list-style-type: none;
-}
-
-.sideMenu li {
-    margin-bottom: 10px;
-}
-
-.sideBar a {
-    font-size: 16px;
-}
-
-.sideBar em {
-    color: #777;
-}
-
-.sideMenu a {
-    font-size: 14px;
-}
-
-.sideMenu .active {
-    font-weight: bold;
-}
-
-.sideMenu a.advanced {
-    font-style: italic;
-}
-
-.sideBar a.subLink {
-    font-style: italic;
-    font-size: 14px;
-}
-
-.sideBar em {
-    font-size: 13px;
-    display: block;
-    margin-top: 3px;
 }
 
 .leftMenu
@@ -3027,6 +2722,10 @@ h1.active
 }
 
 li.active a{
+    font-weight: bold;
+}
+
+a.active {
     font-weight: bold;
 }
 
@@ -3131,10 +2830,6 @@ ul.listCompact {
         margin-right: 10px;
 }
 
-.eventList {
-    padding-top: 15px;
-}
-
 .eventList h3 {
     font-size: 26px;
     color: #999999;
@@ -3148,7 +2843,7 @@ ul.listCompact {
     font-size: 18px;
     margin-top: 20px;
     margin-left: 40px;
-    padding 0;
+    padding: 0;
     border-bottom: 1px solid #EBEBEB;
 }
 
@@ -3207,32 +2902,64 @@ ul.listCompact {
 /* Footer */
 
 .footer {
-    text-align: center;
-    color: #444444;
+    color: #555;
+    position: relative;
+    margin-top: -60px; /* negative value of footer height */
     height: 40px;
-    margin-top: -60px;
-    margin-bottom: 5px;
-    padding-top: 10px;
-    bottom: 0;
-    width: 100%;
+    clear:both;
+    padding: 10px 5px 5px 5px;
+    font-size: 11px;
 }
 
-.longFooter {
-    margin-top: -60px;
+.footer.footerDark {
+    font-weight: bold;
+    color: #222;
 }
 
-
-.footerDark {
-    color: #888888;
+.footer.footerDark a {
+    color: #222;
+    font-size: 11px;
 }
 
-.footerDark a {
-    color: #53A0DF;
+.footer.footerDark a:hover {
+    text-decoration: underline;
+}
+
+.footer div.text {
+    margin-top: 20px;
+    float: left;
+    vertical-align: middle;
+}
+
+.footer a#cern_link {
+    margin: auto;
+    float: left;
+    vertical-align: middle;
+}
+
+.footer .shorturl {
+    margin-top: 25px;
+    color: #1A64A0;
+    float: right;
 }
 
 .footer img
 {
     vertical-align: middle;
+}
+
+.mobile-footer {
+    text-align: center;
+    font-size:11px !important;
+    font-weight: normal;
+}
+.footerDark .mobile-footer {
+    color: white;
+}
+
+.footerDark .mobile-footer a {
+    color: #BBBBBB;
+    text-shadow: 1px 1px 1px #555555;
 }
 
 /* TODO: remove permanently? */
@@ -3258,63 +2985,6 @@ ul.listCompact {
     line-height: 30px;
 }
 
-/* TODO: Remove these?
-
-.banner_0
-{
-    background: #E0E0E0;
-    font-size: 16px;
-}
-
-.banner_1
-{
-    background: #F0F0F0;
-    font-size: 14px;
-    margin-right: 20px;
-}
-
-.banner_2
-{
-    background: #F8F8F8;
-    font-size: 13px;
-    margin-right: 40px;
-}
-
-.banner_3
-{
-    background: #FCFCFC;
-    font-size: 13px;
-    margin-right: 60px;
-}
-
-.banner_4
-{
-    background: #FCFCFC;
-    font-size: 13px;
-    margin-right: 60px;
-}
-
-.banner_5
-{
-    background: #FCFCFC;
-    font-size: 13px;
-    margin-right: 60px;
-}
-
-.banner_green
-{
-    background: #d5edd7;
-    font-size: 16px;
-}
-
-.banner_orange
-{
-    background: rgb(255,205,174);
-    font-size: 16px;
-}
-
-*/
-
 .selectedCategoryName{
     padding:20px;
     font-size: 16px;
@@ -3322,7 +2992,6 @@ ul.listCompact {
 
 div.accessProtection {
     padding: 10px;
-    font-size: 16px;
 }
 
 span.eventProtectionRadioEntry {
@@ -3334,6 +3003,10 @@ span.eventProtectionRadioEntry {
 span.eventProtectionRadioEntry label, span.categProtectionRadioEntry label {
     font-weight: normal;
     padding-left: 5px;
+}
+
+span.eventProtectionRadioEntry label{
+    font-size: 16px;
 }
 
 span.protectionRadioInfo {
@@ -3393,6 +3066,7 @@ ul.userList, ul.allowedUserList {
 }
 
 ul.userList li , ul.allowedUserList li {
+    padding-right: 5px;
     display: block;
     line-height: 28px;
     margin: 0 0 0;
@@ -3425,6 +3099,7 @@ div.ACModifDiv {
 div.ACStatusDiv {
     font-size: 15px;
     padding-bottom: 9px;
+    color: #444;
 }
 
 span.ACStatus {
@@ -3432,11 +3107,10 @@ span.ACStatus {
 }
 
 div.ACStatusDescDiv {
-    color: #777777;
-    padding-left: 20px;
-    padding-bottom: 20px;
-    font-style: italic;
-    width: 600px;
+    font-size: 0.9em;
+    color: #999;
+    margin-bottom: 10px;
+    max-width: 450px;
 }
 
 div.ACModifButtonsDiv {
@@ -3449,8 +3123,7 @@ div.ACModifButtonEntry {
 }
 
 div.ACUserListDiv {
-    padding-bottom: 20px;
-    padding-left: 35px;
+    margin-bottom: 20px;
 }
 
 div.ACUserListDiv ul.UIPeopleList {
@@ -3462,6 +3135,7 @@ div.ACUserListDiv ul.UIPeopleList {
 
 .bannerTitle
 {
+    font-family: "Helvetica Neue", Helvetica, Verdana, Arial, Sans-serif;
     color: #777777;
 }
 
@@ -3532,33 +3206,6 @@ div.ACUserListDiv ul.UIPeopleList {
 
 /* Forms */
 
-.errorMsgBox
-{
-    margin-top: 15px;
-    margin-bottom: 15px;
-    margin-left: auto;
-    margin-right: auto;
-    padding:10px;
-    border:1px solid #5294CC;
-    background:#F6F6F6;
-    text-align: center;
-    width: 33%;
-}
-
-.infoMsgBox
-{
-    margin-top: 15px;
-    margin-bottom: 15px;
-    margin-left: auto;
-    margin-right: auto;
-    padding:10px;
-    border:1px solid #5294CC;
-    background:#F6F6F6;
-    text-align: center;
-    width: 33%;
-}
-
-
 .oneline {
     display: block;
     margin-top: 5px;
@@ -3612,11 +3259,6 @@ div.optionGroup
     padding-left: 0px;
     margin-bottom: 0px;
     height: 20px;
-}
-
-.selected
-{
-    background: #C3D9FF;
 }
 
 .timeDurationEntry
@@ -3782,10 +3424,16 @@ div.tabBorderGradient {
 
 .tabExtraButtons {
     background-color: #888;
-    float: right;
+    position: absolute;
+    right: 0;
+    top: 30px;
     -webkit-border-radius: 3px;
     -moz-border-radius: 3px;
+    border-radius: 3px;
     margin: 10px 10px 0 0;
+    box-shadow:1px 1px 1px #000;
+    -moz-box-shadow:1px 1px 1px #000;
+    z-index: 1;
 }
 
 .tabExtraButtons .buttonContainer {
@@ -3910,7 +3558,7 @@ div.resourceContainer
 }
 
 div.highlighted {
-    border: 1 px solid red;
+    border: 1px solid red;
 }
 
 div.descriptionBox
@@ -3966,8 +3614,20 @@ div.timetableHeader {
     padding: 20px 5px 10px 5px;
     margin-top: 20px;
     border-bottom: 2px solid #777777;
-    font-size: 20px; color: rgb(68, 68, 68);
+    font-size: 20px;
+    color: rgb(68, 68, 68);
+    background: white;
     behavior: url(border-radius.htc);
+}
+
+div.timetableFullScreenHeader {
+    padding: 5px 5px 5px 5px;
+    margin-top: 20px;
+    border-bottom: 1px solid black;
+    font-size: 20px;
+    color: rgb(68, 68, 68);
+    text-align: center;
+    background: white;
 }
 
 ul.keywordList
@@ -4088,6 +3748,14 @@ select.invalidSelect {
     color: #881122;
 }
 
+.categoryWarning p.warningText {
+    padding: 15px;
+    border: 1px solid #ddd;
+    margin-left: 15%;
+    width: 600px;
+    border-radius: 5px;
+}
+
 .successText {
     color: #118822;
 }
@@ -4109,10 +3777,6 @@ ul.errorList {
     margin-left: 20px;
 }
 
-ul.errorList li {
-    color: #881122;
-}
-
 .errorList {
     width: 400px;
 }
@@ -4125,13 +3789,11 @@ ul.warningList {
 
 span.errorTitle {
     font-size: medium;
-    color: #881122;
     font-weight: bold;
 }
 
 span.messageAfterErrors {
     margin-top: 1em;
-    color: #881122;
 }
 
 span.warningTitle {
@@ -4167,7 +3829,7 @@ ul.warningLevel1 {
 }
 
 .newsItemDate {
-   font-weight: italic;
+   font-style: italic;
    color: #36393D;
 }
 
@@ -4259,131 +3921,18 @@ span.optionKey1 {
     font-weight: bold;
 }
 
-/* COLLABORATION */
-
-span.createBookingText {
-    font-size: 16px;
-}
-
-td.collaborationTitleCell {
-    color: #523D04;
-    /*text-align: center;*/
-    padding-bottom: 3px;
-}
-
-td.collaborationCell {
-    padding: 0px;
-    padding-left: 15px;
-    padding-right: 15px;
-    padding-top: 3px;
-    padding-bottom: 3px;
-    /*text-align: center;*/
-    white-space: nowrap;
-}
-
-td.collaborationCellNarrow {
-    padding: 0px;
-    padding-top: 3px;
-    padding-bottom: 3px;
-    width: 0px;
-    white-space: nowrap;
-}
-
-.collaborationInfoCell {
-    padding: 0px;
-    padding-left: 50px;
-    padding-bottom: 5px;
-}
-
-
-span.statusMessage {
-    font-size: medium;
-    font-weight: bold;
-    vertical-align: middle;
-}
-
-.statusMessageError {
-    color: #881122;
-}
-
-.statusMessageOK {
-    color: #73880A;
-}
-
-.statusMessageOther {
-    color: #7A7A7A;/*#356AA0;*/
-}
-
-div.collaborationAdvancedTabTitle {
-    font-size:13px;
-    background:none repeat scroll 0 0 white;
-    position:absolute;
-    padding-right:5px;
-}
-
-div.collaborationAdvancedTabTitleLine {
-    height: 9px;
-    border-bottom: 1px dotted #777;
-    position: relative;
-    min-width: 200px;
-}
-
-div.collaborationAdvancedTabCheckboxDiv {
-    margin-left:50px;
-    padding-top:5px;
-}
-
-td.collaborationInfoLeftCol {
-    vertical-align: top;
-    text-align: left;
-    padding-right: 5px;
-    white-space: nowrap;
-    color: #523D04;
-}
-
-.collaborationWarning {
-    font-weight: bold;
-    color: #881122;
-}
-
-td.bookingFormFieldName {
-    text-align: right;
-    padding-right: 5px;
-}
-
-span.bookingFormWarning {
-    font-size: x-small;
-    color: #FF7400;
-}
-
-ul.singleBooking {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    text-align: center;
-}
-
-div.singleBookingCustomText {
-    margin-bottom: 5px;
-}
-
-div.actionButton {
-    display: inline;
-    margin-left: 5px;
-}
-
 /* Conference, Registrants List */
 
 .CRLgroupTitleNoBorder {
-   font-family: "Times New Roman", Verdana, Arial;
+    font-family: Georgia, Times, Times New Roman;
    font-size: 19px;
    color: #4E4C46;
    letter-spacing: 1px;
-   padding: 3px;
+   padding: 0;
 }
 
 .CRLabstractLeftDataCell {
-    padding-right:5px;
+    padding: 5px 5px 5px 0;
     border-bottom: 1px solid #DDDDDD;
     vertical-align: top;
 }
@@ -4401,6 +3950,11 @@ div.actionButton {
     font-weight: bold;
  }
 
+.CRLLastDataCell{
+    padding:5px;
+    vertical-align: top;
+}
+
 .btnRemove {
     color: red;
     background-color: transparent;
@@ -4416,13 +3970,11 @@ div.CRLDiv {
     margin-top: 10px;
     margin-bottom: 10px;
     color: #444;
-    border: 1px solid #AAA;
+    border: 1px solid #DADADA;
     -moz-border-radius-bottomleft:10px;
     -moz-border-radius-bottomright:10px;
     -moz-border-radius-topleft:10px;
     -moz-border-radius-topright:10px;
-    border-bottom:1px solid #AAAAAA;
-    border-right:1px solid #AAAAAA;
 }
 
 
@@ -4438,9 +3990,12 @@ ul.CRLIndexList {
     display: block;
     list-style-type: none;
     margin: 0;
-    padding: 0;
+    padding: 3px;
     padding-top: 10px;
     padding-bottom: 5px;
+    padding-left: 15px;
+    padding-right: 15px;
+
 }
 
 ul.CRLIndexList li {
@@ -4464,419 +4019,10 @@ ul.CRLIndexList a:hover
 }
 
 
-/* Collaboration Admin */
-
-ul.CAIndexList {
-    display: block;
-    list-style-type: none;
-    margin: 0;
-    padding: 0;
-    padding-top: 10px;
-    padding-bottom: 5px;
-}
-
-ul.CAIndexList li {
-    display: inline;
-    position: relative;
-    padding-right: 15px;
-    padding-left: 15px;
-    border-right: 1px solid #AAAAAA;
-}
-
-ul.CAIndexList a {
-    font-family: Verdana;
-    font-size: 16px;
-    font-weight: bold;
-    cursor: pointer;
-}
-
-ul.CAIndexList a:hover
-{
-    color: #dbb03a;
-}
-
-.CAIndexSelected  {
-    color: #B38B1F;
-}
-
-.CAIndexUnselected {
-    color: #4C6A83;
-}
-
-.CALastIndex {
-    border-right: 0px;
-}
-
-div.CADiv {
-    background: #ECECEC url('../images/grey_gradient2.png') scroll repeat-x bottom left;
-    padding: 10px 20px 10px 10px;
-    margin-top: 10px;
-    margin-bottom: 10px;
-    color: #444;
-    border: 1px solid #AAA;
-    -moz-border-radius-bottomleft:10px;
-    -moz-border-radius-bottomright:10px;
-    -moz-border-radius-topleft:10px;
-    -moz-border-radius-topright:10px;
-    border-bottom:1px solid #AAAAAA;
-    border-right:1px solid #AAAAAA;
-}
-
-div.CADiv span.pluginNames {
-    font-style: italic;
-}
-
-div.CAShowOnlyPendingDiv {
-    padding-right: 10px;
-    border-right: 1px solid #AAAAAA;
-    margin-right: 10px;
-}
-
-div.CAShowOnlyPendingDiv input {
-    margin: 0;
-    padding: 0;
-}
-
-div.CAShowOnlyPendingDiv label {
-    font-weight: normal;
-}
-
-div.CAFilterByCategoryDiv{
-    padding-right: 10px;
-    border-right: 1px solid #AAAAAA;
-    margin-right: 10px;
-    display: inline;
-}
-
-div.CAResultsDiv {
-    padding-top: 20px;
-}
-
-div.CAResultsPerPageDiv {
-    display: inline;
-}
-
-span.CAMinMaxKeySuggestion {
-    color: orange;
-    font-size: 10px;
-}
-
-span.CAViewBySpan {
-    font-weight: bold;
-}
-
-div.CADiv a {
-    font-family: Verdana;
-    font-size: 12px;
-    cursor: pointer;
-}
-
-div.CADiv input.CARadio {
-    margin-left: 0px;
-}
-
-a.CAViewBySelected  {
-    color: #B38B1F;
-    font-weight: bold;
-}
-
-a.CAViewByUnselected {
-    color: #4C6A83;
-}
-
-div.CAViewByDiv {
-    display: inline;
-}
-
-div.CAViewByDiv a {
-    padding-left: 8px;
-}
-
-div.CAOrderByDiv a {
-    padding-left: 8px;
-}
-
-div.CAOrderByDiv {
-    display: inline;
-    float: right;
-}
-
-div.CAInfoDiv {
-    padding-top: 5px;
-}
-
-div.CAInfoDiv div.CATypesDiv {
-    display: inline;
-    padding-top: 5px;
-}
-
-div.CAInfoDiv div.CAStaticURLDiv {
-    display: block;
-    padding-top: 5px;
-}
-
-a.CAStaticURLSwitch {
-    color: #0B63A5;
-}
-
-div.CAInfoDiv div.CAStaticURLDiv a {
-    margin: 0;
-    padding: 0;
-    font-weight: bold;
-}
-
-div.CAInfoDiv div.CAStaticURLDiv a:hover {
-    color: #DBB03A;
-}
-
-div.CATotalInIndexDiv {
-    display:inline;
-    float:right;
-}
-
-div.CANResultsDiv {
-    display:inline;
-}
-
-ul.pageNumberList {
-    display: block;
-    list-style-type: none;
-    margin: 0;
-    padding: 0;
-    padding-top: 25px;
-}
-
-ul.pageNumberList li {
-    display: inline;
-    position: relative;
-    padding-right: 15px;
-    padding-left: 15px;
-    border-right: 1px solid #AAAAAA;
-}
-
-ul.pageNumberList li.lastPageNumber {
-    border-right: 0px;
-}
-
-ul.pageNumberList a {
-    font-family: Verdana;
-    font-size: 12px;
-    font-weight: bold;
-    cursor: pointer;
-}
-
-ul.pageNumberList a:hover
-{
-    color: #dbb03a;
-}
-
-ul.pageNumberList a.pageSelected  {
-    color: #B38B1F;
-}
-
-ul.pageNumberList a.pageUnselected {
-    color: #4C6A83;
-}
-
-table.CAResultsTable {
-    width: 100%;
-    margin: 0;
-    padding: 0;
-}
-
-table.CAResultsTable tr.ACBookingLine:hover {
-    background-color: #ECECEC;
-}
-
-table.CAResultsTable td.ACBookingGroupTitle {
-    padding-top: 20px;
-    color: #555555;
-    font-weight: normal;
-    font-size: 18px;
-    border-bottom: 1px solid #EBEBEB;
-}
-
-table.CAResultsTable a.ACConfLink {
-    padding-top: 20px;
-}
-
-table.CAResultsTable a.ACConfLink span.ACConfTitle {
-    font-size: 18px;
-    font-weight: normal;
-}
-
-table.CAResultsTable a.ACConfLink span.ACConfId {
-    font-size: 13px;
-    font-weight: normal;
-    color: #555555;
-}
-
-table.CAResultsTable a.ACConfLink span.ACConfDates {
-    font-size: 14px;
-    font-weight: normal;
-    color: #555555;
-}
-
-td.ACBookingFirstCell {
-    padding: 2px;
-    padding-left: 30px;
-}
-
-td.ACBookingCell {
-    padding: 2px;
-    padding-left: 10px;
-    max-width: 300px;
-}
-
-td.ACBookingCellNoWrap {
-    padding: 2px;
-    padding-left: 10px;
-    white-space: nowrap;
-    width: 0;
-}
-
-td.ACBookingTime {
-    padding: 2px;
-    text-align: right;
-}
-
-/* Collaboration display pages */
-
-.collaborationDisplayTitle {
-    margin: 0;
-    margin-top: 1em;
-}
-
-div.collaborationDisplayDateGroup {
-    padding-top: 5px;
-    padding-bottom: 15px;
-}
-
-.collaborationDisplayMoreInfo {
-    color: #0B63A5;
-}
-
-.collaborationDisplayHideInfo {
-    color: #B38B1F;
-}
-
-.collaborationDisplayMoreInfo , .collaborationDisplayHideInfo {
-    text-decoration: none;
-    cursor: pointer;
-}
-
-.collaborationDisplayMoreInfo:hover , .collaborationDisplayHideInfo:hover {
-    color: #DBB03A;
-}
-
-div.collaborationDisplayBookingLine {
-    padding-bottom: 5px;
-}
-
-div.collaborationConfDisplayBookingLine {
-    font-size:12px;
-}
-
-td.collaborationConfDisplayInfoLeftCol {
-    white-space: nowrap;
-    text-align: right;
-    padding-right: 10px;
-    padding-left: 5px;
-}
-
-td.collaborationConfDisplayInfoLeftCol, td.collaborationConfDisplayInfoRightCol {
-    padding-top: 2px;
-    padding-bottom: 2px;
-    vertical-align: top;
-    font-size: 11px;
-}
-
-td.collaborationConfDisplayInfoRightCol {
-    padding-right: 5px;
-}
-
-td.collaborationConfDisplayInfoRightCol a {
-    font-size: 11px;
-}
-
-div.collaborationDisplayInfoLine tr:hover {
-    background-color: #ECECEC;
-}
-
-div.collaborationLinkTooltipMeetingLecture {
-    padding: 3px;
-    background-color: white;
-}
-
-div.collaborationLinkTooltipConference {
-    padding: 3px;
-}
-
-div.collaborationDisplayInfoLine {
-    padding-top: 5px;
-    padding-bottom: 15px;
-    padding-left: 20px;
-}
-
-div.collaborationDisplayInfoLine table {
-    border-spacing: 0px;
-}
-
-span.collShowHideBookingsText {
-    font-style: italic;
-}
-
-span.collShowBookingsText {
-    font-style: italic;
-}
-
-div.collHideBookingsDiv {
-    padding-top: 8px;
-}
-
-span.collHideBookingsText {
-    font-style: italic;
-}
-
-table.eventDetails td.collaborationDisplayInfoLeftCol {
-    padding: 0px;
-    padding-right: 10px;
-    padding-left: 5px;
-    padding-bottom: 1px;
-    padding-top: 1px;
-    vertical-align: top;
-    text-align: right;
-    white-space: nowrap;
-    width: 0px;
-    color: #222222;
-    font-size: 10px;
-}
-
-table.eventDetails td.collaborationDisplayInfoRightCol {
-    padding: 0px;
-    vertical-align: top;
-    font-size: 10px;
-    padding-bottom: 1px;
-    padding-top: 1px;
-    padding-right: 5px;
-}
-
-td.collaborationDisplayInfoRightCol a {
-    font-size: 10px;
-}
-
-
-td.collaborationDisplayInfoLeftCol span {
-    white-space: nowrap;
-}
-
-
-
-
 /* ------------------------ */
 
 .timetableInfoBox {
-    margin: 7px 10px;
+    margin: 17px 10px;
     /*background: #F6E8BD url(../images/sprites.png) repeat-x scroll 0 -210px;
     border: 1px solid #A2905A;*/
     color: #444444;
@@ -4888,9 +4034,9 @@ td.collaborationDisplayInfoLeftCol span {
 
 .timetableBlock {
     border: 1px solid #aaaaaa;
+    border-radius: 3px;
     -moz-border-radius: 3px;
     -webkit-border-radius:3px;
-    behavior: url(border-radius.htc);
     color: #202020;
 }
 
@@ -4903,6 +4049,105 @@ td.collaborationDisplayInfoLeftCol span {
 div.timetableContribution  {
     background-color: #f8f2e8;
 }
+
+.timetableBlock {
+    box-shadow: 0px 0px 5px #DDD;
+}
+
+/* Timetable drag n drop */
+
+#tt_hour_tip {
+    cursor: pointer;
+    overflow: auto;
+    background: white;
+    position: absolute;
+    z-index: 1;
+}
+
+#tt_hour_tip:hover {
+    opacity: 0.7;
+}
+
+.hourLine {
+    position: absolute;
+    border-top: 1px solid #E8E8E8;
+    font-size: 11px;
+}
+
+.ui-state-disabled.hourLine {
+    opacity: 1.0 !important;
+}
+
+.ui-droppable-disabled {
+    opacity: 0.7 !important;
+}
+
+.key {
+        display: inline;
+        min-width: 1em;
+        padding: .2em .3em;
+        text-align: center;
+        -moz-border-radius: .3em;
+        -webkit-border-radius: .3em;
+        border-radius: .3em;
+        border: none;
+        cursor: default;
+        background: rgb(250, 250, 250);
+        color:  rgb(50, 50, 50);
+        text-shadow: 0 0 2px rgb(255, 255, 255);
+        -moz-box-shadow: inset 0 0 1px rgb(255, 255, 255), inset 0 0 .4em rgb(200, 200, 200), 0 .1em 0 rgb(130, 130, 130), 0 .11em 0 rgba(0, 0, 0, .4), 0 .1em .11em rgba(0, 0, 0, .9);
+        -webkit-box-shadow: inset 0 0 1px rgb(255, 255, 255), inset 0 0 .4em rgb(200, 200, 200), 0 .1em 0 rgb(130, 130, 130), 0 .11em 0 rgba(0, 0, 0, .4), 0 .1em .11em rgba(0, 0, 0, .9);
+        box-shadow: inset 0 0 1px rgb(255, 255, 255), inset 0 0 .4em rgb(200, 200, 200), 0 .1em 0 rgb(130, 130, 130), 0 .11em 0 rgba(0, 0, 0, .4), 0 .1em .11em rgba(0, 0, 0, .9);
+}
+
+div.bottomTip {
+    color: #888;
+    margin-left: 5px;
+    border: 1px solid #aaa;
+    -moz-border-radius: 5px;
+    -webkit-border-radius: 5px;
+    border-radius: 5px;
+    padding: 3px 5px 3px 5px;
+    box-shadow: inset 0 0 25px #e8e8e8, 0px 0px 2px rgba(220, 220, 200, 0.4);
+    display: none;
+    text-align: center;
+    padding: 10px;
+    background: #eee;
+    background: rgba(255,255,255,0.7);
+    position: fixed;
+    bottom: 15px;
+    right: 50px;
+
+}
+
+div.bottomTip .circle{
+    float: left;
+    background: transparent url(../images/circle.png) scroll no-repeat;
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+    color: #666;
+    vertical-align: middle;
+}
+
+div.ui-state-hightlight {
+}
+
+div.ui-draggable.timetableBlock {
+   /* border: 3px solid #9F883B;*/
+}
+
+div.ui-draggable.timetableBlock:hover {
+    cursor: move;
+}
+
+div.ui-draggable-dragging.timetableBlock {
+    z-index: 9000;
+    opacity: 0.5;
+}
+
+/* Timetable drag n drop,
+   droppable styles ends here. */
 
 div.timetableSession div.timetableBlock{
 }
@@ -4926,6 +4171,7 @@ div.timetableBlockPresenters {
 }
 
 div.timetableBlockMaterial {
+    cursor: pointer;
     padding: 2px;
     margin: 2px;
     float: right;
@@ -5001,13 +4247,9 @@ span.sessionRenameEntry, span.sessionRenameValue {
 
 div.exclusivePopup {
     background-color: white;
-    position: absolute;
-    display: inline;
-    border: 1px solid black;
-    -moz-border-radius: 10px;
-    -webkit-border-radius:10px;
-    behavior: url(border-radius.htc);
+    display: block;
     min-width: 250px;
+    padding: 0.5em 1em;
 }
 
 div.exclusivePopupTopBg {
@@ -5065,7 +4307,6 @@ div.balloonPopup {
     background-color: white;
     -moz-border-radius: 6px;
     -webkit-border-radius:6px;
-    behavior: url(border-radius.htc);
 }
 
 div.balloonPopupArrow {
@@ -5228,6 +4469,12 @@ td.timetablePopupContributionTitle{
     -webkit-box-shadow: 2px 2px 2px #444;
 }
 
+.colorField  {
+    margin-right: 5px;
+    width: 100px;
+    float: left;
+}
+
 .colorPicker .custom {
     margin: 5px;
     margin-bottom: 10px;
@@ -5235,40 +4482,53 @@ td.timetablePopupContributionTitle{
     border-top: 1px dotted #555;
 }
 
-.colorPicker .inputWrapper {
+.colorPicker .inputWrapper, .colorField .inputWrapper {
     position: relative;
+}
+
+.colorPicker .inputWrapper {
     padding-right: 20px;
 }
 
-.colorPicker .inputContainer {
+.colorPicker .inputContainer, .colorField .inputContainer {
     border: 1px solid #777;
     margin: 2px 0 2px 7px;
-    position: relativ;
-
+    position: relative;
     -moz-border-radius: 2px;
     -webkit-border-radius: 2px;
     border-radius: 2px;
 }
 
-.colorPicker .numberSign {
+.colorPicker .numberSign, .colorField .numberSign {
     font-size: 12px;
     max-width: 12px;
     overflow: hidden;
     color: #777;
-    position: absolute;
     left: 10px;
     top: 1px;
     cursor: default;
 }
+.colorPicker .numberSign {
+    position: absolute;
+}
 
-.colorPicker input {
+.colorField .numberSign {
+    padding-left: 2px;
+    display: inline;
+}
+
+.colorPicker input, .colorField input {
     width: 55px;
-    margin-left: 15px;
     border: none;
     font-size: 11px;
     background: transparent;
+    outline: none;
+    height: 1em;
 }
 
+.colorPicker input {
+    margin-left: 15px;
+}
 .colorPicker button {
     font-size: 11px;
     margin-top: 5px;
@@ -5280,11 +4540,10 @@ td.timetablePopupContributionTitle{
     font-family: Verdana;
 }
 
-.colorPicker .block, .colorPicker .previewBlock {
+.colorPicker .block, .colorPicker .previewBlock, .colorField .previewBlock {
     border: 1px solid #AAA;
     text-align: center;
     overflow: hidden;
-
     -moz-border-radius: 2px;
     -webkit-border-radius:2px;
     border-radius: 2px;
@@ -5296,6 +4555,14 @@ td.timetablePopupContributionTitle{
     right: 0;
     width: 16px;
     height: 16px;
+}
+
+.colorField .previewBlock {
+    top: 0;
+    right: 0;
+    width: 16px;
+    height: 16px;
+    float: left;
 }
 
 .colorPicker .block {
@@ -5363,8 +4630,8 @@ td.timetablePopupContributionTitle{
 }
 
 .timezonePopup {
-    min-width: 300px;
-    padding: 15px 20px 0px 10px;
+    min-width: 320px;
+    padding: 10px 5px 0;
 }
 
 .timezonePopup .tzHeader {
@@ -5376,7 +4643,7 @@ td.timetablePopupContributionTitle{
 }
 
 .timezonePopup select {
-    min-width: 310px;
+    min-width: 260px;
     margin: 5px 5px 5px 20px;
     border: 1px solid #AAA;
 }
@@ -5460,7 +4727,8 @@ ul.sectionPopupList li a:hover {
 
 ul.sectionPopupList li.section {
     height: 25px;
-    display:block;
+    display: block;
+    cursor: pointer;
 }
 
 ul.sectionPopupList li.section .line {
@@ -5572,9 +4840,12 @@ div.timetableManagementInfoArea {
     width: 50%;
     background:#FFFFDD;
     border: 1px solid #aaaaaa;
+    border-radius: 3px;
     -moz-border-radius: 3px;
     -webkit-border-radius:3px;
     -moz-box-shadow:2px 2px 2px #888888;
+    -webkit-box-shadow:2px 2px 2px #888888;
+    box-shadow:2px 2px 2px #888888;
     margin-left: auto;
     margin-right: auto;
     behavior: url(border-radius.htc);
@@ -5632,7 +4903,98 @@ div.timetableManagementInfoArea ul li{
     background: transparent url(../images/menu_arrow_white.png) scroll no-repeat center right;
 }
 
+.tt_tmp_button {
+    line-height: 30px;
+    height: 30px;
+    float: right;
+    background: #fefefe;
+    border: 1px solid #aaa;
+    -moz-border-radius: 5px;
+    -webkit-border-radius: 5px;
+    border-radius: 5px;
+    opacity: 0.9;
+    box-shadow: 0px 0px 2px rgba(220, 220, 200, 0.4);
+    margin-right: 10px;
+    vertical-align: middle;
+    padding: 0px 8px;
+}
 
+.ui-resizable-handle {
+    z-index: 0 !important;
+}
+
+#tt_menu .go_back .arrow_up {
+    color: #aaa;
+    margin-right: 5px;
+}
+
+.ui-list-menu-level  {
+    position: absolute;
+    background: #fff;
+    padding: 0px;
+    z-index: 1;
+    box-shadow: inset 0 0 25px #e8e8e8, 0px 0px 2px rgba(220, 220, 200, 0.4);
+}
+
+.ui-list-menu-level > li:hover {
+    background: #f0f0f0;
+}
+
+.ui-list-menu-level > li {
+    display: block;
+    min-width: 1em;
+    border-bottom: 1px solid #eee;
+    text-align: center;
+    list-style-type: none;
+}
+
+.ui-list-menu {
+    margin-right: 10px;
+}
+
+.ui-list-menu li > a {
+    display: block;
+    padding: 5px 5px;
+    white-space: nowrap;
+}
+
+.ui-list-menu li.selected {
+    background: #eee;
+}
+
+.ui-list-menu > li {
+}
+
+.ui-list-menu-level-0 {
+    background: none;
+    box-shadow: none;
+    position: relative;
+    display: block;
+    float: right;
+    margin-top: 0px;
+    padding: 0px;
+}
+
+.ui-list-menu-level-0 > li {
+    list-style-type: none;
+    display: inline-block;
+    border-right: 1px solid #aaa;
+    box-shadow: inset 0 0 25px #e8e8e8, 0px 0px 2px rgba(220, 220, 200, 0.4);
+    min-width: 100px;
+}
+
+.ui-list-menu-level-0 > li:last-child {
+    border-right: none;
+}
+
+.ui-list-menu-level-1{
+    z-index: 0;
+    width: 100px;
+}
+
+.ui-list-menu-level-2{
+    width: 100px;
+}
 
 /* MODIF DISPLAY*/
 
@@ -5708,7 +5070,7 @@ div.cssPreview {
 
 .roomPopupTitle {
     font-weight: bold;
-    width: 70px;
+    width: 80px;
     float: left;
     font-style: normal;
 
@@ -5826,6 +5188,14 @@ div.VeryShortPeopleListDiv {
     overflow: auto;
 }
 
+div.LongPeopleListDiv {
+    margin-bottom: 10px;
+    height: 130px;
+    width: 412px;
+    border: 1px solid #CCCCCC;
+    overflow: auto;
+}
+
 div.CategoryEventListDiv {
     margin-bottom: 10px;
     height: 150px;
@@ -5887,11 +5257,19 @@ ul.authorList {
 
 div.UnscheduledContribListDiv {
     margin-bottom: 10px;
-    height:200px;
-    width: 300px;
+    height:300px;
+    width: 400px;
     border: 1px solid #CCCCCC;
     overflow: auto;
     margin-top: 10px;
+    margin-right: 35px;
+}
+
+div.UnscheduledContribListDiv .toolbar {
+    border-bottom: 1px solid #ccc;
+    text-align: right;
+    color: #999;
+    padding: 2px;
 }
 
 ul.UnscheduledContribList {
@@ -5906,7 +5284,7 @@ ul.UnscheduledContribList {
 ul.UnscheduledContribList li {
     cursor: pointer;
     padding: 5px;
-    border-bottom: 1px solid #DDDDDD;
+    border-bottom: 1px solid #eee;
 }
 
 ul.UnscheduledContribList li.selected {
@@ -6059,6 +5437,7 @@ div.fitInnerTimetableDialog {
 .indicoHelp .icons {
     float: right;
     padding-right: 5px;
+    vertical-align: top;
 }
 
 .indicoHelp .content {
@@ -6105,7 +5484,7 @@ div.fitInnerTimetableDialog {
 
 .suggestionBox {
     border: 1px solid #888888;
-    width: 250px;
+    width: 290px;
     overflow: hidden;
     background-color: white;
 }
@@ -6256,6 +5635,7 @@ div.posterEntry {
     padding: 5px;
     margin-bottom: 5px;
     overflow: auto;
+    width: 100%;
 }
 
 div.posterEntry:hover {
@@ -6305,9 +5685,9 @@ a.eventModifSpecial:hover {
 
 
 div.eventModifButtonBar {
-	padding: 6px 0;
-	min-height: 24px;
-	min-width: 200px;
+    padding: 6px 0;
+    min-height: 24px;
+    min-width: 200px;
 }
 
 div.eventModifButtonBar a {
@@ -6405,6 +5785,11 @@ div.cloneElements {
     width: 450px;
 }
 
+.ttentryArrowsBackground.ttentryArrowsShifted, .ttentryArrows.ttentryArrowsShifted {
+    margin: 2px 25px 0 0;
+    border: none;
+}
+
 .ttentryArrowsBackground {
     padding: 3px;
     position: absolute;
@@ -6422,6 +5807,7 @@ div.cloneElements {
     padding: 2px;
     position: absolute;
     right:0px;
+    cursor: pointer;
 }
 
 .filterTable {
@@ -6446,30 +5832,6 @@ div.cloneElements {
     -moz-border-radius-bottomleft: 5px;
     background-color: #fff;
     height: 24px;
-}
-
-/*
-    Date field widget
-*/
-
-div.dateField {
-    border: 1px solid #AAAAAA;
-    width: 140px;
-    display: inline;
-    padding: 3px;
-    background: white;
-}
-
-div.dateField img {
-    vertical-align: middle;
-    padding: 2px;
-    cursor: pointer;
-}
-
-div.dateField input {
-    border: none;
-    vertical-align: middle;
-    width: 115px;
 }
 
 div.invalid {
@@ -6516,35 +5878,12 @@ div.invalid {
     margin-left: 0px;
 }
 
-.beforeRegistrationInput {
-    width: 7px;
-}
-
-.regSection {
-    border-left: 1px solid #777777;
-    border-top: 1px solid #777777;"
-}
-
-.regSectionBackground{
-    background: #E5E5E5;
-    color: gray;
-}
-
-.regFormSubtotal{
-    background: #ECECEC;
+.regFormSubtotal {
     margin-left: 10px;
-    padding: 2px;
-}
-
-.regFormPrice{
-}
-
-.regFormNumberCaption {
-}
-
-.regFormBottomLine {
-    border-top: 2px solid #777777;
-    padding-top:10px;
+    font-size: 13px;
+    font-family: Verdana, Arial;
+    color: #3B4145;
+    font-weight: bold;
 }
 
 /*
@@ -6573,26 +5912,6 @@ table.schedTaskList th {
     border-bottom: 1px solid #EBEBEB;
 }
 
-/*
-    Map of rooms - availability filter form
-*/
-
-#mapOfRoomAvailabilityForm .subFieldWidth {
-    width: 60px;
-}
-
-#mapOfRoomAvailabilityForm #repeatability {
-    width: 115px;
-}
-
-#mapOfRoomAvailabilityForm div.dateField input {
-    width: 65px;
-}
-
-#mapOfRoomAvailabilityForm #sTime, #eTime {
-    width: 35px;
-}
-
 .infoTD {
     padding: 4px 4px 4px 10px;
 }
@@ -6606,12 +5925,13 @@ table.schedTaskList th {
     border:1px solid #999999;
 }
 
-table.infoTable td.data {
+table.infoTable td.tableHeader {
     font-size: 13px;
     font-family: Verdana, Arial;
     color: #523D04;
     padding: 7px;
     border-bottom: 1px groove #A4A4A4;
+    font-weight: bold;
 }
 
 table.infoTable td.content {
@@ -6700,7 +6020,6 @@ table.infoQuestionsTable td.dataBold {
 
 .editLinkInLine {
     float: left;
-    padding-right: 10px;
 }
 
 .shadowRectangle {
@@ -6785,4 +6104,1239 @@ table.infoQuestionsTable td.dataBold {
    color: #444444;
    padding: 3px 0 3px 0;
    font-style: italic;
+}
+
+.emailFieldTitle {
+    color: #523D04;
+    text-align: right;
+}
+
+.emailFieldContent {
+    color: black;
+    padding-left: 10px;
+}
+
+.titleCellTDSecondLevel {
+   vertical-align: top;
+   text-align: right;
+   padding-right: 15px;
+   width: 15%;
+   color: #666666;
+   padding-left: 40px;
+}
+
+.formError {
+    font-weight: bold;
+    color: #881122;
+    padding-top:10px;
+    text-align:center;
+}
+
+.abstract.selected, .participant.selected {
+    background: #CDEB8B;
+}
+
+.abstract:hover, .participant:hover {
+    background: #FFF6DF;
+}
+
+.abstract.selected:hover, .participant.selected:hover {
+    background: #CDEB8B;
+}
+
+.authorTable {
+    -moz-border-radius: 5px 5px 5px 5px;
+    border-radius: 5px 5px 5px 5px;
+    border: 1px solid gray;
+    margin-bottom: 5px;
+    margin-top: 5px;
+    background-color: white;
+    cursor: move;
+    z-index: 1;
+}
+
+.divNotSelected {
+    background: #ECECEC;
+    -moz-border-radius: 5px 5px 5px 5px;
+    padding: 3px 0px 6px 2px;
+    width: 70%;
+}
+
+.divSelected {
+    background: #CDEB8B;
+    -moz-border-radius: 5px 5px 5px 5px;
+    padding: 3px 0px 6px 2px;
+    width: 70%;
+}
+
+.authorError {
+    font-weight: bold;
+    color: #881122;
+    text-align: left;
+    padding-top: 6px;
+}
+
+.addAuthorTD {
+    width: 20%;
+    text-align:left;
+    padding-top:6px;
+    padding-left: 6px;
+}
+
+.authorText {
+    width: 90%;
+    padding-left: 5px;
+}
+
+.dragndrop-placeholder {
+    background: none repeat scroll 0 0 #FFCC66;
+    height: 1.5em;
+    margin-top: 3px;
+    margin-bottom: 3px;
+}
+.drop-target {
+    background: none repeat scroll 0 0 #FFF7CF;
+    border: 1px dashed #FFAA00 !important;
+    width: 85%;
+}
+
+.sortblock {
+    width:85%;
+}
+
+.sortblock ul {
+    margin-top: 2px;
+    margin-bottom: 10px;
+    padding: 4px;
+    list-style-type: none;
+    width: 100%;
+}
+
+.absMaterialInput {
+    margin: 5px 5px 0px 5px;
+}
+
+.existingAttachment {
+    padding-left: 6px;
+    padding-bottom: 8px;
+}
+
+.subGroupTitleAbstract {
+   font-size: 13px;
+   font-family: Verdana, Arial;
+   color: #523D04;
+   padding: 3px 0px 8px 3px;
+   font-weight: bold;
+}
+
+.calendarContainer
+{
+    overflow: visible;
+}
+
+div#social {
+    float: right;
+    display: none;
+    border-radius: 10px;
+    opacity: 0.5;
+}
+
+div#social_share {
+    display: none;
+}
+
+div#social img#social_button:hover{
+    cursor: pointer;
+}
+
+.social_share_tooltip {
+    max-width: 420px;
+    color: #fff;
+}
+
+.social_share_tooltip input {
+    background: #ddd;
+    border: 1px solid #999;
+}
+
+.social_share_tooltip input[type=text] {
+    width: 100%;
+    cursor: text;
+    color: #000;
+}
+
+.social_share_tooltip.qtip-dark h3 {
+    color: #aaa;
+    font-size: 15px;
+}
+
+.social_share_tooltip.qtip-blue h3 {
+    color: #1F8DD1;
+    font-size: 15px;
+}
+
+.social_share_tooltip.qtip-dark h4 {
+    margin-bottom: 5px;
+    color: #aaa;
+}
+
+.social_share_tooltip.qtip-blue h4 {
+    margin-bottom: 5px;
+    color: #1F8DD1;
+}
+
+.social_share_tooltip .note {
+    font-style: italic;
+    font-size: 11px;
+    float: right;
+}
+
+.social_share_tooltip.qtip-dark .note {
+    color: #555;
+}
+
+.social_share_tooltip.qtip-blue .note {
+    color: #999;
+}
+
+.social_share_tooltip.qtip-dark .qtip-content{
+    background: rgba(40,40,40,0.96);
+    border-color: #303030;
+}
+
+.social_share_tooltip.qtip-blue .qtip-content{
+    background: #E5F6FE;
+    border-color: #ADD9ED;
+    color: #5E99BD;
+}
+
+.social_share_tooltip .social_site img {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+#fb-like {
+    height: 25px;
+    overflow: hidden;
+    visibility: hidden;
+}
+
+.social_share_tooltip .social_site {
+    padding: 5px;
+    border-radius: 8px;
+    margin-bottom: 5px;
+    overflow: visible;
+    vertical-align: middle;
+    height: 25px;
+}
+
+.social_share_tooltip.qtip-dark .social_site {
+    background: rgba(0,0,0,0.15);
+}
+
+.social_share_tooltip.qtip-blue .social_site {
+    background: rgba(255,255,255,0.6);
+}
+
+.social_share_tooltip .social_site * {
+    vertical-align: middle !important;
+}
+
+div#social a {
+    display: block;
+    overflow: auto;
+}
+
+div#social:hover {
+    opacity: 1;
+}
+
+span.num_events {
+    font-size: 10px;
+    margin-left: 10px;
+    color: #aaa;
+}
+
+.bookingLaunchLink {
+	font-weight: bold;
+}
+
+.videoServiceWrapper {
+    display: block;
+    width: auto;
+    padding-bottom: 3px;
+}
+
+.videoServiceWrapperInline {
+    display: inline-block;
+    padding-left: 5px;
+}
+
+.videoServiceType {
+    font-weight: bold;
+}
+
+.videoServiceTitle {
+    font-style: italic;
+}
+
+.videoServiceInlinePopup {
+    font-size: 1.1em;
+    line-height: 1.4em;
+    display: block;
+    width: 350px;
+}
+
+.videoServiceInlinePopup .lineWrapper {
+    display: block;
+    width: auto;
+    clear: both;
+}
+
+.videoServiceInlinePopup .lineWrapper .leftCol {
+    font-weight: bold;
+    display: inline-block;
+    text-align: right;
+    width: 25%;
+    padding-right: 5px;
+    float: left;
+}
+
+.videoServiceInlinePopup .lineWrapper .rightCol {
+    display: inline-block;
+    width: 50%;
+    float: left;
+}
+
+.videoServiceInlinePopup .lineWrapper .rightCol a{
+    font-size: 10.5px;
+}
+.videoServiceInlinePopup .lineWrapper .rightCol input {
+    font-size: 10.5px;
+}
+
+.subGroupTitleRegForm {
+   font-size: 13px;
+   font-family: Verdana, Arial;
+   color: #3B4145;
+   font-weight: bold;
+}
+
+.placesLeft {
+    color:green;
+    font-style:italic;
+    padding-left: 5px;
+}
+
+.noPlacesLeft {
+    color: red;
+}
+
+.roleSmall {
+    font-weight: bold;
+    padding-left: 5px;
+    color: #888;
+}
+
+ul.UIAuthorList li .authorMove {
+    padding: 0px 0px 4px 20px;
+    z-index: 1;
+    cursor: move;
+}
+
+ul.UIAuthorList li .author {
+    padding: 0px 0px 4px 20px;
+    z-index: 1;
+    cursor: default;
+}
+
+ul.UIAuthorList li.UIAuthorMove {
+    background: white url("../images/drag.png") left top no-repeat;
+}
+
+
+ul.buttonMenuPopupList {
+    background-color: #ECECEC;
+    border: 0;
+    display: block;
+}
+
+ul.buttonMenuPopupList li {
+    display: block;
+}
+
+ul.buttonMenuPopupList li a {
+    color: #555555;
+    padding: 8px;
+    display: block;
+    font-weight:bold;
+}
+
+ul.buttonMenuPopupList li a:hover {
+    padding: 8px;
+    display: block;
+    list-style-type:none;
+    color: #FFFFFF;
+    background-color: #ACACAC;
+}
+
+.scrolling {
+    background-color:#FFFFFF;
+    box-shadow: 0 12px 6px -6px rgba(0, 0, 0, 0.2);
+    position: fixed;
+    top: 0;
+    z-index: 1;
+}
+
+.ui-list-menu-level  {
+    position: absolute;
+    background: #fff;
+    padding: 0px;
+    z-index: 1;
+    box-shadow: inset 0 0 25px #e8e8e8, 0px 0px 2px rgba(220, 220, 200, 0.4);
+}
+
+.ui-list-menu-level > li:hover {
+    background: #f0f0f0;
+}
+
+.ui-list-menu-level > li {
+    min-width: 1em;
+    border-bottom: 1px solid #eee;
+    text-align: center;
+    list-style-type: none;
+    float: left;
+    height: 30px;
+
+    text-decoration: none;
+    display: inline-block;
+    text-shadow: 0 1px 0 #fff;
+
+    cursor: pointer;
+}
+
+.ui-list-menu {
+    margin-right: 10px;
+}
+
+.ui-list-menu li > a {
+    display: block;
+    padding: 7px 12px;
+    text-align: left;
+}
+
+.ui-list-menu li.selected {
+    background: #eee;
+}
+
+.ui-list-menu > a {
+    min-width: 45px;
+}
+
+.ui-list-menu-level-0 {
+    background: none;
+    box-shadow: none;
+    position: relative;
+    margin: 0;
+    padding: 0px;
+    display: block;
+    list-style-type: none;
+    padding-left: 0;
+    clear: both;
+    border-spacing: 0;
+}
+
+.ui-list-menu-level-0 > li {
+    background: #ECECEC;
+    background: -webkit-gradient(linear,0% 40%,0% 70%,from(#F5F5F5),to(#F1F1F1));
+    background: -moz-linear-gradient(linear,0% 40%,0% 70%,from(#F5F5F5),to(#F1F1F1));
+    border: solid 1px #dcdcdc;
+    border-radius: 5px;
+    -webkit-border-radius: 5px;
+    -moz-border-radius: 5px;
+    -webkit-transition: border-color .218s;
+    -moz-transition: border .218s;
+    -o-transition: border-color .218s;
+    transition: border-color .218s;
+
+}
+
+.ui-list-menu-level-0 > li > a {
+    font-weight: bold;
+}
+
+.ui-list-menu-level-0 > li:last-child {
+    border-right: none;
+}
+
+.ui-list-menu-level-1 {
+    border: solid 1px #dcdcdc;
+    z-index: 0;
+    min-width: 150px;
+}
+
+.ui-list-menu-level-1 > li {
+    font-weight: normal;
+    float: none;
+    display: block;
+    overflow: auto;
+}
+
+.ui-list-menu-level-1 > li:hover {
+    padding-left: -1px;
+    border: 1px solid #ddd !important;
+    border-width: 0 0 1px 0 !important;
+}
+
+.ui-list-menu-level-2{
+    width: 100px;
+}
+
+.ui-list-menu li:hover {
+    color: #333;
+    border-color: #999;
+}
+
+
+.ui-list-menu li.left {
+    -webkit-border-top-right-radius: 0;
+    -moz-border-radius-topright: 0;
+    border-top-right-radius: 0;
+    -webkit-border-bottom-right-radius: 0;
+    -moz-border-radius-bottomright: 0;
+    border-bottom-right-radius: 0;
+    margin: 0;
+}
+
+.ui-list-menu li.middle {
+    border-radius: 0;
+    -webkit-border-radius: 0;
+    -moz-border-radius: 0;
+    border-left: solid 1px #f3f3f3;
+    margin: 0;
+    border-left: solid 1px rgba(255, 255, 255, 0);
+}
+
+.ui-list-menu li.middle:hover, .ui-list-menu li.right:hover {
+    border-left: solid 1px #999
+}
+
+.ui-list-menu li.right {
+    -webkit-border-top-left-radius: 0;
+    -moz-border-radius-topleft: 0;
+    border-top-left-radius: 0;
+    -webkit-border-bottom-left-radius: 0;
+    -moz-border-radius-bottomleft: 0;
+    border-bottom-left-radius: 0;
+    border-left: solid 1px #f3f3f3;
+    border-left: solid 1px rgba(255, 255, 255, 0);
+    margin: 0;
+}
+
+#dragTip {
+    position: absolute;
+    background: #f0f0f0;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+    font-size: 10px;
+    padding: 4px;
+    opacity: 0.7;
+    box-shadow: 0px 0px 4px rgba(0,0,0,0.3);
+}
+
+#dragTip .pointer {
+    position: absolute;
+    background: url('../images/pointer_tip.png');
+    height: 7px;
+    width: 5px;
+    top: 6px;
+    right: -5px;
+}
+
+.ui-resizable-resizing {
+    opacity: 0.9;
+    z-index: 1000;
+}
+
+.icalExportPopup {
+    max-width: 400px;
+    padding: 15px 5px 0 5px;
+}
+
+.icalExportPopup .exportIcalHeader {
+    font-weight: bold;
+    font-size :12px;
+    margin-bottom: 5px;
+}
+
+.icalExportPopup .iCalExportSection {
+    margin-bottom: 5px;
+    padding-bottom: 5px;
+}
+
+.icalExportPopup input[type=text] {
+    width: 100%;
+    cursor: text;
+    color: #000;
+    font-size: 10.5px;
+}
+
+.icalExportPopup a {
+    font-size: 11px;
+}
+
+.icalExportPopup .icalSeparator {
+    margin-bottom: 5px;
+    border-bottom: 1px solid #ddd;
+}
+
+.icalExportPopup .agreement {
+    padding: 5px;
+    border-radius: 8px;
+    margin-bottom: 5px;
+    margin-top: 5px;
+    vertical-align: middle;
+    text-align: justify;
+    background: rgba(0,0,0,0.15);
+
+}
+
+.icalExportPopup .note {
+    font-style: italic;
+    font-size: 11px;
+    text-align: right;
+    margin-bottom: 5px;
+}
+
+div#sdlw-actions {
+    padding: 10px 0px 10px 5px;
+}
+
+.savedText {
+    margin-left: 10px;
+    color: #118822;
+}
+
+.settingsWidget {
+    font-size: 14px;
+    padding: 0 5px 5px;
+    min-width: 250px;
+}
+
+.settingsWidget a, .protectionWidget a {
+    font-size: 12px !important;
+}
+
+.settingsWidget .settingsWidgetSection, .protectionWidget .protectionWidgetSection {
+    padding: 10px 0px 0px;
+    text-align:justify;
+}
+
+.settingsWidget .settingsWidgetHeader {
+    font-weight: bold;
+}
+
+.settingsWidget .settingsSeparator {
+    border-bottom: 1px solid #DDDDDD;
+    margin-bottom:5px;
+}
+
+.protectionWidget{
+    font-size: 12px;
+    padding: 0 5px 5px;
+    line-height: 17px;
+}
+
+div.domain_control .strong {
+    font-weight: bold;
+}
+
+div.domain_control p {
+    font-style: italic;
+}
+
+.contributionListFilteredText, .authorIndexFilteredText, .speakerIndexFilteredText {
+    color: #888;
+    padding-top: 5px;
+    font-size:12px
+}
+
+.contributionListContribItem, .abstractListAbstractItem {
+    border-bottom: 1px solid #EBEBEB;
+    padding-bottom: 5px;
+    margin-top: 5px;
+}
+
+.contributionListContribDescription {
+    text-align:justify;
+    padding-top: 7px;
+    line-height: 1.3em;
+    color: #AAA;
+}
+
+.contributionListContribSpeakers {
+    text-align:right;
+    font-size:12px;
+    color:#888;
+}
+
+.contributionListFiltersContainer, .authorIndexFiltersContainer, .speakerIndexFiltersContainer {
+    border-bottom: 1px solid #EBEBEB;
+    padding-bottom: 5px;
+    margin-bottom: 15px;
+}
+
+.contribItem {
+    clear: both; padding-bottom: 7px; padding-left: 20px;
+}
+
+.authorIndexItem, .speakerIndexItem {
+    border-bottom: 1px solid #EBEBEB; padding-bottom: 8px; margin-top: 8px; overflow: hidden;
+}
+
+.authorIndexItemText, .speakerIndexItemText {
+    font-weight: bold; letter-spacing: 0.1em; line-height: 1.2em;
+}
+
+a.lightGreyLink {
+    color: #888;
+    text-decoration: none;
+    font-size: 12px;
+}
+
+a.lightGreyLink:hover {
+    text-decoration: underline;
+}
+
+.contributionListContribHeader, .contributionHeader, .subContributionHeader, .sessionHeader, .abstractHeader {
+    line-height:17px;
+    color:#888;
+    font-size: 12px;
+}
+
+.contributionButtonBar, .subContributionButtonBar, .sessionButtonBar, .materialButtonBar, .abstractButtonBar {
+    text-align: right;
+    margin-bottom: 5px;
+}
+
+.contributionTitle, .subContributionTitle, .sessionTitle, .materialTitle {
+    font-size: 18px;
+    font-weight: bold;
+    line-height: 24px;
+    border-bottom: 1px solid #EAEAEA;
+    margin-bottom: 10px;
+    padding-bottom: 3px;
+    margin-top: 0;
+}
+
+.materialDescription {
+    color: #888;
+    font-size: 12px;
+    font-weight: normal;
+}
+
+.contributionMainContent, .subContributionMainContent, .materialMainContent {
+    float:left;
+    width:500px;
+}
+
+.sessionMainContent {
+    width: 720px;
+    padding-bottom: 10px;
+}
+
+.contributionRightPanel, .subContributionRightPanel, .materialRightPanel {
+    float:right;
+    width: 200px;
+    min-height: 500px;
+    padding-left:10px;
+    border-left: 1px solid #EAEAEA;
+}
+.sessionRightPanel {
+    min-height: 0px;
+}
+.contributionRightPanelSection, .subContributionRightPanelSection, .sessionRightPanelSection {
+    border-bottom: 1px solid #EAEAEA;
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 5px;
+    padding-bottom: 5px;
+}
+
+.contributionRightPanelSection ul, .subContributionRightPanelSection ul, .sessionRightPanelSection ul, .materialSection ul, .abstractRightPanelSection ul, .subContributionListSection ul {
+    list-style: none inside none;
+    margin: 5px 0px 0px;
+    padding: 0px;
+}
+
+.contributionRightPanelSection li, .subContributionRightPanelSection li, .sessionRightPanelSection li, .materialSection li, .abstractRightPanelSection li {
+    margin-bottom: 3px;
+}
+
+ul.subList{
+    list-style: none inside none;
+    margin: 0px;
+    padding: 5px 15px;
+}
+
+.contributionRightPanelSection a, .subContributionRightPanelSection a, .sessionRightPanelSection a, .abstractRightPanelSection a {
+    font-size: 11px;
+    word-wrap: break-word;
+}
+
+a.titleWithLink{
+    font-size: 12px;
+    font-weight: bold;
+    color: #666;
+}
+
+a.titleWithLink:hover{
+    text-decoration: underline;
+}
+
+.contributionInformation, .subContributionInformation, .sessionInformation {
+    border-bottom: 1px solid #EAEAEA;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+}
+
+.contributionDetail, .subContributionDetail, .materialDetail, .abstractDetail {}
+
+.contributionSection, .subContributionSection, .sessionSection, .materialSection, .abstractSection {
+    margin-bottom: 10px;
+}
+
+.sessionLeftPanel {
+    float: left;
+    width: 500px;
+}
+
+.sessionContributionsSection {
+    clear: both;
+    border-top: 1px solid #EAEAEA;
+}
+
+.sessionContributionsSectionTitle {
+    padding: 15px 0px 15px 0px;
+}
+
+.sessionConvenersTable {
+    display: table;
+    padding-top: 15px;
+}
+
+ul.conveners {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+ul.conveners > li {
+    margin-bottom: 7px;
+}
+
+ul.conveners .time {
+    display: block;
+    float: left;
+    width: 160px;
+    color: #aaa;
+    white-space: nowrap;
+}
+
+ul.conveners .title {
+    float: left;
+    color: #888;
+    font-style: italic;
+    white-space: nowrap;
+    padding-left: 5px;
+}
+
+ul.conveners ul.names{
+    clear: both;
+    list-style-type: none;
+    padding-left: 10px;
+}
+
+ul.conveners ul.names .affiliation {
+    color: #888;
+}
+
+
+.contributionSectionTitle, .subContributionSectionTitle, .sessionSectionTitle {
+    color: #444;
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 5px;
+    margin-top: 0;
+    display: inline;
+}
+.contributionSectionContent, .subContributionSectionContent, .sessionSectionContent, .materialSectionContent {
+    font-size: 12px;
+    line-height: 1.5em;
+    text-align:justify;
+    color: #444;
+    margin-right: 5px;
+    white-space: pre-wrap;
+}
+
+.contributionSpeakerList, .subContributionSpeakerList, .sessionDateInformation {
+    margin-bottom:3px;
+    color:#666666;
+}
+
+.contributionReviewingSection, .abstractStatusSection {
+    margin-bottom: 5px;
+    border-radius: 5px;
+    color: #888;
+    border-bottom:1px solid #eaeaea;
+    padding-bottom:5px;
+}
+
+
+.contributionReviewingStatus, .abstractStatus {
+    border-radius: 5px;
+    margin-top: 5px;
+    margin-bottom: 5px;
+    padding: 5px;
+    display: inline-block;
+    color: white;
+    font-weight: bold;
+}
+
+.offlineTasksGenerated {
+    text-align: center;
+    width: 80px;
+    background: none repeat scroll 0 0 #9AC33A;
+}
+
+.offlineTasksQueued {
+    text-align: center;
+    width: 80px;
+    background: none repeat scroll 0 0 #A4CCC9;
+}
+
+.offlineTasksFailed {
+    text-align: center;
+    width: 80px;
+    background: none repeat scroll 0 0 #B93725;
+}
+
+.offlineTasksExpired {
+    text-align: center;
+    width: 80px;
+    background: none repeat scroll 0 0 #E0A565;
+}
+
+.offlineTask {
+    width: 1px;
+    white-space: nowrap;
+    padding: 1px 20px 3px 0px;
+}
+
+.contributionReviewingStatusRejected, .abstractStatusRejected, .abstractStatusDuplicated, .abstractStatusWithdrawn {
+    background: none repeat scroll 0 0 #B93725;
+}
+
+.contributionReviewingStatusAccepted, .abstractStatusAccepted {
+    background: none repeat scroll 0 0 #9AC33A;
+}
+
+.contributionReviewingStatusPending, .abstractStatusUnderReview {
+    background: none repeat scroll 0 0 #A4CCC9;
+}
+
+.contributionReviewingStatusCorrected, .abstractStatusMerged {
+    background: none repeat scroll 0 0 #D8B81A;
+}
+
+.contributionReviewingStatusNotSubmitted, .abstractStatusSubmitted {
+    background: none repeat scroll 0 0 #BCB8A3;
+}
+
+.contributionReviewingSection input {
+    background: none repeat scroll 0 0 #CDEB8B;
+    border: 1px solid #666;
+    border-radius: 5px 5px 5px 5px;
+}
+
+.contributionReviewingSection a {
+    color: white;
+    font-size : 11px;
+}
+
+.contributionReviewingSection a:hover {
+    text-decoration: underline;
+    color: white;
+}
+
+ul.resourceDetail {
+    list-style:none;
+    padding-left:25px;
+    margin:0px;
+    color:#888;
+    font-size: 11px;
+    line-height: 15px
+}
+
+.staticURLNote{
+    color: #999999;
+    float: right;
+    font-size: 11px;
+    font-style: italic;
+}
+
+.historyReviewHeader {
+    border-bottom: 1px solid #DDDDDD;
+    color: #444444;
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 5px;
+    margin-top: 0;
+}
+
+.historyReview {
+    border: 1px solid #DDDDDD;
+    border-radius: 10px 10px 10px 10px;
+    margin-bottom: 15px;
+    margin-top: 15px;
+    margin-right: 5px;
+    padding: 10px;
+}
+
+.historyReviewJudgment{
+    display: block;
+    padding: 10px;
+    margin: 5px
+}
+
+.historyReviewJugmentComments {
+    background-color: #EAEAEA;
+    padding: 5px;
+    margin-top: 5px;
+    border-radius: 5px;
+}
+
+div.domain_control ul {
+    list-style-type: none;
+    padding: 0 0 0 10px;
+}
+
+div.sdlw-complete {
+    font-style: italic;
+    color: #666666;
+}
+
+.redWarningMessage {
+    background-color: #F2DEDE;
+    border-color: #EED3D7;
+    color: #B94A48;
+    border-radius: 4px 4px 4px 4px;
+    margin-bottom: 18px;
+    padding: 8px 35px 8px 14px;
+    text-align: justify;
+}
+
+span#sdlw-progress {
+    padding-left: 10px;
+    display: inline-block;
+}
+
+table#currencies {
+    border-collapse: collapse;
+    border: 1px solid #ddd;
+}
+
+table#currencies tr {
+    border: 1px solid #ddd;
+    border-spacing: 5px;
+}
+
+table#currencies td, table#currencies th {
+    border: 1px solid #ddd;
+    padding: 5px;
+}
+
+div.warning {
+    background-color: #fcf8e3;
+    border: 1px solid #fbeed5;
+    border-radius: 4px;
+    color: #c09853;
+    padding: 5px;
+}
+
+div.warning h3 {
+    margin-top: 0px;
+    color: #c09853;
+    font-weight: bold;
+}
+
+.material_tip {
+    border-color: #ddd !important;
+    box-shadow: 1px 1px 5px rgba(100, 100, 100, 0.2);
+}
+
+.material_tip .qtip-content {
+    background: #f8f8f8;
+}
+
+ul.material_list {
+    min-width: 150px;
+    max-width: 250px;
+    overflow: hidden;
+    margin: 0;
+    padding-left: 0;
+}
+
+ul.material_list h3 {
+    margin-top: 0;
+    text-align: right;
+    color: #999;
+    padding-bottom: 5px;
+    border-bottom: 1px dotted #bbb;
+    font-weight: normal;
+    text-shadow: 1px 1px #fff;
+}
+
+ul.material_list ul {
+    padding-left: 0px;
+    margin: 2px 0 10px 0;
+}
+
+ul.material_list ul li {
+    margin-bottom: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.visibility_hidden {
+    visibility: hidden;
+    padding: 0;
+    height: 0;
+    margin: 0;
+    border: 0;
+}
+
+div.informationUserList {
+    background-color: #F2DEDE;
+    border-color: #EED3D7;
+    color: #B94A48;
+    border-radius: 4px 4px 4px 4px;
+    margin-bottom: 18px;
+    padding: 8px 35px 8px 14px;
+}
+
+.noninheriting_children_danger, .noninheriting_children_warning {
+    color: #777;
+    font-size: 0.9em;
+    margin: 5px 0 5px 0;
+    padding: 10px;
+    max-width: 440px;
+    background-color: #eee;
+    overflow: auto;
+}
+
+.noninheriting_children_danger {
+	background-color: #ECDAD1;
+}
+
+.noninheriting_children_danger .icon-shield {
+    vertical-align: middle;
+    font-size: 2em;
+    color: #991111;
+    float: left;
+    font-size: 1.7em;
+    margin-right: 0.3em;
+}
+
+.noninheriting_children_warning .icon-shield {
+    vertical-align: middle;
+    font-size: 2em;
+    color: #ccbc00;
+    float: left;
+    font-size: 1.7em;
+    margin-right: 0.3em;
+}
+
+.noninheriting_children_danger .text, .noninheriting_children_warning .text  {
+    padding-left: 3em;
+}
+
+#privacy_status {
+    border-bottom: 1px dotted #999;
+}
+
+#see_protected {
+    font-size: 0.9em;
+}
+
+.see_protected_tip {
+    padding: 5px !important;
+    min-width: 200px !important;
+}
+
+
+.see_protected_tip ul {
+    list-style: none inside none;
+    margin: 5px 0 0;
+    padding: 0px 10px;
+}
+
+
+.see_protected_tip ul li {
+    margin-bottom: 5px;
+}
+
+.user_list_icon_shield {
+	cursor: pointer;
+	margin-left: 5px;
+	vertical-align: -12%;
+	font-size: 15px;
+}
+
+
+/* Speakers List */
+
+ul.speaker_list {
+    list-style-type: none;
+    padding: 0.6em 0 0 0;
+}
+
+ul.speaker_list li {
+    margin: 1em 0 0 0;
+}
+
+ul.speaker_list a {
+    font-size: 1em;
+}
+
+ul.speaker_list > li .name {
+    padding: 0 0 1.5em 0;
+    font-size: 1.4em;
+}
+
+ul.speaker_list > li .contributions {
+    color: #777;
+    margin-top: 0.4em;
+    list-style-type: none;
+    padding: 0 0 0 2em;
+}
+
+ul.speaker_list > li .contributions li {
+    margin-top: 0.6em;
+}
+
+#list_options {
+    max-width: 600px;
+}
+
+#list_options #filterSpeakers {
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 1.5em;
+    margin-right: 1em;
+    width: 20em;
+}
+
+.watermark {
+   color: gray;
 }

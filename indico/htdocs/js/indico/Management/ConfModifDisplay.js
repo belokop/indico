@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 type("PicList", ["WatchList"], {
 
     renderItem: function (item) {
@@ -13,24 +30,23 @@ type("PicList", ["WatchList"], {
         var self = this;
         var killProgress = IndicoUI.Dialogs.Util.progress();
         jsonRpc(Indico.Urls.JsonRpcService, 'event.pic.delete', {'picId': item.id, 'conference':self.confId},
-                function(response, error){
-                    if (exists(error)) {
-                        killProgress();
-                        IndicoUtil.errorReport(error);
-                    }
-                    else {
-                        killProgress();
-                        self.remove(item);
-                    }
-                });
-    }
-
-},
+            function(response, error){
+                if (exists(error)) {
+                    killProgress();
+                    IndicoUtil.errorReport(error);
+                }
+                else {
+                    killProgress();
+                    self.remove(item);
+                }
+            });
+        }
+    },
 
      function(picslist, web_container, uploadAction, confId) {
          this.WatchList();
          this.uploadAction = uploadAction;
-         this.confId = confId
+         this.confId = confId;
          var self = this;
          each(picslist, function(item){
              self.append(new PicItem(self, 'display', item));
@@ -43,27 +59,6 @@ type("PicList", ["WatchList"], {
 
 type("PicItem", ["IWidget"], {
 
-    _iFrameLoaded : function(iframeId) {
-        var doc;
-        
-        if (Browser.IE) {
-            // *sigh*
-            doc = document.frames[iframeId].document;
-        } else {
-            doc = $E(iframeId).dom.contentDocument;
-        }
-    
-        var res = Json.read(doc.body.innerHTML);
-
-        if (res.status == "ERROR") {
-            IndicoUtil.errorReport(res.info);
-        } else {
-            this.id = res.info.id;
-            this.picURL = res.info.picURL;
-            this.chooser.set('display');
-        }
-    },
-
     draw: function() {
         var self = this;
 
@@ -71,41 +66,38 @@ type("PicItem", ["IWidget"], {
             edit: function() {
                 var stuffUploadForm = function(inputField, uploadType, submitText) {
                     var killProgress;
-                    var frameId = Html.generateId();
-                    var form = Html.form({target: frameId, method: 'post', id: Html.generateId(),
+                    var form = Html.form({method: 'post', id: Html.generateId(),
                         action: self.parentList.uploadAction,
                         enctype: 'multipart/form-data'});
-                    
+
                     form.append(inputField);
 
                     form.append(Widget.button(
                         command(function(){
-                            self.uploading = true;
                             killProgress = IndicoUI.Dialogs.Util.progress();
-                            form.dom.submit();
+                            $(form.dom).submit();
                         }, submitText)
                     ));
 
-                    var iframe = Html.iframe({id: frameId, name: frameId, style: {display: 'none'}});
-
-                    var loadFunc = function() {
-                        if (self.uploading) {
+                    $(form.dom).ajaxForm({
+                        dataType: 'json',
+                        iframe: true,
+                        complete: function() {
                             killProgress();
-                            self.uploading = false;
-                            // need to pass the ID, due to IE
-                            self._iFrameLoaded(frameId);
+                        },
+                        success: function(resp) {
+                            if (resp.status == 'ERROR') {
+                                IndicoUtil.errorReport(resp.info);
+                            }
+                            else {
+                                self.id = resp.info.id;
+                                self.picURL = resp.info.picURL;
+                                self.chooser.set('display');
+                            }
                         }
-                    };
+                    });
 
-                    if (Browser.IE) {
-                        // cof! cof!
-                        iframe.dom.onreadystatechange = loadFunc;
-                    } else {
-                        // for normal browsers
-                        iframe.observeEvent("load", loadFunc);
-                    }
-
-                    return Html.div({}, [form, iframe]);
+                    return Html.div({}, [form]);
                 };
 
                 var fileUpload = stuffUploadForm(Html.input('file', {name: 'file'}), 'file', 'Upload');
@@ -124,8 +116,8 @@ type("PicItem", ["IWidget"], {
                     alt: 'Picture preview',
                     title: 'Picture preview',
                     style: {
-                        width: "10%",
-                        height: "10%",
+                        maxWidth: "200px",
+                        maxHeight: "100px",
                         border: "0px"
                     }
                 });

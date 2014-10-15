@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 from xml.sax.saxutils import quoteattr, escape
 from urllib import quote
@@ -27,11 +26,17 @@ from MaKaC.webinterface.pages.conferences import WContribParticipantList
 from MaKaC.webinterface import urlHandlers
 from MaKaC.webinterface import wcomponents
 from MaKaC import review
-from MaKaC.common import Config
+from indico.core.config import Config
 from MaKaC.common import filters
 from MaKaC.webinterface.common.contribStatusWrapper import ContribStatusList
 from MaKaC.i18n import _
+from indico.util.i18n import i18nformat
 import MaKaC.user as user
+from MaKaC.common.fossilize import fossilize
+from MaKaC.fossils.conference import ILocalFileAbstractMaterialFossil
+from MaKaC.webinterface.pages.abstracts import WAbstractManagmentAccept, WAbstractManagmentReject
+from MaKaC.common.TemplateExec import render
+
 
 class WPTrackBase(WPConferenceBase):
 
@@ -117,6 +122,11 @@ class WPTrackModifBase( WPConferenceModifBase ):
 
     def _getTabContent( self, params ):
         return  _("nothing")
+
+    def _getHeadContent(self):
+        return WPConferenceModifBase._getHeadContent(self) + render('js/mathjax.config.js.tpl') + \
+            '\n'.join(['<script src="{0}" type="text/javascript"></script>'.format(url)
+                       for url in self._asset_env['mathjax_js'].urls()])
 
 
 class WTrackModifMain(wcomponents.WTemplated):
@@ -231,7 +241,7 @@ class _ASTrackViewAcceptedForOther( _AbstractStatusTrackView ):
     _id = "accepted_other"
     _icon = "ats_accepted_other"
     #don't modify it _("accepted for other track")
-    _label = "accepted for other track"
+    _label = "accepted for another track"
 
     def getComment( self ):
         return  self._abstract.getCurrentStatus().getComments()
@@ -317,6 +327,12 @@ class _ASTrackViewPR( _AbstractStatusTrackView ):
         jud = self._abstract.getTrackJudgement( self._track )
         return jud.getDate()
 
+
+class _ASTrackViewIC( _AbstractStatusTrackView ):
+    _color = "white"
+    _id = "c"
+    _icon = "as_conflict"
+    _label = "in conflict"
 
 class _ASTrackViewPFOT( _AbstractStatusTrackView ):
     _color = "white"
@@ -405,6 +421,7 @@ class AbstractStatusTrackViewFactory:
             _ASTrackViewRejected.getId(): _ASTrackViewRejected, \
             _ASTrackViewPA.getId(): _ASTrackViewPA, \
             _ASTrackViewPR.getId(): _ASTrackViewPR, \
+            _ASTrackViewIC.getId(): _ASTrackViewIC, \
             _ASTrackViewPFOT.getId(): _ASTrackViewPFOT, \
             _ASTrackViewWithdrawn.getId(): _ASTrackViewWithdrawn,\
             _ASTrackViewDuplicated.getId(): _ASTrackViewDuplicated, \
@@ -438,6 +455,8 @@ class AbstractStatusTrackViewFactory:
                 return _ASTrackViewPR( track, abstract )
             elif jud.__class__ == review.AbstractReallocation:
                 return _ASTrackViewPFOT( track, abstract )
+            elif jud.__class__ == review.AbstractInConflict:
+                return _ASTrackViewIC( track, abstract )
         #If no judgement exists for the current track the abstract is in
         #   SUBMITTED status for the track
         return _ASTrackViewSubmitted( track, abstract )
@@ -452,12 +471,15 @@ class AbstractStatusTrackViewFactory:
 
 class WTrackModifAbstracts( wcomponents.WTemplated ):
 
-    def __init__( self, track, filterCrit, sortingCrit ):
+    def __init__( self, track, filterCrit, sortingCrit, order, filterUsed=False, canModify=False ):
         self._track = track
 
         self._conf = self._track.getConference()
         self._filterCrit = filterCrit
         self._sortingCrit = sortingCrit
+        self._order = order
+        self._filterUsed = filterUsed
+        self._canModify = canModify
 
     def _getAbstractHTML( self, abstract ):
         aStatus = AbstractStatusTrackViewFactory().getStatus( self._track, abstract )
@@ -470,39 +492,42 @@ class WTrackModifAbstracts( wcomponents.WTemplated ):
             if aStatus.getContribType() is not None and aStatus.getContribType()!="":
                 accType=aStatus.getContribType().getName()
             if aStatus.getConflicts():
-                label = _("""%s<br><font color="red">[ _("conflicts") ]</font>""")%label
+                label = i18nformat("""%s<br><font color="red">[ _("conflicts") ]</font>""")%label
         elif isinstance(aStatus,_ASTrackViewAccepted):
             if aStatus.getContribType() is not None and aStatus.getContribType()!="":
                 accType=aStatus.getContribType().getName()
                 label="""%s"""%(label)
         contribType=abstract.getContribType()
-        contribTypeName = _("""--_("not specified")--""")
+        contribTypeName = i18nformat("""--_("not specified")--""")
         if contribType is not None:
             contribTypeName=contribType.getName()
         comments = ""
         if abstract.getComments():
-            comments = _(""" <img src=%s alt="_("The submitter filled some comments")">""")%(quoteattr(Config.getInstance().getSystemIconURL("comments")))
+            comments = i18nformat(""" <img src=%s alt="_("The submitter filled some comments")">""")%(quoteattr(Config.getInstance().getSystemIconURL("comments")))
         html = """
-        <tr>
-            <td nowrap class="abstractLeftDataCell">%s%s</td>
-            <td width="100%%" align="left" valign="top" class="abstractDataCell">
-                <input type="checkbox" name="abstracts" value=%s%s> <a href=%s>%s</a></td>
-            <td valign="top" class="abstractDataCell">%s</td>
-            <td nowrap valign="top" class="abstractDataCell">%s %s</td>
-            <td valign="top" class="abstractDataCell">%s</td>
-            <td nowrap valign="top" class="abstractDataCell">%s</td>
+        <tr id="abstracts%s" class="abstract">
+            <td align="right" width="3%%" valign="top"><input type="checkbox" name="abstracts" value="%s"%s></td>
+            <td nowrap class="CRLabstractDataCell">%s%s</td>
+            <td width="100%%" align="left" valign="top" class="CRLabstractDataCell">
+                <a href="%s">%s</a></td>
+            <td valign="top" class="CRLabstractDataCell">%s</td>
+            <td nowrap valign="top" class="CRLabstractDataCell">%s %s</td>
+            <td valign="top" class="CRLabstractDataCell">%s</td>
+            <td nowrap valign="top" class="CRLabstractDataCell">%s</td>
         </tr>
-                """%(self.htmlText(abstract.getId()),comments,\
-                    quoteattr(str(abstract.getId())),self._checked, \
-                    quoteattr(str(url)),self.htmlText(abstract.getTitle()),\
-                    self.htmlText(contribTypeName),icon, \
-                    label,self.htmlText(accType),\
-                    abstract.getSubmissionDate().strftime("%d %B %Y"))
+                """ % (abstract.getId(), \
+                abstract.getId(),self._checked, \
+                self.htmlText(abstract.getId()),comments,\
+                str(url),self.htmlText(abstract.getTitle()),\
+                self.htmlText(contribTypeName),icon, \
+                label,self.htmlText(accType),\
+                abstract.getSubmissionDate().strftime("%d %B %Y"))
         return html
 
     def _getURL( self ):
         #builds the URL to the track management abstract list page
         #   preserving the current filter and sorting status
+
         url = urlHandlers.UHTrackModifAbstracts.getURL( self._track )
         if self._filterCrit.getField( "type" ):
             l=[]
@@ -528,7 +553,6 @@ class WTrackModifAbstracts( wcomponents.WTemplated ):
             url.addParam( "selOnlyComment", "1" )
         if self._sortingCrit.getField():
             url.addParam( "sortBy", self._sortingCrit.getField().getId() )
-        url.addParam("OK", "1")
         url.setSegment("abstracts")
         return url
 
@@ -536,7 +560,7 @@ class WTrackModifAbstracts( wcomponents.WTemplated ):
         checked = ""
         if self._filterCrit.getField("type").getShowNoValue():
             checked = " checked"
-        l = [ _("""<input type="checkbox" name="typeShowNoValue"%s> --_("not specified")--""")%checked]
+        l = [ i18nformat("""<input type="checkbox" name="typeShowNoValue"%s> --_("not specified")--""")%checked]
         #for type in self._conf.getAbstractMgr().getContribTypeList():
         for type in self._conf.getContribTypeList():
             checked = ""
@@ -549,7 +573,7 @@ class WTrackModifAbstracts( wcomponents.WTemplated ):
         checked=""
         if self._filterCrit.getField("acc_type").getShowNoValue():
             checked = " checked"
-        l = [ _("""<input type="checkbox" name="accTypeShowNoValue"%s> --_("not specified")--""")%checked]
+        l = [ i18nformat("""<input type="checkbox" name="accTypeShowNoValue"%s> --_("not specified")--""")%checked]
         for type in self._conf.getContribTypeList():
             checked = ""
             if type in self._filterCrit.getField("acc_type").getValues():
@@ -575,8 +599,8 @@ class WTrackModifAbstracts( wcomponents.WTemplated ):
             checkedMulTracks = " checked"
         if self._filterCrit.getField("comment"):
             checkedOnlyComment = " checked"
-        l = [ _("""<input type="checkbox" name="selMultipleTracks"%s> _("only multiple tracks")""")%checkedMulTracks, \
-                 _("""<input type="checkbox" name="selOnlyComment"%s> _("only with comments")""")%checkedOnlyComment]
+        l = [ i18nformat("""<input type="checkbox" name="selMultipleTracks"%s> _("only multiple tracks")""")%checkedMulTracks, \
+                 i18nformat("""<input type="checkbox" name="selOnlyComment"%s> _("only with comments")""")%checkedOnlyComment]
         return l
 
     def getVars( self ):
@@ -595,61 +619,58 @@ class WTrackModifAbstracts( wcomponents.WTemplated ):
         for abstract in abstractList:
             al.append( self._getAbstractHTML( abstract ) )
             abstractsToPrint.append("""<input type="hidden" name="abstracts" value="%s">"""%abstract.getId())
-        vars["number"] = str(len(abstractList))
+        vars["filteredNumberAbstracts"] = str(len(abstractList))
+        vars["totalNumberAbstracts"] = str(len(self._track.getAbstractList()))
+        if self._order == "up":
+            al.reverse()
         vars["abstracts"] = "".join( al )
         vars["abstractsToPrint"] = "\n".join(abstractsToPrint)
 
         sortingField = self._sortingCrit.getField()
         vars["currentSorting"] = ""
-        url = self._getURL()
-        url.addParam("sortBy", "type")
-        vars["typeSortingURL"] = quoteattr( str( url ) )
-        vars["typeImg"] = ""
-        if sortingField and sortingField.getId() == "type":
-            vars["typeImg"] = """<img src=%s alt="">"""%(quoteattr(Config.getInstance().getSystemIconURL("downArrow")))
-            vars["currentSorting"] = """<input type="hidden" name="sortBy" value="type">"""
-        url = self._getURL()
-        url.addParam("sortBy", "status")
-        vars["statusSortingURL"] = quoteattr( str( url ) )
-        vars["statusImg"] = ""
-        if sortingField and sortingField.getId() == "status":
-            vars["statusImg"] = """<img src=%s alt="">"""%(quoteattr(Config.getInstance().getSystemIconURL("downArrow")))
-            vars["currentSorting"] = """<input type="hidden" name="sortBy" value="status">"""
-        url = self._getURL()
-        url.addParam("sortBy", "number")
-        vars["numberSortingURL"] = quoteattr( str( url ) )
-        vars["numberImg"] = ""
-        if sortingField and sortingField.getId() == "number":
-            vars["numberImg"] = """<img src=%s alt="">"""%(quoteattr(Config.getInstance().getSystemIconURL("downArrow")))
-            vars["currentSorting"] = """<input type="hidden" name="sortBy" value="number">"""
 
-        url = self._getURL()
-        url.addParam("sortBy", "date")
-        vars["dateSortingURL"] = quoteattr( str( url ) )
-        vars["dateImg"] = ""
-        if sortingField and sortingField.getId() == "date":
-            vars["dateImg"] = """<img src=%s alt="">"""%(quoteattr(Config.getInstance().getSystemIconURL("upArrow")))
-            vars["currentSorting"] = """<input type="hidden" name="sortBy" value="date">"""
+        for crit in ["type", "status", "number", "date"]:
+            url = self._getURL()
+
+            vars["%sImg" % crit] = ""
+            url.addParam("sortBy", crit)
+
+            if sortingField.getId() == crit:
+                vars["currentSorting"] = '<input type="hidden" name="sortBy" value="%s">' % crit
+                if self._order == "down":
+                    vars["%sImg" % crit] = """<img src="%s" alt="">"""%(Config.getInstance().getSystemIconURL("downArrow"))
+                    url.addParam("order","up")
+                elif self._order == "up":
+                    vars["%sImg" % crit] = """<img src="%s" alt="">"""%(Config.getInstance().getSystemIconURL("upArrow"))
+                    url.addParam("order","down")
+            vars["%sSortingURL" % crit] = str(url)
+
         url = urlHandlers.UHTrackModifAbstracts.getURL( self._track )
+        url.addParam("order", self._order)
+        url.addParam("OK", "1")
         url.setSegment( "abstracts" )
         vars["filterPostURL"]=quoteattr(str(url))
         vars["accessAbstract"] = quoteattr(str(urlHandlers.UHTrackAbstractDirectAccess.getURL(self._track)))
-        vars["allAbstractsURL"] = quoteattr( str( urlHandlers.UHConfAbstractManagment.getURL( self._conf ) ) )
+        vars["allAbstractsURL"] = str(urlHandlers.UHConfAbstractManagment.getURL(self._conf))
         l = []
         for tpl in self._conf.getAbstractMgr().getNotificationTplList():
             l.append("""<option value="%s">%s</option>"""%(tpl.getId(), tpl.getName()))
         vars["notifTpls"] = "\n".join(l)
-        vars["participantListURL"]=quoteattr(str(urlHandlers.UHAbstractsTrackManagerParticipantList.getURL(self._track)))
-        vars["abstractsPDFURL"]=quoteattr(str(urlHandlers.UHAbstractsTrackManagerDisplayPDF.getURL(self._track)))
         vars["actionURL"]=quoteattr(str(urlHandlers.UHAbstractsTrackManagerAction.getURL(self._track)))
         vars["selectURL"]=quoteattr(str(urlHandlers.UHTrackModifAbstracts.getURL(self._track)))
+        vars["filterUsed"] = self._filterUsed
+        vars["resetFiltersURL"] = str(urlHandlers.UHTrackModifAbstracts.getURL(self._track))
+        vars["pdfIconURL"] = quoteattr(str(Config.getInstance().getSystemIconURL("pdf")))
+        vars["canModify"] = self._canModify
         return vars
 
 
 class WPTrackModifAbstracts( WPTrackModifBase ):
 
-    def __init__(self, rh, track, msg):
+    def __init__(self, rh, track, msg, filterUsed, order):
         self._msg = msg
+        self._filterUsed = filterUsed
+        self._order = order
         WPTrackModifBase.__init__(self, rh, track)
 
     def _setActiveTab( self ):
@@ -660,69 +681,15 @@ class WPTrackModifAbstracts( WPTrackModifBase ):
         self._tabAbstracts.setActive()
 
     def _getTabContent( self, params ):
-
+        canModify = self._track.getConference().canModify(self._getAW())
         wc = WTrackModifAbstracts( self._track, \
                                     params["filterCrit"], \
-                                    params["sortingCrit"]  )
+                                    params["sortingCrit"], \
+                                    self._order, \
+                                    self._filterUsed, canModify )
         pars = { "selectAll": params.get("selectAll", None), \
                 "directAbstractMsg": escape(self._msg) }
         return wc.getHTML(pars)
-
-
-#class WTrackModifFrame(wcomponents.WTemplated):
-#
-#    def __init__( self, track, aw):
-#        self._track = track
-#        self._aw = aw
-#
-#    def getHTML( self, body, **params):
-#        params["body"] = body
-#        return wcomponents.WTemplated.getHTML( self, params )
-#
-#    def getVars( self ):
-#        vars = wcomponents.WTemplated.getVars( self )
-#        vars["target"] = self._track
-#        return vars
-#
-#    def getOwnerComponent( self ):
-#        owner = self._track.getOwner()
-#        wc = wcomponents.WConferenceModifFrame(owner, self._aw)
-#        return wc
-#
-#    def getIntermediateVTabPixels( self ):
-#        wc = self.getOwnerComponent()
-#        return 7 + wc.getIntermediateVTabPixels()
-#
-#    def getTitleTabPixels( self ):
-#        wc = self.getOwnerComponent()
-#        return wc.getTitleTabPixels() - 7
-#
-#    def getCloseHeaderTags( self ):
-#        wc = self.getOwnerComponent()
-#        return "</table></td></tr>" + wc.getCloseHeaderTags()
-
-
-#class WTrackModifHeader(wcomponents.WTemplated):
-#
-#    def __init__( self, track, aw ):
-#        self._track = track
-#        self._aw = aw
-#
-#    def getHTML( self, params ):
-#        conf = self._track.getConference()
-#        confHTML = wcomponents.WConfModifHeader( conf, self._aw ).getHTML( params )
-#        return "%s%s"%(confHTML, wcomponents.WTemplated.getHTML( self, params ) )
-#
-#    def getVars( self ):
-#        vars = wcomponents.WTemplated.getVars( self )
-#        URLGen = vars.get( "trackModifURLGen", urlHandlers.UHTrackModification.getURL )
-#        vars["trackModificationURL"] = URLGen(self._track)
-#        conf = self._track.getConference()
-#        vars["trackDisplayURL"] = urlHandlers.UHConferenceProgram.getURL( conf )
-#        vars["imgGestionGrey"] = Config.getInstance().getSystemIconURL( "gestionGrey" )
-#        vars["title"] = self._track.getTitle()
-#        vars["titleTabPixels"] = WTrackModifFrame(self._track, self._aw).getTitleTabPixels()
-#        return vars
 
 
 class WPTrackAbstractModifBase( WPConferenceModifBase ):
@@ -773,18 +740,13 @@ class WTrackAbstractModification( wcomponents.WTemplated ):
         tmp = "%s (%s)"%(auth.getFullName(), auth.getAffiliation())
         tmp = self.htmlText( tmp )
         if auth.getEmail() != "":
-            mailtoSubject =  _("""[%s]  _("Abstract") %s: %s""")%( self._track.getConference().getTitle(), self._abstract.getId(), self._abstract.getTitle() )
+            mailtoSubject =  i18nformat("""[%s]  _("Abstract") %s: %s""")%( self._track.getConference().getTitle(), self._abstract.getId(), self._abstract.getTitle() )
             mailtoURL = "mailto:%s?subject=%s"%( auth.getEmail(), quote( mailtoSubject ) )
             href = quoteattr( mailtoURL )
             tmp = """<a href=%s>%s</a>"""%(href, tmp)
         return tmp
 
     def _getStatusDetailsHTML( self, status ):
-        details = ""
-        if status.getResponsible():
-            details= _("""<font size="-1">_("by") <i>%s</i></font>""")%( self._getAuthorHTML( status.getResponsible() ) )
-        if status.getDate():
-            details = _("""%s <font size="-1">_("on") %s</font> """)%( details, status.getDate().strftime( "%d %B %Y %H:%M" ) )
         res = "%s"%self.htmlText( status.getLabel().upper() )
         if isinstance(status, _ASTrackViewPFOT):
             l = []
@@ -795,7 +757,8 @@ class WTrackAbstractModification( wcomponents.WTemplated ):
             ct=""
             if status.getContribType() is not None:
                 ct=" (%s)"%self.htmlText(status.getContribType().getName())
-            res = "%s%s"%(self.htmlText( status.getLabel().upper()),ct)
+        elif isinstance(status, _ASTrackViewIC):
+            res = self.htmlText(status.getLabel().upper())
         elif isinstance(status, _ASTrackViewDuplicated):
             orig=status.getOriginal()
             url=urlHandlers.UHAbstractManagment.getURL(orig)
@@ -829,15 +792,32 @@ class WTrackAbstractModification( wcomponents.WTemplated ):
                                             status.getContribType()!="":
                 res = "%s as %s"%(self.htmlText(status.getLabel().upper()), \
                              self.htmlText(status.getContribType().getName()))
-        if details != "":
-            res = """%s <br><font size="-1">%s</font>"""%( res, details )
         return res
+
+    def _getLastJudgement(self):
+        jud = self._abstract.getLastJudgementPerReviewer(self._rh.getAW().getUser(), self._track)
+        if isinstance(jud, review.AbstractAcceptance):
+            return "Proposed to be accepted"
+        elif isinstance(jud, review.AbstractRejection):
+            return "Proposed to be rejected"
+        elif isinstance(jud, review.AbstractReallocation):
+            return "Proposed to for other tracks"
+        elif isinstance(jud, review.AbstractMarkedAsDuplicated):
+            return "Marked as duplicated"
+        elif isinstance(jud, review.AbstractUnMarkedAsDuplicated):
+            return "Unmarked as duplicated"
+        return None
+
+    def _getLastJudgementComment(self):
+        jud = self._abstract.getLastJudgementPerReviewer(self._rh.getAW().getUser(), self._track)
+        return self.htmlText(jud.getComment()) if jud else None
 
     def _getStatusCommentsHTML( self, status ):
         comment = ""
-        if status.getComment() != "":
+        if status.getId() in ["accepted", "accepted_other", "rejected",
+                          "withdrawn", "duplicated"]:
             comment = self.htmlText( status.getComment() )
-        if status.__class__ == _ASTrackViewPA:
+        elif status.getId() == 'pa':
             conflicts = status.getConflicts()
             if conflicts:
                 if comment != "":
@@ -847,10 +827,10 @@ class WTrackAbstractModification( wcomponents.WTemplated ):
                     if jud.getTrack() != self._track:
                         l.append( "%s ( %s )"%( jud.getTrack().getTitle(), \
                                 self._getAuthorHTML( jud.getResponsible() ) ) )
-                comment = _("""%s<font color="red">_("In conflict with"): <br> %s</font>""")%(comment, "<br>".join(l) )
+                comment = i18nformat("""%s<font color="red">_("In conflict with"): <br> %s</font>""")%(comment, "<br>".join(l) )
         rl = self._abstract.getReallocationTargetedList( self._track )
         if rl:
-            comment = _("""%s<br><br><font color="green">_("Proposed by") <i>%s</i>(%s): <br>%s</font>""")%(comment, \
+            comment = i18nformat("""%s<br><br><font color="green">_("Proposed by") <i>%s</i>(%s): <br>%s</font>""")%(comment, \
                     self.htmlText( rl[0].getTrack().getTitle() ), \
                     self._getAuthorHTML( rl[0].getResponsible() ), \
                     self.htmlText( rl[0].getComment() ) )
@@ -866,26 +846,22 @@ class WTrackAbstractModification( wcomponents.WTemplated ):
             res = """<a href=%s>%s - %s</a>"""%(quoteattr(str(url)),id,title)
         return res
 
-    def _getAdditionalFieldsHTML(self):
-        html=""
+    def _getAdditionalFields(self):
+        fields = []
         afm = self._abstract.getConference().getAbstractMgr().getAbstractFieldsMgr()
         for f in afm.getActiveFields():
-            id = f.getId()
-            caption = f.getName()
-            html+="""
-                    <tr>
-                        <td class="dataCaptionTD"><span class="dataCaptionFormat">%s</span></td>
-                        <td bgcolor="white"><pre>%s</pre></td>
-                    </tr>
-                """%(self.htmlText(caption), self.htmlText(self._abstract.getField(id)) )
-        return html
+            fid = f.getId()
+            caption = f.getCaption()
+            fields.append((self.htmlText(caption),
+                          str(self._abstract.getField(fid))))
+        return fields
 
     def getVars( self ):
         vars = wcomponents.WTemplated.getVars( self )
         vars["title"] = self.htmlText( self._abstract.getTitle() )
         vars["abstractPDF"] = urlHandlers.UHAbstractTrackManagerDisplayPDF.getURL( self._track, self._abstract )
         vars["printIconURL"] = Config.getInstance().getSystemIconURL( "pdf" )
-        vars["additionalFields"] = self._getAdditionalFieldsHTML()
+        vars["additionalFields"] = self._getAdditionalFields()
         primary = []
         for author in self._abstract.getPrimaryAuthorList():
             primary.append(self._getAuthorHTML(author))
@@ -898,7 +874,7 @@ class WTrackAbstractModification( wcomponents.WTemplated ):
         for author in self._abstract.getSpeakerList():
             speakers.append(self._getAuthorHTML(author))
         vars["speakers"] = "<br>".join( speakers )
-        vars["type"] = _("""--_("not specified")--""")
+        vars["type"] = i18nformat("""--_("not specified")--""")
         if self._abstract.getContribType() is not None:
             vars["type"] = self.htmlText( self._abstract.getContribType().getName() )
         tracks = []
@@ -912,43 +888,39 @@ class WTrackAbstractModification( wcomponents.WTemplated ):
         aStatus = AbstractStatusTrackViewFactory().getStatus( self._track, self._abstract )
         vars["statusDetails"] = self._getStatusDetailsHTML( aStatus )
         vars["statusComment"] = self._getStatusCommentsHTML( aStatus )
-        vars["statusColor"] = aStatus.getColor()
-        vars["modifyStatusURL"],vars["modifyStatusBtn"] = quoteattr(""),""
-        vars["PA_defaults"] = ""
 
-        vars["proposeToAcceptButton"] = _("""<input type="submit" class="btn" value="_("propose to be accepted")" style="width:205px">""")
-        vars["proposeToRejectButton"] = _("""<input type="submit" class="btn" value="_("propose to be rejected")" style="width:205px">""")
-        vars["proposeForOtherTracksButton"] = _("""<input type="submit" class="btn" value="_("propose for other tracks")" style="width:205px">""")
-
-        if isinstance(aStatus,_ASTrackViewPA):
-            vars["PA_defaults"] = """
-                <input type="hidden" name="comment" value=%s>
-                <input type="hidden" name="contribType" value=%s>
-                                """%(quoteattr(str(aStatus.getComment())),\
-                                    quoteattr(str(aStatus.getContribType())))
-            vars["modifyStatusBtn"] = _("""<input type="submit" class="btn" value="_("modify proposition")">""")
-            vars["modifyStatusURL"] = quoteattr(str(urlHandlers.UHTrackAbstractPropToAcc.getURL(self._track,self._abstract)))
         vars["proposeToAccURL"] = quoteattr(str(urlHandlers.UHTrackAbstractPropToAcc.getURL(self._track,self._abstract)))
         vars["proposeToRejURL"] = quoteattr(str(urlHandlers.UHTrackAbstractPropToRej.getURL(self._track,self._abstract)))
         vars["proposeForOtherTracksURL"] = quoteattr( str( urlHandlers.UHTrackAbstractPropForOtherTrack.getURL( self._track, self._abstract) ) )
         vars["comments"] = self._abstract.getComments()
         vars["abstractId"] = self._abstract.getId()
-        vars["duplicatedURL"] = quoteattr(str(urlHandlers.UHTrackAbstractModMarkAsDup.getURL(self._track,self._abstract)))
-        vars["duplicatedButton"] = ""
-        if aStatus.__class__ in [_ASTrackViewPA,_ASTrackViewPR,_ASTrackViewSubmitted,_ASTrackViewPFOT]:
-            vars["duplicatedButton"] = _("""<input type="submit" class="btn" value="_("mark as duplicated")" style="width:205px">""")
-        elif aStatus.__class__ == _ASTrackViewDuplicated:
-            vars["duplicatedButton"] = _("""<input type="submit" class="btn" value="_("unmark as duplicated")" style="width:205px">""")
+
+        vars["showDuplicated"] = False
+        if aStatus.getId() in ["pa","pr","submitted","pfot"]:
+            vars["duplicatedURL"] = quoteattr(str(urlHandlers.UHTrackAbstractModMarkAsDup.getURL(self._track,self._abstract)))
+            vars["isDuplicated"] = False
+            vars["showDuplicated"] = True
+        elif aStatus.getId() == "duplicated":
+            vars["showDuplicated"] = vars["isDuplicated"] = True
             vars["duplicatedURL"] = quoteattr(str(urlHandlers.UHTrackAbstractModUnMarkAsDup.getURL(self._track,self._abstract)))
         vars["contribution"] = self._getContribHTML()
 
+        vars["buttonsStatus"] = "enabled"
+        if aStatus.getId() in ["accepted", "rejected", "accepted_other"]:
+            vars["buttonsStatus"] = "disabled"
         rating = self._abstract.getRatingPerReviewer(self._rh.getAW().getUser(), self._track)
         if (rating == None):
             vars["rating"] = ""
         else:
             vars["rating"] = "%.2f" % rating
+        vars["lastJudgement"] = self._getLastJudgement()
+        vars["lastJudgementComment"] = self._getLastJudgementComment()
         vars["scaleLower"] = self._abstract.getConference().getConfAbstractReview().getScaleLower()
         vars["scaleHigher"] = self._abstract.getConference().getConfAbstractReview().getScaleHigher()
+        vars["attachments"] = fossilize(self._abstract.getAttachments().values(), ILocalFileAbstractMaterialFossil)
+        vars["showAcceptButton"] = self._abstract.getConference().getConfAbstractReview().canReviewerAccept()
+        vars["acceptURL"] = quoteattr(str(urlHandlers.UHTrackAbstractAccept.getURL(self._track, self._abstract)))
+        vars["rejectURL"] = quoteattr(str(urlHandlers.UHTrackAbstractReject.getURL(self._track, self._abstract)))
 
         return vars
 
@@ -957,6 +929,20 @@ class WPTrackAbstractModif( WPTrackAbstractModifBase ):
 
     def _getTabContent( self, params ):
         wc = WTrackAbstractModification( self._track, self._abstract )
+        return wc.getHTML()
+
+
+class WPTrackAbstractAccept(WPTrackAbstractModifBase):
+
+    def _getTabContent(self, params):
+        wc = WAbstractManagmentAccept(self._getAW(), self._abstract, self._track)
+        return wc.getHTML()
+
+
+class WPTrackAbstractReject(WPTrackAbstractModifBase):
+
+    def _getTabContent(self, params):
+        wc = WAbstractManagmentReject(self._getAW(), self._abstract, self._track)
         return wc.getHTML()
 
 
@@ -984,15 +970,15 @@ class WTrackAbstractPropToAcc( wcomponents.WTemplated ):
             l.append( """<option value="%s"%s>%s</option>"""%(ctype.getId(), selected, ctype.getName() ) )
         vars["contribTypes"] = ""
         if len(l) > 0:
-            vars["contribTypes"] =  _("""
+            vars["contribTypes"] =  i18nformat("""
                                     <tr>
-			              <td nowrap class="titleCellTD"><span class="titleCellFormat">
+                          <td nowrap class="titleCellTD"><span class="titleCellFormat">
                                          _("Proposed contribution type"):
-			              </td>
-			              <td>&nbsp;
-				         <select name="contribType">%s</select>
-			              </td>
-		                    </tr>
+                          </td>
+                          <td>&nbsp;
+                         <select name="contribType">%s</select>
+                          </td>
+                            </tr>
                                     """)%("".join(l))
         return vars
 
@@ -1062,7 +1048,6 @@ class WPModAbstractMarkAsDup(WPTrackAbstractModifBase):
         wc = wcomponents.WAbstractModMarkAsDup(self._abstract)
         p={"comments":params.get("comments",""),
             "id":params.get("originalId",""),
-            "errorMsg":params.get("errorMsg",""),
             "duplicateURL":urlHandlers.UHTrackAbstractModMarkAsDup.getURL(self._track,self._abstract),
             "cancelURL":urlHandlers.UHTrackAbstractModif.getURL(self._track,self._abstract)}
         return wc.getHTML(p)
@@ -1085,13 +1070,9 @@ class WTrackModifCoordination( wcomponents.WTemplated ):
 
     def getVars( self ):
         vars = wcomponents.WTemplated.getVars( self )
-        ut = wcomponents.WPrincipalTable()
-        vars["users"] = ut.getHTML( \
-            self._track.getCoordinatorList(), \
-            self._track,\
-            urlHandlers.UHTrackSelectCoordinators.getURL(),\
-            urlHandlers.UHTrackRemoveCoordinators.getURL(),
-            selectable=False)
+        vars["trackId"] = self._track.getId()
+        vars["confId"] = self._track.getConference().getId()
+        vars["coordinators"] = fossilize(self._track.getCoordinatorList())
         return vars
 
 
@@ -1103,20 +1084,6 @@ class WPTrackModifCoordination( WPTrackModifBase ):
     def _getTabContent( self, params ):
         wc = WTrackModifCoordination( self._track )
         return wc.getHTML()
-
-
-class WPTrackModifSelectCoordinators( WPTrackModifCoordination ):
-
-    def _getTabContent( self, params ):
-        url = urlHandlers.UHTrackSelectCoordinators.getURL()
-        searchExt = params.get("searchExt","")
-        if searchExt != "":
-            searchLocal = False
-        else:
-            searchLocal = True
-        wc = wcomponents.WUserSelection( url,forceWithoutExtAuth=searchLocal )
-        params["addURL"] = urlHandlers.UHTrackAddCoordinators.getURL()
-        return wc.getHTML( params )
 
 
 class WPModAbstractIntComments(WPTrackAbstractModifBase):
@@ -1241,7 +1208,7 @@ class WTrackModContribList(wcomponents.WTemplated):
         checked=""
         if self._filterCrit.getField("type").getShowNoValue():
             checked=" checked"
-        res=[ _("""<input type="checkbox" name="typeShowNoValue" value="--none--"%s> --_("not specified")--""")%checked]
+        res=[ i18nformat("""<input type="checkbox" name="typeShowNoValue" value="--none--"%s> --_("not specified")--""")%checked]
         for t in self._conf.getContribTypeList():
             checked=""
             if t.getId() in self._filterCrit.getField("type").getValues():
@@ -1253,7 +1220,7 @@ class WTrackModContribList(wcomponents.WTemplated):
         checked=""
         if self._filterCrit.getField("session").getShowNoValue():
             checked=" checked"
-        res=[ _("""<input type="checkbox" name="sessionShowNoValue" value="--none--"%s> --_("not specified")--""")%checked]
+        res=[ i18nformat("""<input type="checkbox" name="sessionShowNoValue" value="--none--"%s> --_("not specified")--""")%checked]
         for s in self._conf.getSessionListSorted():
             checked=""
             if s.getId() in self._filterCrit.getField("session").getValues():

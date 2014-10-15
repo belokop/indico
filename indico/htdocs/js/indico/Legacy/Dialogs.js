@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 /**
     @namespace Pop-up dialogs
 */
@@ -53,12 +70,12 @@ extend(IndicoUI.Dialogs,
                        killLoadProgress();
 
                        var submitInfo = function() {
-                           each(args, function(value, key) {
-                               info.set(key, value);
+                           each(info, function(value, key) {
+                               args[key] = value;
                            });
                            if (parameterManager.check()) {
                                var killProgress = IndicoUI.Dialogs.Util.progress();
-                               indicoRequest(method, info,
+                               indicoRequest(method, args,
                                              function(result, error){
                                                  killProgress();
                                                  if (error) {
@@ -71,40 +88,36 @@ extend(IndicoUI.Dialogs,
                            }
                        };
 
-                       var popup = new ExclusivePopupWithButtons($T('Add Session'));
-
+                       var popup = new ExclusivePopupWithButtons($T('Add Session'), positive, true, false, true);
                        var roomEditor;
 
                        popup.postDraw = function() {
                            roomEditor.postDraw();
-                           this.ExclusivePopup.prototype.postDraw.call(this);
+                           this.ExclusivePopupWithButtons.prototype.postDraw.call(this);
+                           $E('sessionTitle').dom.focus();
+                       };
+
+                       popup._getButtons = function() {
+                           return [
+                               [$T('Add'), function() {
+                                   submitInfo();
+                               }],
+                               [$T('Cancel'), function() {
+                                   popup.close();
+                               }]
+                           ];
                        };
 
                        popup.draw = function(){
                            var self = this;
-                           var addButton = Html.input('button', {},$T("Add"));
-                           var cancelButton = Html.input('button', {},$T("Cancel"));
-                           cancelButton.dom.style.marginLeft = pixels(10);
-
                            info.set('roomInfo', $O(roomInfo));
-
-
-                           roomEditor = new RoomBookingReservationWidget(Indico.Data.Locations, info.get('roomInfo'), parentRoomInfo, true, favoriteRooms, null, bookedRooms, timetable.parentTimetable?timetable.parentTimetable.getData():timetable.getData(), info);
-
-                           cancelButton.observeClick(function(){
-                               self.close();
-                           });
-
-
-                           addButton.observeClick(function(){
-                               submitInfo();
-                           });
+                           roomEditor = new RoomBookingReservationWidget(Indico.Data.Locations, info.get('roomInfo'), parentRoomInfo, true, favoriteRooms, null, bookedRooms, timetable.parentTimetable?timetable.parentTimetable.getData():timetable.getData(), info, undefined, $T('event'));
 
                            var convListWidget = new UserListField(
                                'VeryShortPeopleListDiv', 'PeopleList',
                                null, true, null,
                                true, false, null, null,
-                               true, true, true,
+                               true, false, true, true,
                                userListNothing, userListNothing, userListNothing);
 
                            $B(info.accessor('conveners'), convListWidget.getUsers());
@@ -166,7 +179,7 @@ extend(IndicoUI.Dialogs,
                                startEndTimeField.endTimeField.dispatchEvent('change');
                            });
 
-                           var startEndTimeField = IndicoUI.Widgets.Generic.dateStartEndTimeField(info.get('startDateTime').substr(11,5), info.get('endDateTime').substr(11,5));
+                           var startEndTimeField = IndicoUI.Widgets.Generic.dateStartEndTimeField(info.get('startDateTime').substr(11,5), info.get('endDateTime').substr(11,5), {style: {width: '50px'}}, {style: {width: '50px'}});
                            var startEndTimeComponent;
                            //template for the binding
                            var timeTranslation = {
@@ -196,10 +209,9 @@ extend(IndicoUI.Dialogs,
                            });
                            colorPicker.setFixedPosition();
                            var colorPickerComponent = ['Color', Html.div({style: {padding: '5px 0 10px 0'}}, colorPicker.getLink(null, 'Choose a color'))];
-
-                           var contentDiv = Html.div({},
-                               IndicoUtil.createFormFromMap([
-                                   [$T('Title'), $B(parameterManager.add(Html.edit({style: {width: '300px'}}), 'text', false), info.accessor('title'))],
+                           var contentDiv = $("<div></div>").append(IndicoUtil.createFormFromMap([
+                                   [$T('Title'), $B(parameterManager.add(Html.edit({ id: 'sessionTitle', autocomplete: 'off'}), 'text', false), info.accessor('title'))],
+                                   [$T('Sub-Title'), $B(parameterManager.add(Html.edit({ id: 'subtitle', autocomplete: 'off'}), 'text', true), info.accessor('subtitle'))],
                                    [$T('Description'), $B(Html.textarea({cols: 40, rows: 2}), info.accessor('description'))],
                                    [$T('Date'), conferenceDays],
                                    startEndTimeComponent,
@@ -208,9 +220,7 @@ extend(IndicoUI.Dialogs,
                                    [$T('Convener(s)'), convListWidget.draw()],
                                    [$T('Session type'), sesType.draw()]]));
 
-                           var buttonDiv = Html.div({}, addButton, cancelButton);
-
-                           return this.ExclusivePopupWithButtons.prototype.draw.call(this, contentDiv, buttonDiv);
+                           return this.ExclusivePopupWithButtons.prototype.draw.call(this, contentDiv);
                        };
                        popup.open();
                    }).run();
@@ -237,12 +247,10 @@ extend(IndicoUI.Dialogs,
            addSessionSlot: function(method, timeStartMethod, params, roomInfo, parentRoomInfo, confStartDate, dayStartDate, favoriteRooms, days, successFunc, editOn, bookedRooms, timetable){
                var parameterManager = new IndicoUtil.parameterManager();
                var isEdit = exists(editOn)?editOn:false;
-               var args = isEdit?params:params.args;
-               var dateArgs = clone(args);
+               var args = params;
+               var dateArgs = clone(params);
                dateArgs.selectedDay = dayStartDate;
                var info = new WatchObject();
-               var parentRoomData;
-               previousDay = dateArgs.selectedDay;
 
                var killLoadProgress = IndicoUI.Dialogs.Util.progress($T("Loading dialog..."));
 
@@ -315,12 +323,7 @@ extend(IndicoUI.Dialogs,
                            }
                        };
 
-                       var popup = new ExclusivePopupWithButtons(
-                           isEdit?$T('Edit session block'):$T('Add session block'),
-                           function() {
-                               popup.close();
-                           });
-
+                       var popup = new ExclusivePopupWithButtons(isEdit ? $T('Edit session block') : $T('Add session block'), positive, true, false, true);
                        var roomEditor;
 
                        popup.postDraw = function() {
@@ -328,11 +331,19 @@ extend(IndicoUI.Dialogs,
                            this.ExclusivePopupWithButtons.prototype.postDraw.call(this);
                        };
 
+                       popup._getButtons = function() {
+                           return [
+                               [isEdit ? $T('Save'):$T('Add'), function() {
+                                   submitInfo();
+                               }],
+                               [$T('Cancel'), function() {
+                                   popup.close();
+                               }]
+                           ];
+                       };
+
                        popup.draw = function() {
                            var self = this;
-                           var addButton = Html.input('button', {}, isEdit?$T("Save"):$T("Add"));
-                           var cancelButton = Html.input('button', {}, $T("Cancel"));
-                           cancelButton.dom.style.marginLeft = pixels(10);
 
                            /******************************************************
                             * This is the setup for the edition of sessions slots
@@ -350,8 +361,17 @@ extend(IndicoUI.Dialogs,
 
                            }/******************************************************/
                            else {
+                               info.set('sessionTitle', params.title);
+                               info.set('title', params.slotTitle);
                                info.set("conveners", params.sessionConveners);
-                               info.set('roomInfo', $O({location: null, room: null}));
+                               // using default session location or event location (if sessions's one is inheriting)
+                               if (roomInfo.location !== parentRoomInfo.get('location') ||
+                                       roomInfo.room !== parentRoomInfo.get('room') ||
+                                       roomInfo.address !== parentRoomInfo.get('address')) {
+                                   info.set('roomInfo', $O(roomInfo));
+                               } else {
+                                   info.set('roomInfo', $O({location: null, room: null}));
+                               }
                            }
 
                            if(timetable) {
@@ -364,22 +384,17 @@ extend(IndicoUI.Dialogs,
                                                               bookedRooms,
                                                               timetable.parentTimetable?timetable.parentTimetable.getData():timetable.getData(),
                                                               info,
-                                                              editOn?params.id:null);
+                                                              editOn?params.id:null,
+                                                              $T('event'));
                            } else {
                                roomEditor = new RoomBookingWidget(Indico.Data.Locations,
                                        info.get('roomInfo'),
                                        parentRoomInfo,
                                        nullRoomInfo(info.get('roomInfo')),
                                        favoriteRooms,
-                                       null);
+                                       null,
+                                       $T('event'));
                            }
-                           cancelButton.observeClick(function(){
-                               self.close();
-                           });
-
-                           addButton.observeClick(function(){
-                               submitInfo();
-                           });
 
                            var sessionRename = new SessionRenameWidget(
                                    info.get('sessionTitle'),
@@ -391,7 +406,7 @@ extend(IndicoUI.Dialogs,
                                'VeryShortPeopleListDiv', 'PeopleList',
                                isEdit?params.conveners:params.sessionConveners, true, null,
                                true, false, null, null,
-                               true, true, true,
+                               true, false, true, true,
                                userListNothing, userListNothing, userListNothing);
 
                            //Create the list of the days in which the conference is being held
@@ -450,8 +465,9 @@ extend(IndicoUI.Dialogs,
                            if(params.conference && params.conference.timezone) {
                                timezoneMsg = ' (' + $T('Timezone') + ': ' + params.conference.timezone + ')';
                            }
-                           var startEndTimeField = IndicoUI.Widgets.Generic.dateStartEndTimeField(info.get('startDateTime').substr(11,5), info.get('endDateTime').substr(11,5), timezoneMsg);
+                           var startEndTimeField = IndicoUI.Widgets.Generic.dateStartEndTimeField(info.get('startDateTime').substr(11,5), info.get('endDateTime').substr(11,5), {style: {width: '50px'}}, {style: {width: '50px'}}, timezoneMsg);
                            var startEndTimeComponent;
+                           var sessionRenameComponent;
                            var timeTranslation = {
                                    toTarget: function (value) {
                                        var aux = conferenceDays.get();
@@ -468,21 +484,19 @@ extend(IndicoUI.Dialogs,
                            parameterManager.add(startEndTimeField.startTimeField, 'time', false);
                            parameterManager.add(startEndTimeField.endTimeField, 'time', false);
                            startEndTimeComponent = [$T('Time'), startEndTimeField.element];
-                           sessionRenameComponent = isEdit ? [$T('Session'), $T(Html.div({}, sessionRename.draw()))]:[];
+                           sessionRenameComponent = [$T('Session'), $T(Html.div({}, sessionRename.draw()))];
 
                            $B(info.accessor('conveners'), convListWidget.getUsers());
 
                            var content = IndicoUtil.createFormFromMap([
                                sessionRenameComponent,
-                               isEdit ? [$T('Sub-Title'), $B(Html.edit({style: { width: '300px'}}), info.accessor('title'))]:[],
+                               [$T('Sub-Title'), $B(Html.edit({style: { width: '300px'}}), info.accessor('title'))],
                                [$T('Date'), conferenceDays],
                                startEndTimeComponent,
                                [$T('Place'), Html.div({style: {marginBottom: '15px'}}, roomEditor.draw())],
                                [$T('Convener(s)'), convListWidget.draw()]]);
 
-                           var buttons = Html.div({}, addButton, cancelButton);
-
-                           return this.ExclusivePopupWithButtons.prototype.draw.call(this, content, buttons);
+                           return this.ExclusivePopupWithButtons.prototype.draw.call(this, content);
                        };
 
                        popup.open();
@@ -490,240 +504,192 @@ extend(IndicoUI.Dialogs,
                    }).run();
            },
 
-
-           /**
-        * Creates a dialog that allows a subcontribution to be added
-        * to the schedule (inside a contribution)
-        * @param {String} contribId The id of the parent contribution
-        * @param {String} conferenceId The id of the parent event
-        */
-           addSubContribution: function (contribId, conferenceId) {
-
-               var args = {conference: conferenceId};
-
-               IndicoUtil.waitLoad([
-                   function(hook) {
-                       var self = this;
-                       var source = indicoSource('user.favorites.listUsers', {});
-                       source.state.observe(function(state) {
-                           if (state == SourceState.Loaded) {
-                               favorites = $L(source);
-                               hook.set(true);
+           deleteMinutes: function(confId, sessId, contId, subContId, compile){
+               indicoRequest(
+                       'minutes.delete',
+                       {
+                           confId: intToStr(confId),
+                           sessionId: intToStr(sessId),
+                           contribId: intToStr(contId),
+                           subContId: intToStr(subContId),
+                           compile: false
+                       },
+                       function(result,error) {
+                           if (!error) {
+                               if (result) {
+                                   window.location.reload(true);
+                               } else {
+                                   IndicoUtil.errorReport(error);
+                               }
                            }
-                       });
-                   }
-               ], function(retVal) {
-
-                   var parameterManager = new IndicoUtil.parameterManager();
-
-                   var info = new WatchObject();
-
-                   var submitInfo = function() {
-                       info.set('conference', conferenceId);
-                       info.set('contribution', contribId);
-
-                       if (parameterManager.check()) {
-
-                           var killProgress = IndicoUI.Dialogs.Util.progress();
-                           indicoRequest("contribution.addSubContribution", info,
-                                         function(result, error){
-                                             if (error) {
-                                                 killProgress();
-                                                 IndicoUtil.errorReport(error);
-                                             } else {
-                                                 window.location.reload(true);
-                                             }
-                                         });
-                           popup.close();
                        }
-                   };
+                   );
 
-                   var popup = new ExclusivePopup(
-                       $T('Add Subcontribution'),
-                       function() {
-                           popup.close();
-                       });
-                   popup.draw = function() {
-
-                       var self = this;
-
-                       var addButton = Html.input('button', {},$T("Add"));
-                       var cancelButton = Html.input('button', {},$T("Cancel"));
-                       cancelButton.dom.style.marginLeft = pixels(10);
-
-                       cancelButton.observeClick(function(){
-                           self.close();
-                       });
-
-
-                       addButton.observeClick(function(){
-                           submitInfo();
-                   });
-
-
-                       var presListWidget = new UserListField(
-                               'VeryShortPeopleListDiv', 'PeopleList',
-                               null, true, null,
-                               true, false, null, null,
-                               true, true, true,
-                               userListNothing, userListNothing, userListNothing);
-
-                       var keywordField = IndicoUI.Widgets.keywordList('oneLineListItem');
-
-                       $B(info.accessor('presenters'), presListWidget.getUsers());
-                       $B(info.accessor('keywords'), keywordField.accessor);
-
-                       return self.ExclusivePopup.prototype.draw.call(
-                           this,
-                           Widget.block([IndicoUtil.createFormFromMap([
-                               [$T('Title'), $B(parameterManager.add(Html.edit({style: {width: '300px'}}), 'text', false), info.accessor('title'))],
-                               [$T('Description'), $B(Html.textarea({cols: 40, rows: 2}), info.accessor('description'))],
-                               [$T('Keywords'), keywordField.element],
-                               [$T('Duration (min) '), $B(parameterManager.add(IndicoUI.Widgets.Generic.durationField(), 'int', false), info.accessor('duration')) ],
-                               [$T('Presenter(s)'), presListWidget.draw()]
-                           ]),
-                                         Html.div({style:{marginTop: pixels(10), textAlign: 'center', background: '#DDDDDD', padding: pixels(2)}},
-                                                  [addButton, cancelButton])
-                                        ]));
-                   };
-
-                   popup.open();
-
-               }).run();
            },
 
-           writeMinutes: function(confId, sessId, contId, subContId, compile) {
+          writeMinutes: function(confId, sessId, contId, subContId, compile) {
+            var changedText = new WatchValue(false),
+              should_reload = false,
+              compileMinutes = exists(compile) ? compile : false,
+              killProgress = null,
+              saveAndClose = false,
+              rtWidget = null,
+              useragent = navigator.userAgent.toLowerCase();
 
-               var changedText = new WatchValue(false);
-               var wasChanged = false;
-               var compileMinutes = exists(compile)?compile:false;
-               var killProgress = null;
-               var saveAndClose = false;
+            if (useragent.indexOf('iphone') != -1 || useragent.indexOf('symbianos') != -1 || useragent.indexOf('ipad') != -1 || useragent.indexOf('ipod') != -1 || useragent.indexOf('android') != -1 || useragent.indexOf('blackberry') != -1 || useragent.indexOf('samsung') != -1 || useragent.indexOf('nokia') != -1 || useragent.indexOf('windows ce') != -1 || useragent.indexOf('sonyericsson') != -1 || useragent.indexOf('webos') != -1 || useragent.indexOf('wap') != -1 || useragent.indexOf('motor') != -1 || useragent.indexOf('symbian') != -1 ) {
+              rtWidget = new ParsedRichTextWidget(700, 400, '', 'plain', true);
+            }
+            else {
+              rtWidget = new ParsedRichTextEditor(700, 400);
+            }
 
-               var rtWidget = new ParsedRichTextEditor(700, 400, 'IndicoFull');
+            var saveButton;
+            var intToStr = function(id) {
+              if (IndicoUtil.isInteger(id)) {
+                return id + '';
+              } else {
+                return null;
+              }
+            };
 
-               var saveButton;
-               var intToStr = function(id) {
-                   if (IndicoUtil.isInteger(id)) {
-                       return id+'';
-                   } else {
-                       return null;
-                   }
-               };
+            var popup = new ExclusivePopupWithButtons(
+              $T('My minutes'),
+              function() {
+                popup.closeMinutesPopup();
+              }, true, false, true);
 
-               var popup = new ExclusivePopupWithButtons(
-                       $T('My minutes'),
-                       function() {
-                           popup.closeMinutesPopup();
-                       });
+            var closeMinutes = function(){
+              popup.close();
+              rtWidget.destroy();
 
-               var closeMinutes = function(){
-                   popup.close();
-                   rtWidget.destroy();
+              if (should_reload) {
+                window.location.reload(true);
+              }
+            };
 
-                   if (wasChanged) {
-                       window.location.reload(true);
-                   }
+            var req = indicoSource('minutes.edit', {
+              'confId': intToStr(confId),
+              'sessionId': intToStr(sessId),
+              'contribId': intToStr(contId),
+              'subContId': intToStr(subContId),
+              'compile': compileMinutes
+            }, {}, true);
 
-               };
+            req.state.observe(function(state){
+              if (state == SourceState.Error) {
+                  if(killProgress) {
+                    killProgress();
+                  }
+                  IndicoUtil.errorReport(req.error.get());
+              } else if (state == SourceState.Loaded) {
 
-               var req = indicoSource('minutes.edit',
-                   {
-                       'confId': intToStr(confId),
-                       'sessionId': intToStr(sessId),
-                       'contribId': intToStr(contId),
-                       'subContId': intToStr(subContId),
-                       'compile': compileMinutes
-                   });
+                if (rtWidget.get() != req.get()) {
+                  rtWidget.set(req.get(), !req.get());
+                }
 
-               req.state.observe(function(state){
-                   if (state == SourceState.Error) {
-                       if(killProgress) {
-                           killProgress();
-                       }
-                       IndicoUtil.errorReport(req.error.get());
-                   } else if (state == SourceState.Loaded) {
+                changedText.set(false);
 
-                       rtWidget.set(req.get(), !req.get());
+                if (killProgress) {
+                  killProgress();
+                  if (saveAndClose) {
+                    closeMinutes();
+                  }
+                }
+              }
+            });
 
-                       rtWidget.observe(function(value){
-                           changedText.set(true);
-                       });
+            changedText.observe(
+              function(value) {
+                saveButton.button(value ? 'enable' : 'disable');
+            });
 
-                       if (killProgress) {
-                           killProgress();
-                           changedText.set(false);
-                           wasChanged = true;
-                           saveButton.dom.disabled = true;
-                           if (saveAndClose) {
-                               closeMinutes();
-                           }
-                       }
-                   }
-               });
+            popup.commitChanges = function() {
+              killProgress = IndicoUI.Dialogs.Util.progress($T('Saving...'));
+              if(rtWidget.clean()) {
+                changedText.set(false);
+                should_reload = true;
+                req.set(rtWidget.get());
+              }
+              killProgress();
+            };
 
-               changedText.observe(
-                   function(value) {
-                       if (value) {
-                           saveButton.dom.disabled = false;
-                       }
-                   });
+            popup.commitChangesAndClose = function() {
+              saveAndClose = true;
+              this.commitChanges();
+            };
 
+            popup.closeMinutesPopup = function() {
+              var self = this;
+              var confirmation = function(confirmed){
+                if (confirmed == 1) {
+                  self.commitChangesAndClose();
+                }
+                else if (confirmed == 2) {
+                  closeMinutes();
+                }
+              };
 
-               popup.draw = function() {
-                   var self = this;
-                   var content = Html.div({}, rtWidget.draw());
+              if (changedText.get()){
+                var popupConfirm = new SaveConfirmPopup($T("Confirm"), Html.div({}, Html.div({style:{paddingBottom: pixels(16)}},
+                                                        $T("You have modified your text since you last saved.")),
+                                                        Html.div({}, $T("Do you want to save your changes?"))), confirmation);
+                popupConfirm.open();
+              } else {
+                closeMinutes();
+              }
+            };
 
-                   var commitChanges = function() {
-                       killProgress = IndicoUI.Dialogs.Util.progress($T('Saving...'));
-                       if(rtWidget.clean()){
-                           changedText.set(false);
-                           wasChanged = true;
-                           saveButton.dom.disabled = true;
-                           req.set(rtWidget.get());
-                       }
-                       killProgress();
-                   };
+            popup.draw = function() {
+               var content = Html.div({}, rtWidget.draw());
+               return this.ExclusivePopupWithButtons.prototype.draw.call(this, content);
+            };
 
-                   var commitChangesAndClose = function() {
-                       saveAndClose = true;
-                       commitChanges();
-                   };
+            popup.postDraw = function() {
+              var first_run = true;
 
-                   self.closeMinutesPopup = function(){
-                       var confirmation = function(confirmed){
-                           if (confirmed == 1){
-                               commitChangesAndClose();
-                           }
-                           else if (confirmed == 2){
-                               closeMinutes();
-                           }
-                       };
+              CKEDITOR.once('instanceReady', function() {
+                rtWidget.onChange(function(ev) {
+                  // ignore the first run, since it will correspond to the update
+                  // with the data coming from the server
+                  if (!first_run) {
+                    changedText.set(true);
+                  } else {
+                    first_run = false;
+                  }
+                });
 
-                       if (changedText.get()){
-                           var popupConfirm = new SaveConfirmPopup( $T("Confirm"), Html.div({}, Html.div({style:{paddingBottom: pixels(16)}},
-                                                                    $T("You have modified your text since you last saved.")),
-                                                                    Html.div({}, $T("Do you want to save your changes?"))), confirmation);
-                           popupConfirm.open();
-                       } else {
-                           closeMinutes();
-                       }
-                   };
+                // the editor is ready, so let's ask for data from the server
+                killProgress = IndicoUI.Dialogs.Util.progress();
+                req.refresh();
 
-                   saveButton = Widget.button(command(commitChanges, $T("Save")));
-                   saveButton.dom.disabled = !compileMinutes;
+              });
+            };
 
-                   return this.ExclusivePopupWithButtons.prototype.draw.call(
-                       this,
-                       content,
-                       Html.div({style:{marginTop: pixels(20)}},
-                                 saveButton,
-                                 Widget.button(command(self.closeMinutesPopup, $T("Close")))));
-               };
+            popup._getButtons = function() {
+              return [
+                [$T('Save'), function() {
+                   popup.commitChanges();
+                }],
+                [$T('Close'), function() {
+                   popup.closeMinutesPopup();
+                }]
+              ];
+            };
 
-               popup.open();
+            popup._onClose = function(e) {
+              // Destroy CKEDITOR instance
+              rtWidget.getEditor().destroy();
+              this.ExclusivePopupWithButtons.prototype._onClose.call(this, e);
+            }
 
-           },
+            popup.open();
+            saveButton = popup.buttons.eq(0);
+
+            if(!compileMinutes) {
+               saveButton.button('disable');
+            }
+
+          },
            __addSessionSlot: function(slotId, sessionId, confId){
                var slot = undefined;
 
@@ -751,7 +717,7 @@ extend(IndicoUI.Dialogs,
                                                'schedule.event.getDayEndDate',
                                                slot,
                                                slot,
-                                               $O(slot.session),
+                                               $O(slot.conference),
                                                slot.startDate,
                                                slot.startDate.date.replace(/-/g,"/"),
                                                [],
@@ -763,6 +729,10 @@ extend(IndicoUI.Dialogs,
                                                [],
                                                null)
                                    }
+                                   else{
+                                       new AlertPopup($T("Error"), error.message).open();
+                                   }
                                });
            }
-       });
+
+});

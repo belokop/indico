@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 """
 Module containing the persistent classes that will be stored in the DB
@@ -28,8 +27,8 @@ import datetime
 import zope.interface
 from persistent import Persistent, mapping
 
-# indico api imports
-from indico.core.api import Component
+# indico extpoint imports
+from indico.core.extpoint import Component
 from indico.util.fossilize import IFossil, fossilizes, Fossilizable, conversion
 
 # plugin imports
@@ -37,9 +36,11 @@ from indico.ext.livesync.struct import SetMultiPointerTrack
 from indico.ext.livesync.util import getPluginType
 from indico.ext.livesync.struct import EmptyTrackException
 from indico.ext.livesync.base import ILiveSyncAgentProvider, MPT_GRANULARITY
+from indico.ext.livesync.db import updateDBStructures
 
 # legacy indico imports
 from MaKaC import conference
+from indico.core.db import DBMgr
 
 class QueryException(Exception):
     """
@@ -121,8 +122,7 @@ class SyncAgent(Fossilizable, Persistent):
         track = self._manager.getTrack()
 
         try:
-            track.movePointer(self._id, ts / \
-                              self._manager.getGranularity() - 1)
+            track.movePointer(self._id, ts)
         except EmptyTrackException:
             # if the track is empty, don't bother doing this
             pass
@@ -139,8 +139,7 @@ class SyncAgent(Fossilizable, Persistent):
 
     def getLastDT(self):
         ts = self.getLastTS()
-        return datetime.datetime.utcfromtimestamp(ts * \
-                    self._manager.getGranularity()) if ts else None
+        return datetime.datetime.utcfromtimestamp(ts * self._manager.getGranularity()) if ts else None
 
     def getName(self):
         return self._name
@@ -206,7 +205,7 @@ class PushSyncAgent(SyncAgent):
         self._lastTry = None
         self._access = access
 
-    def _run(self, data, logger=None, monitor=None, dbi=None):
+    def _run(self, data, logger=None, monitor=None, dbi=None, task=None):
         """
         Overloaded - will contain the specific agent code
         """
@@ -227,7 +226,7 @@ class PushSyncAgent(SyncAgent):
         Overloaded by agents
         """
 
-    def run(self, currentTS, logger=None, monitor=None, dbi=None):
+    def run(self, currentTS, logger=None, monitor=None, dbi=None, task=None):
         """
         Main method, called when agent needs to be run
         """
@@ -241,18 +240,18 @@ class PushSyncAgent(SyncAgent):
             raise AgentExecutionException("SyncAgent '%s' has no manager!" % \
                                           self._id)
 
-        # query till currentTS - 1, for integrity reasons
-        data = self._manager.query(agentId=self.getId(),
-                                   till=till)
-
         if logger:
             logger.info("Querying agent %s for events till %s" % \
                         (self.getId(), till))
 
+        # query till currentTS - 1, for integrity reasons
+        data = self._manager.query(agentId=self.getId(),
+                                   till=till)
+
         try:
             records = self._generateRecords(data, till, dbi=dbi)
             # run agent-specific cycle
-            result = self._run(records, logger=logger, monitor=monitor, dbi=dbi)
+            result = self._run(records, logger=logger, monitor=monitor, dbi=dbi, task=task)
         except:
             if logger:
                 logger.exception("Problem running agent %s" % self.getId())
@@ -297,7 +296,11 @@ class SyncManager(Persistent):
         Returns the instance of SyncManager currently in the DB
         """
         storage = getPluginType().getStorage()
-        return storage['agent_manager']
+        if 'agent_manager' in storage:
+            return storage['agent_manager']
+        else:
+            root = DBMgr.getInstance().getDBConnection()
+            updateDBStructures(root)
 
     def reset(self, agentsOnly=False, trackOnly=False):
         """
@@ -372,7 +375,10 @@ class SyncManager(Persistent):
         Decides whether a particular object should be ignored or not
         """
         excluded = getPluginType().getOption('excludedCategories').getValue()
-        if isinstance(obj, conference.Category):
+
+        if isinstance(obj, conference.SessionSlot):
+            return True
+        elif isinstance(obj, conference.Category):
             return obj.getId() in excluded
         elif isinstance(obj, conference.Conference):
             owner = obj.getOwner()
@@ -418,7 +424,6 @@ class RecordUploader(object):
 
         # take operations and choose which records to send
         for record in iterator:
-
             if len(currentBatch) > (self._batchSize - 1):
                 self._uploadBatch(currentBatch)
                 currentBatch = []

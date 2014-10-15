@@ -1,22 +1,22 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
+from cStringIO import StringIO
 
 from datetime import timedelta, datetime
 
@@ -24,61 +24,64 @@ from datetime import timedelta, datetime
 # Fermi timezone awareness      #
 #################################
 from pytz import timezone
+import re
 from MaKaC.common.timezoneUtils import nowutc, DisplayTZ
 #################################
 # Fermi timezone awareness(end) #
 #################################
+from MaKaC.common.url import ShortURLMapper
 import MaKaC.webinterface.rh.base as base
-from base import RoomBookingDBMixin
 import MaKaC.webinterface.locators as locators
 import MaKaC.webinterface.wcalendar as wcalendar
 import MaKaC.webinterface.webFactoryRegistry as webFactoryRegistry
 import MaKaC.webinterface.urlHandlers as urlHandlers
 import MaKaC.webinterface.pages.category as category
 import MaKaC.webinterface.displayMgr as displayMgr
-from MaKaC.errors import MaKaCError,FormValuesError,NoReportError
+from MaKaC.errors import MaKaCError, FormValuesError, NotFoundError
 import MaKaC.conference as conference
 from MaKaC.conference import ConferenceChair
-from MaKaC.common.general import *
 import MaKaC.statistics as statistics
-from MaKaC.common.Configuration import Config
+from indico.core.config import Config
 import MaKaC.user as user
-from MaKaC.ICALinterface.conference import CategoryToiCal
-from MaKaC.RSSinterface.conference import CategoryToRSS
 import MaKaC.common.info as info
 from MaKaC.i18n import _
-from MaKaC.rb_location import Location, CrossLocationQueries
 from MaKaC.webinterface.user import UserListModificationBase
 from MaKaC.common.utils import validMail, setValidEmailSeparators
+from MaKaC.common.mail import GenericMailer
+from MaKaC.webinterface.common.tools import escape_html
 
-class RHCategDisplayBase( base.RHDisplayBaseProtected ):
+from indico.web.flask.util import send_file, endpoint_for_url
+from indico.web.http_api.hooks.event import CategoryEventHook
+from indico.web.http_api.metadata.serializer import Serializer
 
-    def _checkProtection( self ):
-        from MaKaC.webinterface.rh.collaboration import RCCollaborationAdmin, RCCollaborationPluginAdmin
-        if not RCCollaborationAdmin.hasRights(self, None) and \
-            not RCCollaborationPluginAdmin.hasRights(self, plugins = "any"):
-            base.RHDisplayBaseProtected._checkProtection( self )
 
-    def _checkParams( self, params, mustExist = 1 ):
+class RHCategDisplayBase(base.RHDisplayBaseProtected):
+
+    def _checkProtection(self):
+        if not any(self._notify("isPluginTypeAdmin", {"user": self._getUser()}) +
+                   self._notify("isPluginAdmin", {"user": self._getUser(), "plugins": "any"})):
+            base.RHDisplayBaseProtected._checkProtection(self)
+
+    def _checkParams(self, params, mustExist=True):
         if "categId" in params:
-            params["categId"] = str(params["categId"])
-        l = locators.CategoryWebLocator( params, mustExist )
+            params["categId"] = escape_html(str(params["categId"]))
+        l = locators.CategoryWebLocator(params, mustExist)
         self._target = l.getObject()
 
         # throw an error if the category was not found
-        if mustExist and self._target == None:
-            raise NoReportError(_("The specified category with id \"%s\" does not exist or has been deleted")%params["categId"])
-        if self._target:
-            self._getSession().setVar("currentCategoryId", self._target.getId())
+        if mustExist and self._target is None:
+            raise NotFoundError(_("The category with id '{}' does not exist or has been deleted").format(
+                                "<strong>{}</strong>".format(params["categId"])),
+                                title=_("Category not found"))
 
 
-class RHCategoryDisplay( RHCategDisplayBase ):
+class RHCategoryDisplay(RHCategDisplayBase):
     _uh = urlHandlers.UHCategoryDisplay
 
-    def _process( self ):
+    def _process(self):
 
         wfReg = webFactoryRegistry.WebFactoryRegistry()
-        p = category.WPCategoryDisplay( self, self._target, wfReg )
+        p = category.WPCategoryDisplay(self, self._target, wfReg)
         return p.display()
 
 
@@ -98,7 +101,8 @@ class RHCategoryStatistics( RHCategDisplayBase ):
         p = category.WPCategoryStatistics( self, self._target, wfReg, stats )
         return p.display()
 
-class RHCategOverviewDisplay( RoomBookingDBMixin, RHCategDisplayBase ):
+
+class RHCategOverviewDisplay(RHCategDisplayBase):
 
     def _checkParams( self, params ):
         id = params.get("selCateg", "")
@@ -117,8 +121,6 @@ class RHCategOverviewDisplay( RoomBookingDBMixin, RHCategDisplayBase ):
             self._cal = wcalendar.MonthOverview( self._aw, sd, [self._target] )
         elif period == "week":
             self._cal = wcalendar.WeekOverview( self._aw, sd, [self._target] )
-        elif period == "nextweek":
-            self._cal = wcalendar.NextWeekOverview( self._aw, [self._target] )
         else:
             self._cal = wcalendar.Overview( self._aw, sd, [self._target] )
         self._cal.setDetailLevel( params.get("detail", "conference") )
@@ -126,6 +128,7 @@ class RHCategOverviewDisplay( RoomBookingDBMixin, RHCategDisplayBase ):
     def _process( self ):
         p = category.WPCategOverview( self, self._target, self._cal )
         return p.display()
+
 
 class RHConferenceCreationBase( RHCategoryDisplay ):
 
@@ -143,20 +146,17 @@ class RHConferenceCreationBase( RHCategoryDisplay ):
         #    raise MaKaCError( _("Cannot add conferences to a category which already contains some sub-categories"))
         self._wf = None
         self._wfReg = webFactoryRegistry.WebFactoryRegistry()
-        et = params.get("event_type", "").strip()
-        if et != "" and et !="default":
-            self._wf = self._wfReg.getFactoryById( et )
+        self._event_type = params.get("event_type", "").strip()
+        if self._event_type == 'lecture':
+            self._event_type = 'simple_event'
+        if self._event_type and self._event_type != 'default':
+            self._wf = self._wfReg.getFactoryById(self._event_type)
 
 
 #-------------------------------------------------------------------------------------
 
-class RHConferenceCreation( RoomBookingDBMixin, RHConferenceCreationBase ):
+class RHConferenceCreation(RHConferenceCreationBase):
     _uh = urlHandlers.UHConferenceCreation
-
-    def getCurrentURL( self ):
-        url = self._uh.getURL(self._target)
-        url.addParam("event_type", self._event_type)
-        return url
 
     def _checkProtection( self ):
         try:
@@ -166,18 +166,11 @@ class RHConferenceCreation( RoomBookingDBMixin, RHConferenceCreationBase ):
 
     def _checkParams( self, params ):
         self._params = params
-        self._event_type = params.get("event_type", "").strip()
         RHConferenceCreationBase._checkParams( self, params, mustExist=0 )
-        self._askForType = (params.get("event_type", "").strip() == "")
 
-    def _getSelectTypePage( self ):
-        p = category.WPConferenceCreationSelectType( self, self._target )
-        return p.display( wfs=self._wfReg.getFactoryList() )
-
-    def _process( self ):
-
-        if self._askForType:
-            return self._getSelectTypePage()
+    def _process(self):
+        if not self._event_type:
+            raise MaKaCError("No event type specified")
         else:
             p = category.WPConferenceCreationMainData( self, self._target )
             if self._wf != None:
@@ -186,7 +179,7 @@ class RHConferenceCreation( RoomBookingDBMixin, RHConferenceCreationBase ):
 
 #-------------------------------------------------------------------------------------
 
-class RHConferencePerformCreation( RHConferenceCreationBase ):
+class RHConferencePerformCreation(RHConferenceCreationBase):
     _uh = urlHandlers.UHConferencePerformCreation
 
     def _checkParams( self, params ):
@@ -205,7 +198,7 @@ class RHConferencePerformCreation( RHConferenceCreationBase ):
             params["title"]="No Title"
         # change number of dates (lecture)
         if self._confirm == True:
-            if self._params.get("event_type","") != "simple_event":
+            if self._event_type != "simple_event":
                 c = self._createEvent( self._params )
                 self.alertCreation([c])
             # lectures
@@ -256,9 +249,8 @@ class RHConferencePerformCreation( RHConferenceCreationBase ):
             c.getAccessController().setProtection(1)
         elif eventAccessProtection == "public" :
             c.getAccessController().setProtection(-1)
-
-        avatars, newUsers, allowedAvatars = self._getPersons()
-        UtilPersons.addToConf(avatars, newUsers, allowedAvatars, c, self._params.has_key('grant-manager'))
+        avatars, newUsers, editedAvatars, allowedAvatars = self._getPersons()
+        UtilPersons.addToConf(avatars, newUsers, editedAvatars, allowedAvatars, c, self._params.has_key('grant-manager'), self._params.has_key('presenter-grant-submission'))
         if params.get("sessionSlots",None) is not None :
             if params["sessionSlots"] == "enabled" :
                 c.enableSessionSlots()
@@ -268,22 +260,21 @@ class RHConferencePerformCreation( RHConferenceCreationBase ):
         return c
 
     def _getPersons(self):
-        cpAvatars, cpNewUsers, auAvatars = [], [], []
+        cpAvatars, cpNewUsers, cpEditedAvatars , auAvatars, auNewUsers, auEditedAvatars = [], [], [] , [] , [] , []
         from MaKaC.services.interface.rpc import json
-        chairpersonDict = json.decode(self._params.get("chairperson"))
-        allowedUsersDict = json.decode(self._params.get("allowedUsers"))
+        chairpersonDict = json.decode(self._params.get("chairperson") or "[]") or []
+        allowedUsersDict = json.decode(self._params.get("allowedUsers") or "[]") or []
         if chairpersonDict:
             cpAvatars, cpNewUsers, cpEditedAvatars = UserListModificationBase.retrieveUsers({"userList":chairpersonDict})
         if allowedUsersDict :
             auAvatars, auNewUsers, auEditedAvatars = UserListModificationBase.retrieveUsers({"userList":allowedUsersDict})
-        #raise "avt: %s, newusers: %s, edited: %s"%(map(lambda x:x.getFullName(),avatars), newUsers, editedAvatars)
-        return cpAvatars, cpNewUsers, auAvatars
+
+        return cpAvatars, cpNewUsers, cpEditedAvatars, auAvatars
 
     def alertCreation(self, confs):
         conf = confs[0]
-        self._emailsToBeSent = []
-        fromAddr = info.HelperMaKaCInfo.getMaKaCInfoInstance().getSupportEmail()
-        addrs = [ info.HelperMaKaCInfo.getMaKaCInfoInstance().getSupportEmail() ]
+        fromAddr = Config.getInstance().getSupportEmail()
+        addrs = [ Config.getInstance().getSupportEmail() ]
         eventType = conf.getType()
         if eventType == "conference":
             type = "conference"
@@ -334,20 +325,20 @@ _Access%s_
         msg = ("Content-Type: text/plain; charset=\"utf-8\"\r\nFrom: %s\r\nReturn-Path: %s\r\nTo: %s\r\nCc: \r\nSubject: %s\r\n\r\n"%(fromAddr, fromAddr, addrs, subject))
         msg = msg + text
         maildata = { "fromAddr": fromAddr, "toList": addrs, "subject": subject, "body": text }
-        self._emailsToBeSent.append(maildata)
+        GenericMailer.send(maildata)
         # Category notification
         if conf.getOwner().getNotifyCreationList() != "":
             addrs2 = [ conf.getOwner().getNotifyCreationList() ]
             maildata2 = { "fromAddr": fromAddr, "toList": addrs2, "subject": subject, "body": text }
-            self._emailsToBeSent.append(maildata2)
+            GenericMailer.send(maildata2)
 
 
 class UtilPersons:
 
     @staticmethod
-    def addToConf( avatars, newUsers, accessingAvatars, conf, grantManager):
+    def addToConf(avatars, newUsers, editedAvatars, accessingAvatars, conf, grantManager, grantSubmission):
 
-        if newUsers :
+        if newUsers:
             for newUser in newUsers:
                 person = ConferenceChair()
                 person.setFirstName(newUser.get("firstName",""))
@@ -355,65 +346,50 @@ class UtilPersons:
                 person.setEmail(newUser.get("email",""))
                 person.setAffiliation(newUser.get("affiliation",""))
                 person.setAddress(newUser.get("address",""))
-                person.setPhone(newUser.get("telephone",""))
+                person.setPhone(newUser.get("phone",""))
                 person.setTitle(newUser.get("title",""))
                 person.setFax(newUser.get("fax",""))
-                if not UtilPersons._alreadyDefined(person) :
-                    #TODO: add to conf
-                    UtilPersons._addChair(conf, person, grantManager)
-                else :
-                    #self._errorList.append("%s has been already defined as %s of this conference"%(person.getFullName(),self._typeName))
-                    pass
+                UtilPersons._addChair(conf, person, grantManager, grantSubmission)
 
         if avatars:
-
-            for selected in avatars :
+            for selected in avatars:
                 if isinstance(selected, user.Avatar) :
                     person = ConferenceChair()
                     person.setDataFromAvatar(selected)
-                    if not UtilPersons._alreadyDefined(person):
-                        #TODO: add to conf
-                        UtilPersons._addChair(conf, person, grantManager)
-                    else :
-                        #self._errorList.append("%s has been already defined as %s of this conference"%(person.getFullName(),self._typeName))
-                        pass
+                    UtilPersons._addChair(conf, person, grantManager, grantSubmission)
 
-                #elif isinstance(selected, user.Group) :
-                #    for member in selected.getMemberList() :
-                #        person = ConferenceChair()
-                #        person.setDataFromAvatar(member)
-                #        if not self._alreadyDefined(person, definedList) :
-                #            definedList.append([person,params.has_key("submissionControl")])
-                #        else :
-                #            self._errorList.append("%s has been already defined as %s of this conference"%(presenter.getFullName(),self._typeName))
+        if editedAvatars:
+            for edited_avatar in editedAvatars:
+                person = ConferenceChair()
+                person.setFirstName(edited_avatar[1].get("firstName", ""))
+                person.setFamilyName(edited_avatar[1].get("familyName", ""))
+                person.setEmail(edited_avatar[1].get("email", ""))
+                person.setAffiliation(edited_avatar[1].get("affiliation", ""))
+                person.setAddress(edited_avatar[1].get("address", ""))
+                person.setPhone(edited_avatar[1].get("phone", ""))
+                person.setTitle(edited_avatar[1].get("title", ""))
+                person.setFax(edited_avatar[1].get("fax", ""))
+
+                UtilPersons._addChair(conf, person, grantManager, grantSubmission)
+
 
         if accessingAvatars:
-            for person in accessingAvatars :
-                if isinstance(person, user.Avatar) or isinstance(person, user.Group) or isinstance(person, user.CERNGroup):
+            for person in accessingAvatars:
+                if isinstance(person, user.Avatar) or isinstance(person, user.Group):
                     conf.grantAccess(person)
 
     @staticmethod
-    def _alreadyDefined(person):#, definedList):
-        #if person is None :
-        #    return True
-        #if definedList is None :
-        #    return False
-        #fullName = person.getFullName()
-        #for p in definedList :
-        #    if p[0].getFullName() == fullName :
-        #        return True
-        return False
-
-    @staticmethod
-    def _addChair(conf, chair, grant):
+    def _addChair(conf, chair, grantManager, grantSubmission):
         conf.addChair(chair)
-        if grant:
+        if grantManager:
             conf.grantModification(chair)
+        if grantSubmission:
+            conf.getAccessController().grantSubmission(chair)
 
 class UtilsConference:
 
+    @staticmethod
     def setValues(c, confData, notify=False):
-        from MaKaC.webinterface.common.tools import escape_tags_short_url
         c.setTitle( confData["title"] )
         c.setDescription( confData["description"] )
         c.setOrgText(confData.get("orgText",""))
@@ -422,14 +398,17 @@ class UtilsConference:
         c.setChairmanText( confData.get("chairText", "") )
         if "shortURLTag" in confData.keys():
             tag = confData["shortURLTag"].strip()
-            tag = escape_tags_short_url(tag)
+            if tag:
+                try:
+                    UtilsConference.validateShortURL(tag, c)
+                except ValueError, e:
+                    raise FormValuesError(e.message)
             if c.getUrlTag() != tag:
-                from MaKaC.common.url import ShortURLMapper
-                sum = ShortURLMapper()
-                sum.remove(c)
+                mapper = ShortURLMapper()
+                mapper.remove(c)
                 c.setUrlTag(tag)
                 if tag:
-                    sum.add(tag, c)
+                    mapper.add(tag, c)
         c.setContactInfo( confData.get("contactInfo","") )
         #################################
         # Fermi timezone awareness      #
@@ -492,6 +471,7 @@ class UtilsConference:
 
             if r.getName() != newRoom:
                 r.setName(newRoom)
+                r.retrieveFullName(newLocation)
                 changed = True
 
         if changed:
@@ -502,22 +482,44 @@ class UtilsConference:
         if (emailstr != "") and not validMail(emailstr):
             raise FormValuesError("One of the emails specified or one of the separators is invalid")
 
-        c.setSupportEmail(emailstr)
-        displayMgr.ConfDisplayMgrRegistery().getDisplayMgr(c).setSupportEmailCaption(confData.get("supportCaption","Support"))
+        c.getSupportInfo().setEmail(emailstr)
+        c.getSupportInfo().setCaption(confData.get("supportCaption","Support"))
         displayMgr.ConfDisplayMgrRegistery().getDisplayMgr(c).setDefaultStyle(confData.get("defaultStyle",""))
         if c.getVisibility() != confData.get("visibility",999):
             c.setVisibility( confData.get("visibility",999) )
         curType = c.getType()
         newType = confData.get("eventType","")
         if newType != "" and newType != curType:
-            import MaKaC.webinterface.webFactoryRegistry as webFactoryRegistry
             wr = webFactoryRegistry.WebFactoryRegistry()
             factory = wr.getFactoryById(newType)
             wr.registerFactory(c,factory)
             dispMgr = displayMgr.ConfDisplayMgrRegistery().getDisplayMgr(c)
             styleMgr = info.HelperMaKaCInfo.getMaKaCInfoInstance().getStyleManager()
-            dispMgr.setDefaultStyle(styleMgr.getDefaultStylesheetForEventType(newType))
-    setValues = staticmethod( setValues )
+            dispMgr.setDefaultStyle(styleMgr.getDefaultStyleForEventType(newType))
+
+    @staticmethod
+    def validateShortURL(tag, target):
+        if tag.isdigit():
+            raise ValueError(_("Short URL tag is a number: '%s'. Please add at least one non-digit.") % tag)
+        if not re.match(r'^[a-zA-Z0-9/._-]+$', tag) or '//' in tag:
+            raise ValueError(
+                _("Short URL tag contains invalid chars: '%s'. Please select another one.") % tag)
+        if tag[0] == '/' or tag[-1] == '/':
+            raise ValueError(
+                _("Short URL tag may not begin/end with a slash: '%s'. Please select another one.") % tag)
+        mapper = ShortURLMapper()
+        if mapper.hasKey(tag) and mapper.getById(tag) != target:
+            raise ValueError(_("Short URL tag already used: '%s'. Please select another one.") % tag)
+        if conference.ConferenceHolder().hasKey(tag):
+            # Reject existing event ids. It'd be EXTREMELY confusing and broken to allow such a shorturl
+            raise ValueError(_("Short URL tag is an event id: '%s'. Please select another one.") % tag)
+        ep = endpoint_for_url(Config.getInstance().getShortEventURL() + tag)
+        if not ep or ep[0] != 'event.shorturl':
+            # URL does not match the shorturl rule or collides with an existing rule that does does not
+            # know about shorturls.
+            # This shouldn't happen anymore with the /e/ namespace but we keep the check just to be safe
+            raise ValueError(
+                _("Short URL tag conflicts with an URL used by Indico: '%s'. Please select another one.") % tag)
 
 
 class RHCategoryGetIcon(RHCategDisplayBase):
@@ -531,66 +533,45 @@ class RHCategoryGetIcon(RHCategDisplayBase):
         else:
             RHCategDisplayBase._checkProtection(self)
 
+    def _process(self):
+        icon = self._target.getIcon()
+        return send_file(icon.getFileName(), icon.getFilePath(), icon.getFileType())
+
+
+class RHCategoryToiCal(RHCategDisplayBase):
 
     def _process(self):
-        icon=self._target.getIcon()
-        self._req.headers_out["Content-Length"]="%s"%icon.getSize()
-        cfg=Config.getInstance()
-        mimetype=cfg.getFileTypeMimeType(icon.getFileType())
-        self._req.content_type="""%s"""%(mimetype)
-        self._req.headers_out["Content-Disposition"]="""inline; filename="%s\""""%icon.getFileName()
-        return self._target.getIcon().readBin()
+        filename = "%s-Categ.ics" % self._target.getName().replace("/", "")
 
-class RHCategoryOpenService(base.RH):
+        hook = CategoryEventHook({}, 'categ', {'idlist': self._target.getId(), 'dformat': 'ics'})
+        res = hook(self.getAW())
+        resultFossil = {'results': res[0]}
 
-    def _checkProtection(self):
-        pass
-
-    def _checkParams( self, params ):
-        l = locators.CategoryWebLocator( params )
-        self._target = l.getObject()
-
-    def _process(self):
-        # throw an error if the category was not found
-        if self._target == None:
-            from indico.web.wsgi import webinterface_handler_config as apache
-            self._req.status = apache.HTTP_NOT_FOUND
-            return "Specified category does not exist!"
-
-        return self._processData()
-
-class RHCategoryToiCal(RHCategoryOpenService):
-
-    def _processData( self ):
-        filename = "%s - Event.ics"%self._target.getName().replace("/","")
-        data = ""
-        data += CategoryToiCal(self._target, self).getBody()
-        self._req.headers_out["Content-Length"] = "%s"%len(data)
-        cfg = Config.getInstance()
-        mimetype = cfg.getFileTypeMimeType( "ICAL" )
-        self._req.content_type = """%s"""%(mimetype)
-        self._req.headers_out["Content-Disposition"] = """inline; filename="%s\""""%filename.replace("\r\n"," ")
-        return data
+        serializer = Serializer.create('ics')
+        return send_file(filename, StringIO(serializer(resultFossil)), 'ICAL')
 
 
-class RHCategoryToRSS(RHCategoryOpenService):
+class RHCategoryToRSS(RHCategDisplayBase):
 
-    def _getRSS( self, tz ):
-        return CategoryToRSS(self._target, self, tz=tz).getBody()
-
-    def _processData( self ):
-        data = ""
-        tz = DisplayTZ(self._aw).getDisplayTZ()
-        data += self._getRSS(tz)
-        cfg = Config.getInstance()
-        mimetype = cfg.getFileTypeMimeType( "RSS" )
-        self._req.content_type = """%s"""%(mimetype)
-        return data
+    def _process (self):
+        self._redirect(urlHandlers.UHCategoryToAtom.getURL(self._target), status=301)
 
 class RHTodayCategoryToRSS(RHCategoryToRSS):
 
-    def _getRSS( self, tz ):
-        return CategoryToRSS(self._target, self, date=nowutc().astimezone(timezone(tz)), tz=tz).getBody()
+    def _process( self ):
+        self._redirect(urlHandlers.UHCategoryToAtom.getURL(self._target), status=301)
+
+
+class RHCategoryToAtom(RHCategDisplayBase):
+    _uh = urlHandlers.UHCategoryToAtom
+
+    def _process(self):
+        filename = "%s-Categ.atom" % self._target.getName().replace("/", "")
+        hook = CategoryEventHook({'from': 'today'}, 'categ', {'idlist': self._target.getId(), 'dformat': 'atom'})
+        res = hook(self.getAW())
+        resultFossil = {'results': res[0], 'url': str(self._uh.getURL(self._target))}
+        serializer = Serializer.create('atom')
+        return send_file(filename, StringIO(serializer(resultFossil).encode('utf-8')), 'ATOM')
 
 
 def sortByStartDate(conf1,conf2):

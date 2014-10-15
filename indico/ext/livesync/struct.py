@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 # ZODB related imports
 from persistent import Persistent
@@ -179,6 +178,9 @@ class MultiPointerTrack(Persistent):
         return self.iterate(self._pointers[pid], till, func)
 
     def iterate(self, fromPos=None, till=None, func=(lambda x: x)):
+        """
+        Generator that iterates through the data structure
+        """
         if till != None:
             till = timestamp(till)
             # negative numbers mean "last but one", "last but two", etc...
@@ -189,10 +191,7 @@ class MultiPointerTrack(Persistent):
         if fromPos != None:
             fromPos = timestamp(fromPos)
 
-        it = self._container.iteritems(till, fromPos)
-
-        # consume a single position
-        for ts, entry in it:
+        for ts, entry in self._container.iteritems(till, fromPos):
             if fromPos and ts == fromPos:
                 # stop immediately if we're past fromPos
                 raise StopIteration
@@ -245,6 +244,11 @@ class MultiPointerTrack(Persistent):
 
         return self._pointerIterator(pid, lambda x: x, till=till)
 
+    def is_empty(self):
+        for __, ___ in self._container.iteritems():
+            return False
+        return True
+
     def movePointer(self, pid, pos):
         """
         Moves a given pointer (id) to a given timestamp
@@ -252,15 +256,10 @@ class MultiPointerTrack(Persistent):
         if pid not in self._pointers:
             raise KeyError("Pointer '%s' doesn't seem to exist!" % pid)
 
-        ts = timestamp(pos)
-
         # check that the tree has something
-        if len(self._container) == 0:
+        if self.is_empty():
             raise EmptyTrackException()
 
-        # logic should be inverted here, minKey is actually a maxKey,
-        # numerically - since our logics have inverted comparison, it
-        # ends up like this
         self._pointers[pid] = pos
 
     def __len__(self):

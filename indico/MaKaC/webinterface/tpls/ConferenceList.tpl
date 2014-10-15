@@ -1,112 +1,139 @@
 <% from MaKaC.conference import Conference %>
 <div class="eventList">
 
-	<% if material: %>
-		<span>
-			<%= material %>
-		</span>
-	<% end %>
+    % if material:
+        <span>
+            ${ material }
+        </span>
+    % endif
 
-    <% if numOfEventsInTheFuture > 0: %>
+    % if numOfEventsInTheFuture > 0:
     <div class="topBar" style="margin-bottom: 10px">
-        <div class="content smaller"><span id="futureEventsText">There are <%= numOfEventsInTheFuture %> more events in the <em>future</em>. <span class='fakeLink' onclick='toogleFutureEvents();'>Show them.</span></span></div>
+        <div class="content smaller">
+            <span id="futureEventsShow">
+                There are ${ numOfEventsInTheFuture } events in the <em>future</em>.
+                <span class="fakeLink futureEventsLink">Show them.</span>
+            </span>
+            <span id="futureEventsHide" style="display: none;">
+                <span class="fakeLink futureEventsLink">Hide</span> the events in the future (${ numOfEventsInTheFuture })
+            </span>
+        </div>
     </div>
-    <div id="futureEvents" style="visibility: hidden; overflow:hidden;">
-        <% includeTpl('ConferenceListEvents', items=futureItems, aw=self._aw, conferenceDisplayURLGen=conferenceDisplayURLGen) %>
-
+    <div id="futureEvents" style="display: none;">
+        <%include file="ConferenceListEvents.tpl" args="items=futureItems, aw=self_._aw, conferenceDisplayURLGen=conferenceDisplayURLGen"/>
     </div>
-    <% end %>
+    % endif
     <div>
-    <% includeTpl('ConferenceListEvents', items=presentItems, aw=self._aw, conferenceDisplayURLGen=conferenceDisplayURLGen) %>
+        <%include file="ConferenceListEvents.tpl" args="items=presentItems, aw=self_._aw, conferenceDisplayURLGen=conferenceDisplayURLGen"/>
     </div>
 
-    <% if numOfEventsInThePast > 0: %>
-    <div id="pastEvents" style="display:none"></div>
+    % if numOfEventsInThePast > 0:
+    <div id="pastEvents"></div>
 
     <div class="topBar">
-        <div class="content smaller"><span id="pastEventsText">There are <%= numOfEventsInThePast %> more events in the <em>past</em>. <span class='fakeLink' onclick='tooglePastEvents();'>Show them.</span><span id="loadingPast" class="loadingPast"><em>fetching past events...</em></span></span></div>
+        <div class="content smaller">
+            <span id="pastEventsText">
+                <span id="pastEventsShow" class="pastEventsControl">
+                    There are ${ numOfEventsInThePast } events in the <em>past</em>.
+                    <span class="fakeLink pastEventsLink">Show them.</span>
+                </span>
+                <span id="pastEventsHide" class="pastEventsControl" style="display: none;">
+                    <span class="fakeLink pastEventsLink">Hide</span> the events in the past (${ numOfEventsInThePast })
+                </span>
+                <span id="loadingPast" class="loadingPast"><em>fetching past events...</em></span>
+            </span>
+        </div>
     </div>
-    <% end %>
-
+    % endif
 </div>
 
 <script type="text/javascript">
     <!-- the following line is left in case we want to go back to the old implementation of the language selector -->
-    <!--$E('tzSelector').set(IndicoUI.Widgets.timezoneSelector('<%= urlHandlers.UHResetSession.getURL() %>'));-->
+    <!--$E('tzSelector').set(IndicoUI.Widgets.timezoneSelector('${ urlHandlers.UHResetSession.getURL() }'));-->
 
-    <% if numOfEventsInTheFuture > 0: %>
-    var futureSwitch = false;
-    var futureEvents = $E("futureEvents");
-    var futureEventsDivHeight=futureEvents.dom.offsetHeight;
-    futureEvents.dom.style.height = '0';
-    //futureEvents.dom.style.visibility = "visible";
-    futureEvents.dom.style.opacity = "0";
-    function toogleFutureEvents() {
-        if (futureSwitch) {
-            IndicoUI.Effect.slide("futureEvents", futureEventsDivHeight);
-            $E("futureEventsText").dom.innerHTML = "There are <%= numOfEventsInTheFuture %> more events in the <em>future</em>. <span class='fakeLink' onclick='toogleFutureEvents()'>Show them.</a>";
-        }else {
-            IndicoUI.Effect.slide("futureEvents", futureEventsDivHeight);
-            $E("futureEventsText").dom.innerHTML = '<span class="fakeLink" onclick="toogleFutureEvents()">Hide</span> the events in the future (<%= numOfEventsInTheFuture %>).';
+    // Future events
+    % if numOfEventsInTheFuture > 0:
+    $('.futureEventsLink').click(function() {
+        var fe = $('#futureEvents');
+        if (fe.is(':visible')) {
+            $('#futureEventsShow').show();
+            $('#futureEventsHide').hide();
+            fe.slideUp('medium');
         }
-        futureSwitch = !futureSwitch;
+        else {
+            $('#futureEventsHide').show();
+            $('#futureEventsShow').hide();
+            fe.slideDown('medium');
+        }
+
+    });
+    % endif
+
+    // Past events
+    % if numOfEventsInThePast > 0:
+    var numOfEventsInThePast = ${ numOfEventsInThePast };
+
+    function setShowPastEventsForCateg(show){
+        indicoRequest('category.setShowPastEventsForCateg', {
+            categId: '${ categ.getId() }',
+            showPastEvents: show
+        }, function() { });
     }
-    <%end%>
 
-    <% if numOfEventsInThePast > 0: %>
-    var callDone = false;
-    var pastSwitch = false;
-
-    function setShowPastEventsForCateg(value){
-        indicoRequest('category.setShowPastEventsForCateg',
-                {
-                    categId: '<%= categ.getId() %>',
-                    showPastEvents: value
-                },
-                function(result, error){}
-            )
-    }
-
-    function tooglePastEvents() {
-        if (!callDone) {
-            $E("loadingPast").dom.style.display = "inline";
-            fetchPastEvents()
-        }else {
-            if (pastSwitch) {
-                $E("pastEvents").dom.style.display = "none";
-                $E("pastEventsText").dom.innerHTML = "There are <%= numOfEventsInThePast %> more events in the <em>past</em>. <span class='fakeLink' onclick='tooglePastEvents()'>Show them.</a>";
+    $('.pastEventsLink').click(function() {
+        if (numOfEventsInThePast) {
+            // We need to fetch the events
+            setShowPastEventsForCateg(true);
+            fetchPastEvents();
+        }
+        else {
+            if ($('#pastEvents').is(':visible')) {
+                $('#pastEvents').hide();
+                $('#pastEventsHide').hide();
+                $('#pastEventsShow').show();
                 setShowPastEventsForCateg(false);
-            }else {
-                $E("pastEvents").dom.style.display = "inline";
-                $E("pastEventsText").dom.innerHTML = '<span class="fakeLink" onclick="tooglePastEvents()">Hide</span> the events in the past (<%= numOfEventsInThePast %>).';
+            }
+            else {
+                $('#pastEvents').show();
+                $('#pastEventsHide').show();
+                $('#pastEventsShow').hide();
                 setShowPastEventsForCateg(true);
             }
-            pastSwitch = !pastSwitch;
         }
-    }
-
+    });
 
     function fetchPastEvents() {
-        indicoRequest('category.getPastEventsList',
-                {
-                    categId: '<%= categ.getId() %>',
-                    lastIdx: '<%= numOfEventsInThePast %>'
-                },
-                function(result, error){
-                    if (!error) {
-                        callDone = true;
-                        $E("pastEvents").dom.innerHTML = result;
-                        $E("loadingPast").dom.style.display = "none";
-                        tooglePastEvents();
+        $('#loadingPast').show();
+        $('.pastEventsControl').hide();
+        indicoRequest('category.getPastEventsList', {
+            categId: '${ categ.getId() }',
+            lastIdx: numOfEventsInThePast
+        }, function(result, error){
+            if (result) {
+                numOfEventsInThePast -= result.num;
+                $.each(result.events, function(i, month) {
+                    var id = 'eventList-' + month.year + '-' + month.month;
+                    var eventListUL = $('#' + id);
+                    if(!eventListUL.length) {
+                        eventListUL = $('<ul/>', {id: id});
+                        eventListUL.appendTo('#pastEvents').before($('<h4/>').html(month.title));
                     }
+                    eventListUL.append($('<div/>').html(month.events.join('')).children());
+                });
+                if(numOfEventsInThePast > 0) {
+                    fetchPastEvents();
                 }
-            )
+                else {
+                    $('#loadingPast').hide();
+                    $('#pastEventsHide').show();
+                }
+            }
+        });
     }
-    <% if showPastEvents: %>
-        $E("loadingPast").dom.style.display = "inline";
-        fetchPastEvents()
-    <% end %>
+    % if showPastEvents:
+        fetchPastEvents();
+    % endif
 
-    <% end %>
+    % endif
 
 </script>

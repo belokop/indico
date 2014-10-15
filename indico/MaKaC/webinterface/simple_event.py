@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 from MaKaC.plugins.base import Observable
 
 import urllib
@@ -29,7 +28,7 @@ import MaKaC.webinterface.pages.conferences as conferences
 import MaKaC.webinterface.pages.material as material
 import MaKaC.webinterface.navigation as navigation
 import MaKaC.webinterface.displayMgr as displayMgr
-from MaKaC.common import Config
+from indico.core.config import Config
 from xml.sax.saxutils import quoteattr
 from MaKaC.webinterface.general import WebFactory
 from MaKaC.webinterface.pages.category import WPConferenceCreationMainData
@@ -37,6 +36,8 @@ from MaKaC.webinterface.materialFactories import ConfMFRegistry
 from MaKaC.webinterface import meeting
 from MaKaC.webinterface.pages import evaluations
 from MaKaC.i18n import _
+from indico.util.i18n import i18nformat
+from indico.util.date_time import format_date
 import MaKaC.common.timezoneUtils as timezoneUtils
 from pytz import timezone
 
@@ -86,29 +87,13 @@ class WebFactory(WebFactory):
         return WPSEConfModifAC(rh, conf)
     getConfModifAC = staticmethod(getConfModifAC)
 
-    def getConfModifTools(rh, conf):
-        return WPSEConfDisplayAlarm(rh, conf)
-    getConfModifTools = staticmethod(getConfModifTools)
-
-    def getConfModifBookings(rh, conf, bs):
-        return WPSEConfModifBookings(rh, conf, bs)
-    getConfModifBookings = staticmethod(getConfModifBookings)
-
     def getConfClone(rh, conf):
         return WPSEConfClone(rh, conf)
     getConfClone = staticmethod(getConfClone)
 
-    def getConfAddContribution(rh, conf, targetday):
-        return WPSEConfAddContribution(rh,conf, targetday)
-    getConfAddContribution = staticmethod(getConfAddContribution)
-
     def getMaterialDisplay( rh, material):
         return WPMMaterialDisplay(rh, material)
     getMaterialDisplay = staticmethod(getMaterialDisplay)
-
-    def getConferenceDisplayWriteMinutes(rh, contrib):
-        return WPSEConferenceDisplayWriteMinutes(rh,contrib)
-    getConferenceDisplayWriteMinutes = staticmethod(getConferenceDisplayWriteMinutes)
 
     @staticmethod
     def getDisplayFullMaterialPackage(rh, conf):
@@ -193,11 +178,10 @@ class WPMMaterialDisplayBase( conferences.WPConferenceDefaultDisplayBase):
         padding=""
         padding=""" style="padding:0px" """
 
-        body =  _("""
+        body =  i18nformat("""
                 <td class="confBodyBox" %s %s>
                     %s
-                    <table border="0" cellpadding="0" cellspacing="0"
-                                align="center" valign="top" width="95%%">
+                    <table border="0" cellpadding="0" cellspacing="0" valign="top" width="720px">
                         <tr>
                             <td><div class="groupTitle">_("Added Material")</div></td>
                         </tr>
@@ -233,21 +217,21 @@ class WMConfDisplayFrame(conferences.WConfDisplayFrame):
         adjusted_sDate = self._conf.getStartDate().astimezone(timezone(tz))
         adjusted_eDate = self._conf.getEndDate().astimezone(timezone(tz))
 
-        vars["confDateInterval"] = "from %s to %s (%s)"%(adjusted_sDate.strftime("%d %B %Y"), adjusted_eDate.strftime("%d %B %Y"), tz)
+        vars["confDateInterval"] = i18nformat("""_("from") %s _("to") %s (%s)""")%(format_date(adjusted_sDate, format='long'), format_date(adjusted_eDate, format='long'), tz)
 
         if self._conf.getStartDate().strftime("%d%B%Y") == \
                 self._conf.getEndDate().strftime("%d%B%Y"):
-            vars["confDateInterval"] = adjusted_sDate.strftime("%d %B %Y") + " (" + tz + ")"
+            vars["confDateInterval"] = format_date(adjusted_sDate, format='long') + " (" + tz + ")"
         elif self._conf.getStartDate().month == self._conf.getEndDate().month:
-            vars["confDateInterval"] = "%s-%s %s %s"%(adjusted_sDate.day, adjusted_eDate.day, adjusted_sDate.strftime("%B %Y"), tz)
+            vars["confDateInterval"] = "%s-%s %s %s"%(adjusted_sDate.day, adjusted_eDate.day, format_date(adjusted_sDate, format='MMMM yyyy'), tz)
         vars["body"] = self._body
         vars["confLocation"] = ""
         if self._conf.getLocationList():
             vars["confLocation"] =  self._conf.getLocationList()[0].getName()
             vars["supportEmail"] = ""
-        if self._conf.hasSupportEmail():
-            mailto = quoteattr("""mailto:%s?subject=%s"""%(self._conf.getSupportEmail(), urllib.quote( self._conf.getTitle() ) ))
-            vars["supportEmail"] =  _("""<a href=%s class="confSupportEmail"><img src="%s" border="0" alt="email">  _("support")</a>""")%(mailto, Config.getInstance().getSystemIconURL("mail") )
+        if self._conf.getSupportInfo().hasEmail():
+            mailto = quoteattr("""mailto:%s?subject=%s"""%(self._conf.getSupportInfo().getEmail(), urllib.quote( self._conf.getTitle() ) ))
+            vars["supportEmail"] =  i18nformat("""<a href=%s class="confSupportEmail"><img src="%s" border="0" alt="email">  _("support")</a>""")%(mailto, Config.getInstance().getSystemIconURL("mail") )
         format = displayMgr.ConfDisplayMgrRegistery().getDisplayMgr(self._conf).getFormat()
         vars["bgColorCode"] = format.getFormatOption("titleBgColor")["code"]
         vars["textColorCode"] = format.getFormatOption("titleTextColor")["code"]
@@ -257,16 +241,15 @@ class WMConfDisplayFrame(conferences.WConfDisplayFrame):
         self._body = body
         return wcomponents.WTemplated.getHTML( self, params )
 
+class WMMaterialDisplay(material.WMaterialDisplay):
+    pass
+
 class WPMMaterialDisplay( WPMMaterialDisplayBase):
     navigationEntry = navigation.NEMaterialDisplay
-    def __init__(self, rh, material):
-        WPMMaterialDisplayBase.__init__(self, rh, material)
-
 
     def _getBody( self, params ):
-        wc = material.WMaterialDisplay( self._getAW(), self._material )
-        pars = { "fileAccessURLGen": urlHandlers.UHFileAccess.getURL }
-        return wc.getHTML( pars )
+        wc = WMMaterialDisplay( self._getAW(), self._material )
+        return wc.getHTML()
 
 #################Conference Modification#############################
 
@@ -277,15 +260,9 @@ class WPSEConfModif(conferences.WPConferenceModification):
         pars = { "type": params.get("type",""), "conferenceId": self._conf.getId() }
         return wc.getHTML( pars )
 
+
 class WSEConfModifMainData(meeting.WMConfModifMainData):
-    def getVars(self):
-
-        #enable Evaluation by default
-        self._conf.enableSection('evaluation')
-
-        vars = conferences.WConfModifMainData.getVars( self )
-
-        return vars
+    pass
 
 
 #####Access Control # stays the same as conference for now
@@ -309,75 +286,20 @@ class WPSEConfClone(WPSEConfModifToolsBase, Observable):
 
     def _getTabContent( self, params ):
         p = conferences.WConferenceClone( self._conf )
-        pars = { \
-"cancelURL": urlHandlers.UHConfModifTools.getURL( self._conf ), \
-"cloneOnce": urlHandlers.UHConfPerformCloneOnce.getURL( self._conf ), \
-"cloneInterval": urlHandlers.UHConfPerformCloneInterval.getURL( self._conf ), \
-"cloneday": urlHandlers.UHConfPerformCloneDays.getURL( self._conf ), \
-"cloning" : urlHandlers.UHConfPerformCloning.getURL( self._conf ),
-"cloneOptions": _("""
+        pars = {
+            "cancelURL": urlHandlers.UHConfModifTools.getURL(self._conf),
+            "cloning": urlHandlers.UHConfPerformCloning.getURL(self._conf),
+            "cloneOptions": i18nformat("""
     <li><input type="checkbox" name="cloneParticipants" id="cloneParticipants" value="1" >
         _("Participants")</li>
-    <li><input type="checkbox" name="cloneAddedInfo" id="cloneAddedInfo" value="1" >
-                          _("send email to the participants of the created event")</li>
     <li><input type="checkbox" name="cloneEvaluation" id="cloneEvaluation" value="1" >
         _("Evaluation")</li>
-           """) }
+           """)
+        }
         #let the plugins add their own elements
         self._notify('addCheckBox2CloneConf', pars)
         return p.getHTML( pars )
 
-
-class WSEConfModifTools (conferences.WConfModifTools):
-    pass
-
-class WPSEConfModifBookings (conferences.WPConfModifBookings):
-    pass
-
-class WSEConfModifBookings (conferences.WConfModifBookings):
-    pass
-
-################## TimeTable, Contributions ####################
-
-
-### Add Contributions ##############
-class WPSEConfAddContribution(conferences.WPModScheduleNewContrib):
-
-    def __init__(self, rh, conf, targetDay):
-        conferences.WPConfAddContribution.__init__(self, rh, conf)
-        self._targetDay = targetDay
-
-
-    def _getTabContent( self, params ):
-        p = WSEContributionCreation( self._conf )
-        pars = {"postURL": urlHandlers.UHMConfPerformAddContribution.getURL(), \
-        "calendarIconURL": Config.getInstance().getSystemIconURL( "calendar" ), \
-        "calendarSelectURL":  urlHandlers.UHSimpleCalendar.getURL(), \
-        "targetDay": self._targetDay}
-        return p.getHTML(pars)
-
-
-class WSEContributionCreation(conferences.WContributionCreation):
-    def getVars( self ):
-        vars = conferences.WContributionCreation.getVars( self )
-        return vars
-
-#################### Material Modif #####################################
-
-#class WPSEMaterialDataModif (material.WPMaterialDataModification):
-#    def _applyFrame( self, body ):
-#        frame = WSEMaterialModifFrame( self._material, self._getAW() )
-#        return frame.getHTML( body, **p )
-
-#class WSEMaterialModifFrame (wcomponents.WMaterialModifFrame):
-#    pass
-
-#class WSEConfModifHeader(wcomponents.WConfModifHeader):
-#    raise 'hello'
-#    def getVars( self ):
-#        vars = wcomponents.WConfModifHeader.getVars( self )
-#        vars ["nessa"]="Lecture nessa"
-#        return vars
 
 #################### Event Creation #####################################
 class WPSimpleEventCreation( WPConferenceCreationMainData):
@@ -410,8 +332,7 @@ class WPSimpleEventDisplay( conferences.WPConferenceDisplayBase ):
                              "confId": self._conf.getId(),\
                              "currentView": "static",\
                              "type": WebFactory.getId(),\
-                             "dark": True,\
-                             "loginAsURL": self.getLoginAsURL() } )
+                             "dark": True } )
 
     def _getBody( self, params ):
         wc = WSimpleEventDisplay( self._getAW(), self._conf )
@@ -422,22 +343,6 @@ class WPSimpleEventDisplay( conferences.WPConferenceDisplayBase ):
     "subContribModifyURLGen":  urlHandlers.UHSubContribModification.getURL, \
     "materialURLGen": urlHandlers.UHMaterialDisplay.getURL }
         return wc.getHTML( pars )
-
-#class WSimpleEventDataModification(WConferenceDataModification):
-#
-#    def getVars( self ):
-#        vars = WConferenceDataModification.getVars( self )
-#        vars["event_type"] = WebFactory.getId()
-#        return vars
-
-
-#class WSimpleEventCreation(category.WConferenceCreation):
-#
-#    def getVars( self ):
-#        self._type = WebFactory.getId()
-#        vars = category.WConferenceCreation.getVars( self )
-#        vars["event_type"] = WebFactory.getId()
-#        return vars
 
 
 class WSimpleEventDisplay:
@@ -480,9 +385,8 @@ class WSimpleEventBaseDisplay(wcomponents.WTemplated):
         tz = tzUtil.getDisplayTZ()
         sdate = self._conf.getStartDate().astimezone(timezone(tz))
         edate = self._conf.getEndDate().astimezone(timezone(tz))
-        dformat, tformat = "%A %d %B %Y", "%H:%M"
-        fsdate, fedate = sdate.strftime(dformat), edate.strftime(dformat)
-        fstime, fetime = sdate.strftime(tformat), edate.strftime(tformat)
+        fsdate, fedate = format_date(sdate, format='full'), format_date(edate, format='full')
+        fstime, fetime = sdate.strftime("%H:%M"), edate.strftime("%H:%M")
         if sdate.strftime("%Y%B%d") == edate.strftime("%Y%B%d"):
             timeInterval = fstime
             if sdate.strftime("%H%M") != edate.strftime("%H%M"):
@@ -529,30 +433,10 @@ class WSimpleEventFullDisplay(WSimpleEventBaseDisplay):
 class WSimpleEventMinDisplay(WSimpleEventBaseDisplay):
     pass
 
-#################### Participants #####################################
-
-class WPSEConfModifParticipantsNewPending(WPSimpleEventDisplay,conferences.WPConfModifParticipantsNewPending):
-
-   def __init__(self, rh, conf):
-       WPSimpleEventDisplay.__init__(self, rh, conf)
-
-   def _getBody(self, params):
-       return conferences.WPConfModifParticipantsNewPending._getBody(self, params)
-
 #################### Evaluation #####################################
 
 class WPSEEvaluationBase( WPSimpleEventDisplay ):
     """[DisplayArea] Base class."""
-
-    def _getHeadContent( self ):
-        """import needed javascript"""
-        baseurl = self._getBaseURL()
-        return """
-        <!-- Tooltip -->
-        <script type="text/javascript" src="%s/js/tooltip/domLib.js"></script>
-        <script type="text/javascript" src="%s/js/tooltip/domTT.js"></script>
-        <script type="text/javascript" src="%s/js/tooltip/domTT_drag.js"></script>
-        """ % ( baseurl, baseurl, baseurl )
 
 class WPSEEvaluationDisplay (WPSEEvaluationBase, evaluations.WPEvaluationDisplay):
     """[Meeting] Evaluation default display."""
@@ -625,40 +509,6 @@ class WPSEEvaluationInactive (WPSEEvaluationBase, evaluations.WPEvaluationInacti
 
     def _getBody(self, params):
         return evaluations.WPEvaluationInactive._getBody(self, params)
-
-#################### Alarms #####################################
-
-class WPSEConfDisplayAlarm(WPSEConfModifToolsBase, conferences.WPConfDisplayAlarm):
-
-    def _getTabContent(self, params):
-        return conferences.WPConfDisplayAlarm._getTabContent(self, params)
-
-    def _setActiveTab( self ):
-        self._tabAlarms.setActive()
-
-
-class WPSEConfAddAlarm(WPSEConfModifToolsBase, conferences.WPConfAddAlarm ):
-
-    def __init__(self, rh, conf):
-        WPSEConfModifToolsBase.__init__(self, rh, conf)
-
-    def _getTabContent(self, params):
-        params["toAllParticipants"] = """
-        <tr>
-            <td>&nbsp;<input type="checkbox" name="toAllParticipants"></td>
-            <td>Send alarm to all participants of the event.</td>
-        </tr>
-        """
-        return conferences.WPConfAddAlarm._getTabContent(self, params)
-
-################# Minutes #########################################
-
-class WPSEConferenceDisplayWriteMinutes(WPSimpleEventDisplay):
-
-    def _getBody( self, params ):
-        wc = wcomponents.WWriteMinutes( self._conf )
-        pars = {"postURL": urlHandlers.UHConferenceDisplayWriteMinutes.getURL(self._conf) }
-        return wc.getHTML( pars )
 
 
 ######################## Get file package ######################

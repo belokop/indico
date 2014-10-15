@@ -1,16 +1,14 @@
-<ul>
-<% for (status, dateTime, eventTitle, eventId) in upcomingEvents: %>
-<li>
+<ul id="upcoming-event-list" class="main-page-list">
+    % for (status, dateTime, eventTitle, eventId) in upcomingEvents:
+    <li>
+      <a class="title" title="${ escape(eventTitle) }" href="${ urlHandlers.UHConferenceDisplay.getURL(confId=eventId) }">${ escape(eventTitle) }</a>
 
-  <a title="<%= escape(eventTitle) %>" href="<%= urlHandlers.UHConferenceDisplay.getURL(confId=eventId) %>"><%= truncateTitle(escape(eventTitle)) %></a>
+      % if status == 'ongoing':
+        <span class="timing">${ _("ongoing till") }&nbsp;${ self_.formatDateTime( dateTime ) }</span>
+      % else:
+        <span class="timing">${ _("starts") }&nbsp;${ self_.formatDateTime( dateTime ) }</span>
+      % endif
 
-  <% if status == 'ongoing': %>
-    <em><%= _("ongoing till") %>&nbsp;<%= self.formatDateTime( dateTime ) %></em>
-  <% end %>
-  <% else: %>
-    <em><%= _("starts") %>&nbsp;<%= self.formatDateTime( dateTime ) %></em>
-  <% end %>
-
-</li>
-<% end %>
+    </li>
+    % endfor
 </ul>

@@ -1,16 +1,34 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 
 type("TimetableLayoutManager", [],
      {
          _buildCheckpointTable: function(data) {
              /* Checkpoints are time points where events either start or end */
-             checkpoints = {};
-             var addCheckpoint = function(key, time, type, sessionId) {
+             var checkpoints = {};
+             var addCheckpoint = function(key, time, type, sessionId, sessionSlotId) {
 
                  if (!checkpoints[time]) {
                      checkpoints[time] = [];
                  }
-                 checkpoints[time].push([key, type, sessionId]);
+                 checkpoints[time].push([key, type, sessionId, sessionSlotId]);
              };
+
 
              // Enforce key ordering
              // In case we are dealing with structures that are inside a session,
@@ -34,16 +52,16 @@ type("TimetableLayoutManager", [],
 
              each(orderedKeys, function(key){
                  var value = data[key];
-                 sTime =value.startDate.time.replace(/:/g,'');
-                 eTime = value.endDate.time.replace(/:/g,'');
+                 var sTime = value.startDate.time.replace(/:/g,'');
+                 var eTime = value.endDate.time.replace(/:/g,'');
 
                  // If a poster session with a duration of > 7h then don't place
                  // it in the grid but rather on the top as a whole day event
                  if (value.isPoster && value.duration > (TimetableDefaults.wholeDay*60)) {
-                     addCheckpoint(key, sTime, 'wholeday', value.sessionId);
+                     addCheckpoint(key, sTime, 'wholeday', value.sessionId, value.sessionSlotId);
                  }
                  else {
-                     addCheckpoint(key, sTime, 'start', value.sessionId);
+                     addCheckpoint(key, sTime, 'start', value.sessionId, value.sessionSlotId);
 
                      if (eTime >= sTime) {
                          addCheckpoint(key, eTime, 'end');
@@ -55,14 +73,14 @@ type("TimetableLayoutManager", [],
                      }
                  }
              });
-
+             this.checkpoints = checkpoints;
              return checkpoints;
          },
 
          pointsBetween: function(hStart, hEnd) {
              var result = [];
 
-             each(checkpoints, function(points, time) {
+             each(this.checkpoints, function(points, time) {
                  if ((hStart == 'nextday' && time == 'nextday') ||
                      (hStart != 'nextday' && time > hStart && time < hEnd))
                  {
@@ -74,10 +92,11 @@ type("TimetableLayoutManager", [],
          },
 
          assign: function(assigned, block) {
+
              var ks = keys(assigned);
              ks.sort();
 
-             for (key in ks) {
+             for (var key in ks) {
                  if (!assigned[key]) {
                      block.assigned = key;
                      assigned[key] = block;
@@ -92,42 +111,49 @@ type("TimetableLayoutManager", [],
              assigned[newElem] = block;
          },
 
-         reorderAssigned: function(assigned, lastAssigned, currentGroup) {
+         reorderAssigned: function(assigned, lastAssigned, currentGroup, currentPos) {
+
+             var getLastAssignedId = function(block) {
+                return "{0}l{1}".format(block.sessionId, block.sessionSlotId);
+             };
 
              var correctlyAssigned = function(block) {
-                 return exists(lastAssigned[block.sessionId]) && lastAssigned[block.sessionId].col == block.assigned;
+                 return exists(lastAssigned[getLastAssignedId(block)]) && lastAssigned[getLastAssignedId(block)].col == block.assigned;
              };
 
              // Returns number of previously processed session slots
              var numAssignedBlocks = function(sessionId) {
-                 var blocks = lastAssigned[sessionId].blocks;
-                 var keyss = keys(blocks);
-                 var length = keyss.length;
-                 return length;
+                 return keys(lastAssigned[sessionId].blocks).length;
              };
 
              // Adds/updates a block in the lastAssigned dictionary
              var lastAssign = function(block, col) {
 
-                 if (!exists(lastAssigned[block.sessionId])) {
-                     lastAssigned[block.sessionId] = {'blocks': {}};
+                 if (!exists(lastAssigned[getLastAssignedId(block)])) {
+                     lastAssigned[getLastAssignedId(block)] = {'blocks': {}};
                  }
                  if (col !== undefined) {
-                     lastAssigned[block.sessionId].col = col;
+                     lastAssigned[getLastAssignedId(block)].col = col;
                  }
-                 lastAssigned[block.sessionId].blocks[block.id] = true;
+                 lastAssigned[getLastAssignedId(block)].blocks[block.id] = true;
              };
 
              // Changes the column of a block
              var reassign = function(block, col) {
+                 assigned[block.assigned] = null;
                  block.assigned = col;
                  assigned[col] = block;
-                 if (!exists(block.sessionId)) {
-                     lastAssign(block, col);
-                 }
+                 lastAssign(block, col);
              };
 
-             for (key in currentGroup) {
+             var swap_columns = function(block1, block2) {
+                 var block1_old_col = block1.assigned;
+                 reassign(block1, block2.assigned);
+                 reassign(block2, block1_old_col);
+                 assigned[block1.assigned] = block1;
+             };
+
+             for (var key in currentGroup) {
                  var block = currentGroup[key];
 
                  // If this is not a session slot (that is a block
@@ -137,44 +163,31 @@ type("TimetableLayoutManager", [],
                      continue;
                  }
 
-                 if (!exists(lastAssigned[block.sessionId])) {
+                 if (exists(lastAssigned[getLastAssignedId(block)])) {
+                     lastAssign(block);
+                 } else {
                      // This block has never been assigned before. Just update the lastAssigned.
                      lastAssign(block, block.assigned);
                      continue;
                  }
-
-                 lastAssign(block);
 
                  if (correctlyAssigned(block)) {
                      // The block has already got its prefered position
                      continue;
                  }
 
-                 var preferedCol = lastAssigned[block.sessionId].col;
+                 var preferedCol = lastAssigned[getLastAssignedId(block)].col;
                  var existingBlock = assigned[preferedCol];
 
-                 // If there's no block on the prefered column it means
-                 // that there are fewer columns this time.
+                 // If there's no block on the prefered column
                  if (!existingBlock) {
-                     // Forcing to use prefered column is not very nice
-                     // for now do nothing
-                     /*
-                     for (var i = preferedCol-1; i >= 0; i--) {
-                         if (!assigned[preferedCol]) {
-                             existingBlock = assigned[i];
-                             preferedCol = i;
-                             break;
-                         }
+                     // if the block starts at the current position, it is safe to move it to a free place
+                     // otherwise we can overlap an exisiting one
+                     if (block.start == currentPos && preferedCol < _(assigned).size()) {
+                         reassign(block, preferedCol);
                      }
-                     reassign(block, preferedCol);
-                     */
-                     continue;
-                 }
-
-                 // Try to place the block in the prefered column
-                 if (!exists(existingBlock.sessionId) || !exists(lastAssigned[existingBlock.sessionId]) ||
+                 } else if (!exists(existingBlock.sessionId) || !exists(lastAssigned[existingBlock.sessionId]) ||
                      numAssignedBlocks(block.sessionId) > numAssignedBlocks(existingBlock.sessionId)) {
-
                      // The block currently placed in the prefered column has either no prefered column
                      // or has a preferred column but has fewer previous placed session slots (this
                      // gives lower priority).
@@ -183,8 +196,7 @@ type("TimetableLayoutManager", [],
                      // otherwise there might be overlapping blocks. Is there a better way
                      // to handle this so that this check is not needed?
                      if (existingBlock.start == block.start) {
-                         reassign(existingBlock, block.assigned);
-                         reassign(block, preferedCol);
+                         swap_columns(existingBlock, block)
                      }
                  }
              }
@@ -203,7 +215,7 @@ type("TimetableLayoutManager", [],
          },
 
          addWholeDayBlock: function(blocks, key) {
-             block = blocks[key] = {id: key};
+             blocks[key] = {id: key};
          },
 
          getNumColumnsForGroup: function(group) {
@@ -217,7 +229,7 @@ type("TimetableLayoutManager", [],
          shouldShowRoom: function() {
              return true;
          },
-         reorderColumns:function() {
+         reorderColumns:function(group) {
          }
      }
     );
@@ -225,7 +237,8 @@ type("TimetableLayoutManager", [],
 
 type("IncrementalLayoutManager", ["TimetableLayoutManager"],
      {
-         drawDay: function(data, detailLevel, startTime, endTime) {
+         name: 'incremental',
+         drawDay: function(data, detailLevel, startTime, endTime, managementMode) {
              var self = this;
 
              this.eventData = data;
@@ -236,7 +249,7 @@ type("IncrementalLayoutManager", ["TimetableLayoutManager"],
 
              var ks = keys(checkpoints);
              ks.sort();
-
+             managementMode = any(managementMode, true);
              var startingHour, endingHour;
              if (ks.length > 1) {
                  startingHour = parseInt(ks[0].substring(0,2), 10);
@@ -274,22 +287,30 @@ type("IncrementalLayoutManager", ["TimetableLayoutManager"],
 
              var hEnd;
 
-             for (var minutes = 0; minutes < ((endingHour + 1 - startingHour) * 60); minutes += TimetableDefaults.resolution) {
+             if(managementMode){
+             //add hour before start if we are in management mode
+                 if (startingHour > 0) {
+                     for (var min = 0; min < 60 ; min += TimetableDefaults.resolution) {
+                         self.processTimeBlock(startingHour - 1, startingHour, (startingHour - 1) * 60, min, algData);
+                     }
+                 }
+             }
 
+             for (var minutes = 0; minutes < ((endingHour + 1 - startingHour) * 60); minutes += TimetableDefaults.resolution) {
                  // current block is [minutes, minutes + 5]
                  var startMin = (startingHour * 60 + minutes);
                  endMin = (startingHour * 60 + minutes + TimetableDefaults.resolution);
-                 var hStart = zeropad(parseInt(startMin/60, 10))+''+zeropad(startMin%60);
-                 hEnd = zeropad(parseInt(endMin/60, 10))+''+zeropad(endMin%60);
+                 var hStart = zeropad(parseInt(startMin / 60, 10)) + '' + zeropad(startMin % 60);
+                 hEnd = zeropad(parseInt(endMin / 60, 10)) + '' + zeropad(endMin % 60);
 
                  self.processTimeBlock(hStart, hEnd, startMin, minutes, algData);
-
              }
 
              if ($L(ks).indexOf('nextday') !== null) {
                  self.processTimeBlock('nextday', 'nextday', (startingHour * 60 + minutes), minutes, algData);
-             } else {
+             } else if (endMin/60 < 25 && managementMode){
                  // add last hour + 1 to the grid
+                 // (only if the next hour is not after midnight)
                  algData.grid.push([(endMin/60) % 24, algData.topPx]);
              }
 
@@ -303,7 +324,6 @@ type("IncrementalLayoutManager", ["TimetableLayoutManager"],
              });
 
              return [algData.topPx, algData.grid, algData.blocks, algData.groups, algData.wholeDayBlocks];
-
          }
 
      });
@@ -311,6 +331,7 @@ type("IncrementalLayoutManager", ["TimetableLayoutManager"],
 type("CompactLayoutManager", ["IncrementalLayoutManager"],
      {
 
+         name: 'compact',
          processTimeBlock: function(hStart, hEnd, startMin, minutes, algData) {
              var self = this;
 
@@ -322,6 +343,8 @@ type("CompactLayoutManager", ["IncrementalLayoutManager"],
              var smallBlockList = [];
 
              var pxStep = Math.floor(TimetableDefaults.layouts.compact.values.pxPerHour*TimetableDefaults.resolution/60);
+
+             var endPoints = [];
 
              each(points, function(point) {
                  if (point[1] == 'end') {
@@ -353,6 +376,9 @@ type("CompactLayoutManager", ["IncrementalLayoutManager"],
                              block.unfinished = true;
                          }
 
+                         // save reference for all blocks that end here, will use it below
+                         endPoints.push(block);
+
                      } else {
                          // otherwise, it is ending just before it starts:
                          // this means that the duration is less than our "resolution"
@@ -361,6 +387,16 @@ type("CompactLayoutManager", ["IncrementalLayoutManager"],
                      }
                  }
              });
+
+             if (endPoints.length) {
+                 // now every block that ends at this point must have the same 'end"
+                 // since some of them may have been expanded ('diff' above), we need to set them all
+                 // to the max value
+                 var maxPx = _(endPoints).max(function(block){ return block.end; }).end;
+                 _(endPoints).each(function(block) {
+                     block.end = maxPx;
+                 });
+             }
 
              if (minutes % 60 === 0) {
                  algData.grid.push([startMin/60%24, algData.topPx]);
@@ -382,6 +418,7 @@ type("CompactLayoutManager", ["IncrementalLayoutManager"],
 
                      block = self.getBlock(algData.blocks, point[0]);
                      block.sessionId = point[2];
+                     block.sessionSlotId = point[3];
 
                      block.start = algData.topPx;
                      algData.active++;
@@ -392,9 +429,9 @@ type("CompactLayoutManager", ["IncrementalLayoutManager"],
                  }
              });
 
-             // Try to reaorder the assigned blocks based on their previous position
+             // Try to reaorder the assigned blocks based on their session siblings' position
              if (blockAdded) {
-                 self.reorderAssigned(algData.assigned, algData.lastAssigned, algData.currentGroup);
+                 self.reorderAssigned(algData.assigned, algData.lastAssigned, algData.currentGroup, algData.topPx);
              }
 
              if (algData.active > 0) {
@@ -420,7 +457,7 @@ type("CompactLayoutManager", ["IncrementalLayoutManager"],
 
 type("ProportionalLayoutManager", ["IncrementalLayoutManager"],
      {
-
+         name: 'proportional',
          processTimeBlock: function(hStart, hEnd, startMin, minutes, algData) {
              var self = this;
 
@@ -432,7 +469,6 @@ type("ProportionalLayoutManager", ["IncrementalLayoutManager"],
 
              var pxStep = Math.floor(TimetableDefaults.layouts.proportional.values.pxPerHour*TimetableDefaults.resolution/60);
              var smallBlocks = [];
-
 
              each(points, function(point) {
 
@@ -467,8 +503,9 @@ type("ProportionalLayoutManager", ["IncrementalLayoutManager"],
                  }
              });
 
-             if (minutes % 60 === 0) {
-                 algData.grid.push([startMin/60%24, algData.topPx]);
+             var hour = startMin / 60;
+             if (minutes % 60 === 0 && hour <= 24) {
+                 algData.grid.push([hour % 24, algData.topPx]);
              }
 
              if (!algData.active) {
@@ -482,7 +519,6 @@ type("ProportionalLayoutManager", ["IncrementalLayoutManager"],
              each(points, function(point) {
                  if (point[1] == 'start') {
                      block = self.getBlock(algData.blocks, point[0]);
-
                      block.start = algData.topPx;
                      algData.active++;
                      self.assign(algData.assigned, block);
@@ -502,7 +538,9 @@ type("ProportionalLayoutManager", ["IncrementalLayoutManager"],
              }
 
              algData.topPx += pxStep;
+
          }
+
      });
 
 type("RoomLayoutManager", ["CompactLayoutManager"],
@@ -541,7 +579,7 @@ type("RoomLayoutManager", ["CompactLayoutManager"],
                 counter++;
             });
 
-            for (key in currentGroup) {
+            for (var key in currentGroup) {
                 var block = currentGroup[key];
                 var roomName = this.eventData[block.id].room;
              // If there is no room name, the block will be in the column 0 (and take all the available width)
@@ -566,7 +604,7 @@ type("RoomLayoutManager", ["CompactLayoutManager"],
             var roomNames = keys(this.roomsCols);
             var cols = roomNames.length;
             var borderPixels = 1; // this is because of the separators between the room names
-            return Html.div({style:{marginLeft:pixels(TimetableDefaults.leftMargin), paddingBottom:pixels(10), paddingTop:pixels(10)}},
+            return Html.div({style:{marginLeft:pixels(TimetableDefaults.leftMargin), paddingBottom:pixels(10), paddingTop:pixels(20)}},
                     translate(roomNames, function(key){
                         return Html.div({className: "headerRoomLayoutTimeTable",
                                          style:{width:pixels(Math.floor((width-TimetableDefaults.leftMargin)/cols)-borderPixels)}
@@ -591,4 +629,3 @@ type("PosterLayoutManager", ["TimetableLayoutManager"],
             return data;
         }
     });
-

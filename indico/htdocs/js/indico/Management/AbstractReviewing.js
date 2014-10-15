@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 
 //Widget to change the scale in abstract reviewing
 type("ScaleEditWidget", ["InlineEditWidget"],
@@ -8,7 +25,7 @@ type("ScaleEditWidget", ["InlineEditWidget"],
             __buildStructure: function(minValue, maxValue, warning) {
 
                 var div = Html.div({style:{paddingLeft:'2px'}});
-                var spanTitle = Html.span({className:'dataCaptionFormat'},"Scale for each answer: ")
+                var spanTitle = Html.span({className:'dataCaptionFormat'},"Scale for each answer: ");
                 var structure = Html.table({},
                                     Html.tbody({},
                                         Html.tr({},Html.td("supportEntry", "From :"),
@@ -16,7 +33,7 @@ type("ScaleEditWidget", ["InlineEditWidget"],
                                         Html.tr({},Html.td("supportEntry", "To :"),
                                             Html.td({}, maxValue))));
                 div.append(spanTitle);
-                div.append(structure)
+                div.append(structure);
                 if (warning) { // edit mode
                     div.append(warning);
                 }
@@ -50,10 +67,10 @@ type("ScaleEditWidget", ["InlineEditWidget"],
                     return false;
                 }
                 if (parseInt(this.min.dom.value) >= parseInt(this.max.dom.value)) {
-                    alert("The \"From\" value must be lower than \"To\" value.");
+                    new AlertPopup($T("Warning"), $T("The \"From\" value must be lower than \"To\" value.")).open();
                     return false;
                 } else if ((parseInt(this.max.dom.value) - parseInt(this.min.dom.value)) > 100) {
-                    alert("The maximun difference between limits is 100 units.");
+                    new AlertPopup($T("Warning"), $T("The maximun difference between limits is 100 units.")).open();
                     return false;
                 }
                 return true;
@@ -92,8 +109,7 @@ type("NumberAnswersEditWidget", ["InlineEditWidget"],
                 this.__parameterManager.add(this.num, 'unsigned_int', false, function(value){
 
                     if (value > 20 || value < 2) {
-                        var error = Html.span({}, "Number must be in a range between 2 and 20");
-                        return error;
+                        return Html.span({}, "Number must be in a range between 2 and 20");
                     } else {
                         return null;
                     }
@@ -113,10 +129,7 @@ type("NumberAnswersEditWidget", ["InlineEditWidget"],
             },
 
             _verifyInput: function() {
-                if (!this.__parameterManager.check()) {
-                    return false;
-                }
-                return true;
+                return this.__parameterManager.check();
             },
 
             _handleSuccess: function() {
@@ -126,7 +139,7 @@ type("NumberAnswersEditWidget", ["InlineEditWidget"],
         },
 
         function(method, attributes, initValue) {
-            this.InlineEditWidget(method, attributes, initValue);
+            this.InlineEditWidget(method, attributes, initValue, true);
             this.__parameterManager = new IndicoUtil.parameterManager();
         });
 
@@ -135,7 +148,7 @@ type("NumberAnswersEditWidget", ["InlineEditWidget"],
 type("ExampleQuestionWidget", ["InlineWidget"],
         {
             draw: function() {
-                this.numReq += 1;
+
                 var self = this;
                 // Request to get the new values of number of answers and labels
                 indicoRequest(this.method, this.attributes,
@@ -147,17 +160,12 @@ type("ExampleQuestionWidget", ["InlineWidget"],
                                 var content = Html.div({className:'questionPreview'});
                                 content.append(Html.span(null,question));
                                 content.append(Html.br());
-                                content.append(new RadioButtonPreviewQuestion(
-                                        numberAnswers,
-                                        labels,
-                                        self.numReq).draw());
-                                $E('inPlaceShowExample').set(content);
-                                for (var j=0; j<numberAnswers.length; j++) {
-                                    $E("_GID"+self.numReq+"_" + j).dom.onmouseover = function(event) {
-                                        var value = rbValues[this.defaultValue];
-                                        IndicoUI.Widgets.Generic.tooltip(this, event, "<span style='padding:3px'>"+value+"</span>");
-                                    };
-                                }
+                                var rbuttons = new RadioButtonSimpleField(null, numberAnswers, labels, rbValues);
+                                content.append(rbuttons.draw());
+
+                                $E(self.divId).set(content);
+
+                                rbuttons.addRBTitles();
                             } else {
                                 IndicoUtil.errorReport(error);
                             }
@@ -165,11 +173,11 @@ type("ExampleQuestionWidget", ["InlineWidget"],
                  }
         },
 
-        function(method, attributes) {
+        function(method, attributes, divId) {
             this.method = method;
             this.attributes = attributes;
-            this.numReq = 0;
             this.InlineWidget();
+            this.divId = divId;
         });
 
 
@@ -211,15 +219,15 @@ type("RadioButtonSimpleField", ["ErrorAware"],
 
             draw: function() {
 
-                var groupName = Html.generateId(); // The common name for all the radio buttons
+                this.groupName = Html.generateId(); // The common name for all the radio buttons
 
                 var radioButtons = []; // List of radio buttons
 
                 for (var i=0; i<this.options.length; i++) {
                     // For every option we create a radio button
                     var rb = Html.radio({
-                        name: groupName,
-                        id: groupName + "_" + i,
+                        name: this.name,
+                        id: this.groupName + "_" + i,
                         className: "radioButtonAnswer"
                     });
                     rb.dom.value = this.options[i]; //For some reason we have to set the value like this and not in the constructor for it to work in IE
@@ -250,7 +258,7 @@ type("RadioButtonSimpleField", ["ErrorAware"],
                     cell1.dom.vAlign = 'bottom';
                     cell1.dom.align = 'center';
                     cell1.append(Html.label({
-                        htmlFor: groupName + "_" + l
+                        htmlFor: this.groupName + "_" + l
                     }, this.labels[l]));
                     row1.append(cell1);
 
@@ -259,7 +267,7 @@ type("RadioButtonSimpleField", ["ErrorAware"],
                     row2.append(cell2);
                 }
 
-                cellMessage = Html.td();
+                var cellMessage = Html.td();
                 cellMessage.dom.style.verticalAlign = "middle";
                 cellMessage.dom.rowSpan = 2;
 
@@ -271,77 +279,30 @@ type("RadioButtonSimpleField", ["ErrorAware"],
                 }
 
                 this.radioButtons = radioButtons;
+
                 return table;
+            },
+
+            addRBTitles: function() {
+                var self = this;
+                // Add the titles for the radio buttons
+                for (var i=0; i<this.radioButtons.length; i++) {
+                    $E(this.radioButtons[i].dom.id).dom.onmouseover = function(event) {
+                        var value = self.rbValues[this.defaultValue];
+                        IndicoUI.Widgets.Generic.tooltip(this, event, "<span style='padding:3px'>"+value+"</span>");
+                    };
+                }
             }
         },
 
-        function(element, options, labels, initialValue, handler) {
+        function(element, options, labels, rbValues, name, initialValue, handler) {
             this.element = element;
             this.options = options;
             this.labels = labels;
             this.initialValue = initialValue;
             this.handler = handler;
-        });
-
-
-type("RadioButtonPreviewQuestion", [],
-        {
-            draw: function() {
-
-                var groupName = "_GID"+this.numId; // The common name for all the radio buttons
-
-                var radioButtons = []; // List of radio buttons
-
-                for (var i=0; i<this.options.length; i++) {
-                    // For every option we create a radio button
-                    var rb = Html.radio({
-                        name: groupName,
-                        id: groupName + "_" + i,
-                        className: "radioButtonAnswer"
-                    });
-                    rb.dom.value = this.options[i]; //For some reason we have to set the value like this and not in the constructor for it to work in IE
-                    radioButtons.push(rb);
-                }
-
-                Logic.onlyOne(radioButtons, false); //Ensures that only 1 radio button will be selected at a given time
-
-                var table = Html.table();
-                table.dom.style.display = 'inline';
-                var tbody = Html.tbody();
-                table.set(tbody);
-
-                var row1 = Html.tr();
-                var row2 = Html.tr();
-
-                for (var l = 0; l < radioButtons.length; l++) {
-                    var cell1 = Html.td();
-                    cell1.dom.vAlign = 'bottom';
-                    cell1.dom.align = 'center';
-                    cell1.append(Html.label({
-                        htmlFor: groupName + "_" + l
-                    }, this.labels[l]));
-                    row1.append(cell1);
-
-                    var cell2 = Html.td();
-                    cell2.append(radioButtons[l]);
-                    row2.append(cell2);
-                }
-
-                cellMessage = Html.td();
-                cellMessage.dom.style.verticalAlign = "middle";
-                cellMessage.dom.rowSpan = 2;
-
-                tbody.append(row1);
-                tbody.append(row2);
-
-                return table;
-            }
-        },
-
-        function(options, labels, numId) {
-            this.options = options;
-            this.labels = labels;
-            this.numId = numId;
+            this.rbValues = rbValues;
+            this.name = name;
         });
 
 
@@ -380,7 +341,7 @@ type("ManageListOfElements", [],
 
                 var self = this;
 
-                var popup = new ConfirmPopup(title, popupContent,
+                return new ConfirmPopup(title, popupContent,
                         function(action) {
                             if (action) {
                                 var attr = self.attributes;
@@ -391,19 +352,15 @@ type("ManageListOfElements", [],
                                 self._buildStructure(method, attr);
                             }
                         }, buttonText);
-                return popup;
             },
 
             _createSpecialRemovePopup: function(method, spanId, popupContent, title, button1, button2) {
 
                 var self = this;
 
-                var popup = new SpecialRemovePopup(title, popupContent,
+                return new SpecialRemovePopup(title, popupContent,
                         function(option) {
-                            if (option == 0) {
-                                // close popup option
-                                null;
-                            } else {
+                            if (option != 0) { // == 0 means close popup
                                 var attr = self.attributes;
                                 attr['id'] = spanId;
 
@@ -418,8 +375,6 @@ type("ManageListOfElements", [],
                                 self._buildStructure(method, attr);
                             }
                         }, button1, button2);
-
-                return popup;
             },
 
 
@@ -449,24 +404,24 @@ type("ManageListOfElements", [],
 
                     for (var i=0; i < result.length; i++) {
                         tr = Html.tr({className: 'infoTR'});
-                        tdElement = Html.td({className: 'questionContent'}, result[i].text);
-                        tdElement.dom.id = "TEID_"+result[i].id;
+                        var tdElement = Html.td({className: 'questionContent'}, result[i].text);
+                        tdElement.dom.id = "TEID_"+this.divsIdRoot+"_"+result[i].id;
 
                         // 'Edit' elements and functionality
                         tdEdit = Html.td({className: 'content'});
                         var spanEdit = Html.span({className: 'link'},'Edit');
-                        spanEdit.dom.id = "QEID_"+result[i].id; // Set the span id with the question id included
+                        spanEdit.dom.id = "QEID_"+this.divsIdRoot+"_"+result[i].id; // Set the span id with the question id included
                         spanEdit.dom.name = result[i].text;
                         spanEditList.push(spanEdit);
                         tdEdit.append(spanEdit);
 
                         spanEditList[i].observeClick(function(event) {
                             if (event.target) { // Firefox
-                                var spanId = event.target.id.split('_')[1];
+                                var spanId = event.target.id.split('_')[2];
                             } else { // IE
-                                var spanId = event.srcElement.id.split('_')[1];
+                                var spanId = event.srcElement.id.split('_')[2];
                             }
-                            var previousText = $E('TEID_'+spanId).dom.innerHTML;
+                            var previousText = $E('TEID_'+self.divsIdRoot+"_"+spanId).dom.innerHTML;
                             var popupContent = Html.textarea({id:'modifyArea', cols:'40', rows:'7'}, previousText);
                             var popup = self._createConfirmPopup(self.methods.edit, spanId, previousText, popupContent, 'Edit '+self.kindOfElement, 'Save');
                             popup.open();
@@ -475,15 +430,15 @@ type("ManageListOfElements", [],
                         // 'Remove' elements and functionality
                         tdRemove = Html.td({className: 'content'});
                         var spanRemove = Html.span({className: 'link'},'Remove');
-                        spanRemove.dom.id = "QRID_"+result[i].id; // Set the span id with the question id included
+                        spanRemove.dom.id = "QRID_"+this.divsIdRoot+"_"+result[i].id; // Set the span id with the question id included
                         spanRemoveList.push(spanRemove);
                         tdRemove.append(spanRemove);
 
                         spanRemoveList[i].observeClick(function(event){
                             if (event.target) { // Firefox
-                                var spanId = event.target.id.split('_')[1];
+                                var spanId = event.target.id.split('_')[2];
                             } else { // IE
-                                var spanId = event.srcElement.id.split('_')[1];
+                                var spanId = event.srcElement.id.split('_')[2];
                             }
                             var attr = self.attributes;
                             attr['value'] = spanId;
@@ -546,4 +501,60 @@ type("ManageListOfElements", [],
             this.kindOfElement = kindOfElement;
             this.divsIdRoot = divsIdRoot;
             this.specialRemove = specialRemove;
+        });
+
+
+
+/* Class manager to show questions in the abstract reviewing
+@param divId: Identifier of the div destination
+@param numQuestions: number of questions
+@param reviewingQuestions: questions dictionary
+@param range: range for the number of radio buttons
+@param labels: labels shown over between the question and the radio buttons to inform the user of the first and last possible values
+@param numAnswers: number of radio buttons (possible answers)
+@param rbValues: titles for each radio button
+@return none. the div is built inside the showQuestions method
+*/
+type("QuestionsManager", [],
+        {
+            showQuestions: function() {
+
+                var newDiv;
+
+                $E(divId).set('');
+                for (var i=0; i<this.numQuestions; i++) {
+                    newDiv = Html.div({style:{marginLeft:'10px'}});
+                    newDiv.append(Html.span(null, this.reviewingQuestions[i].text));
+                    newDiv.append(Html.br());
+
+                    var name = 'RB_' + (i+1); // Name of the rb component
+
+                    var rbsf = new RadioButtonSimpleField(null, this.range, this.labels, this.rbValues, name);
+                    rbsf.plugParameterManager(this.questionPM);
+                    newDiv.append(rbsf.draw());
+
+                    $E(divId).append(newDiv);
+                    $E(divId).append(Html.br());
+                    rbsf.addRBTitles();
+                }
+            },
+
+            checkQuestionsAnswered: function() {
+                if(this.questionPM.check()) {
+                    return true;
+                }
+                new AlertPopup($T("Warning"), $T("Please answer all questions.")).open();
+                return false;
+            }
+        },
+
+        function(divId, numQuestions, reviewingQuestions, range, labels, numAnswers, rbValues) {
+            this.divId = divId;
+            this.numQuestions = numQuestions;
+            this.reviewingQuestions = reviewingQuestions;
+            this.range = range;
+            this.labels = labels;
+            this.numAnswers = numAnswers;
+            this.rbValues = rbValues;
+            this.questionPM = new IndicoUtil.parameterManager();
         });

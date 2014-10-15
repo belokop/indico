@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 var addedWebkitJqueryFixDiv = false;
 
 type("IWidget", [],
@@ -201,6 +218,19 @@ type("SelectableListWidget", ["ListWidget"],
             this.selectedList.clear();
         },
 
+        selectAll: function() {
+            var self = this;
+            each(self.domList, function(listItem) {
+                listItem.dom.className = self.selectedCssClass;
+            });
+            each(self, function(value, key) {
+                self.selectedList.set(key, value);
+            });
+            if (exists(self.selectedObserver)) {
+                self.selectedObserver(self.selectedList);
+            }
+        },
+
         /**
          * We cannot call this function "clear" because
          * WatchObject's "clear" is defined in the WatchObject constructor
@@ -220,10 +250,26 @@ type("SelectableListWidget", ["ListWidget"],
             this.ListWidget.prototype.setMessage.call(this, message);
         },
 
-        draw: function() {
+        selectItem: function(listItem, pair){
             var self = this;
+            if (exists(self.selectedList.get(pair.key))) {
+                self.selectedList.set(pair.key, null);
+                listItem.dom.className = self.unselectedCssClass;
+            } else {
+                if (self.onlyOne) {
+                    self.clearSelection();
+                }
+                self.selectedList.set(pair.key, pair.get());
+                listItem.dom.className = self.selectedCssClass;
+            }
 
-            var returnedDom = $B(self.domList, self,
+            if (exists(self.selectedObserver)) {
+                self.selectedObserver(self.selectedList);
+            }
+        },
+
+        getReturnedDOM: function(self) {
+            var dom = $B(self.domList, self,
 
                 function(pair) {
 
@@ -233,24 +279,7 @@ type("SelectableListWidget", ["ListWidget"],
                         listItem.dom.className += ' unselectable';
 
                     } else {
-                        listItem.observeClick(function(event){
-
-                            if (exists(self.selectedList.get(pair.key))) {
-                                self.selectedList.set(pair.key, null);
-                                listItem.dom.className = self.unselectedCssClass;
-                            } else {
-                                if (self.onlyOne) {
-                                    self.clearSelection();
-                                }
-                                self.selectedList.set(pair.key, pair.get());
-                                listItem.dom.className = self.selectedCssClass;
-                            }
-
-                            if (exists(self.selectedObserver)) {
-                                self.selectedObserver(self.selectedList);
-                            }
-
-                        });
+                        listItem.observeClick(function(event){self.selectItem(listItem, pair)});
                     }
                     if (exists(self.mouseoverObserver)) {
                         listItem.observeEvent('mouseover', function(event){
@@ -266,6 +295,13 @@ type("SelectableListWidget", ["ListWidget"],
             if (exists(this.message)) {
                 this.domList.append(Html.li('listMessage', this.message));
             }
+
+            return dom;
+        },
+
+        draw: function() {
+            var self = this;
+            var returnedDom = self.getReturnedDOM(self);
 
             return this.IWidget.prototype.draw.call(this, returnedDom);
         },
@@ -292,6 +328,682 @@ type("SelectableListWidget", ["ListWidget"],
         this.ListWidget(listCssClass, mouseoverObserver);
     }
 );
+
+/**
+ * Extension to SelectableListWidget to provide lazy-loading-esque functionality,
+ * by requesting an Indico API method (and its args) to be passed as an arguement
+ * which allows the contents of this list to be extended by an interval (set
+ * either at instantiation or during execution via setInteval(int). For situations
+ * whereby it is anticipated that a lot of data may be returned to do so
+ * gradually.
+ */
+type("SelectableDynamicListWidgetBase", ["SelectableListWidget"],
+    {
+        interval: null,
+        offset: 0,
+        itemsBuffer: [],
+        tmpBuffer: null,
+        APIMethod: null,
+        APIArgs: null,
+        ajaxPending: null,
+        complete: false,
+
+        draw: function() {
+            var self = this;
+            var returnedDom = self.getReturnedDOM(self);
+
+            return [this.SelectableListWidget.prototype.draw.call(this, returnedDom),
+                    self.getListActions()];
+        },
+
+        /**
+         * Sets internal flag to denote that all records have been retrieved,
+         * do not try to perform any more server calls.
+         */
+        _setComplete: function() {
+            var self = this;
+            self.complete = true;
+        },
+
+        /**
+         * Returns boolean if all records retrieved.
+         */
+        _isComplete: function() {
+            return this.complete;
+        },
+
+        /**
+         * To be implemented as per requirement, for progress indicators etc.
+         */
+        _waitHandler: function() {
+            var self = this;
+            self.progress.dom.style.display = 'block';
+        },
+
+        /**
+         * Append another subset of values of size k = this.interval to the
+         * existing buffer of results.
+         */
+        loadInterval: function() {
+            var self = this;
+            var args = self.APIArgs;
+
+            if (self._isComplete()) {
+                return true;
+            }
+
+            self._waitHandler();
+            args.limit = self.interval;
+            args.offset = self.offset;
+
+            self.ajaxPending = $.Deferred();
+            self._performCall(args);
+
+            $.when(self.ajaxPending).done(function() {
+                self.itemsBuffer = self.itemsBuffer.concat(self.tmpBuffer);
+                self._updateDraw();
+            });
+
+            return true;
+        },
+
+        /**
+         * Clears the internal buffer and retrieves all the records associated
+         * to the API query. May take some time to complete.
+         */
+        loadAll: function() {
+            var self = this;
+            var args = self.APIArgs;
+
+            if (self._isComplete()) {
+                return true;
+            }
+
+            self._waitHandler();
+            args.limit = null;
+            args.offset = self.offset;
+
+            self.ajaxPending = $.Deferred();
+            self._performCall(args);
+
+            $.when(self.ajaxPending).done(function() {
+                self.itemsBuffer = self.itemsBuffer.concat(self.tmpBuffer);
+                self.clearList();
+                self._setComplete();
+                self._updateDraw();
+            });
+
+            return true;
+        },
+
+        /**
+         * Returns true if this implementation has an active waiting object.
+         */
+        _hasAjaxPending: function() {
+            return (self.ajaxPending !== null);
+        },
+
+        _updateOffset: function() {
+            self.offset += this.getInterval();
+        },
+
+        /**
+         * Set the parent object's items based on this item buffer and draw
+         * the result.
+         */
+        _updateDraw: function() {
+            var self = this;
+            self.tmpBuffer = null;
+            self.ajaxPending = null;
+            self._updateOffset();
+            self._setItems(self.itemsBuffer);
+            $(self.progress.dom).hide();
+            $('#sdlw-load').show();
+            return self.draw();
+        },
+
+        /**
+         * Returns 'Load More' and 'Load All' links with observers
+         * as entries.
+         */
+        getListActions: function() {
+            var self = this;
+            var noMoreEntries = Html.span({id: 'sdlw-complete'}, self.noMoreEntriesMsg);
+            var load = Html.span({id: 'sdlw-load', style: {'display': 'none'}});
+
+            if (self._isComplete()) {
+                $('div#sdlw-actions').html(noMoreEntries.get());
+                $('div#sdlw-actions').attr('class', 'sdlw-complete');
+                return;
+            }
+
+            var progressSpan = Html.div({id: 'sdlw-progress'}, self.progress);
+            var loadMore = Html.span({
+                className: 'fakeLink'},
+                $T("See " + self.getInterval() + " results more"));
+            var loadAll = Html.span({
+                className: 'fakeLink'},
+                $T("See all"));
+
+            loadMore.observeClick(function(evt) {
+                $(load.dom).hide();
+                progressSpan.set(self.progress);
+                self.loadInterval();
+            });
+
+            loadAll.observeClick(function(evt) {
+                $(load.dom).hide();
+                progressSpan.set(self.progress);
+                self.loadAll();
+            });
+
+            load.append(loadMore);
+            load.append(' - ');
+            load.append(loadAll);
+
+            return Html.div({id: 'sdlw-actions'}, load, progressSpan);
+        },
+
+        /**
+         * Sets the interval at runtime, whether or not already set at object
+         * instantiation.
+         */
+        setInterval: function(interval) {
+            this.interval = interval;
+        },
+
+        /**
+         * Returns integer value of iteration for stepping through results.
+         */
+        getInterval: function() {
+            return this.interval;
+        },
+
+        /**
+         * To be overloaded - propagate structures accordingly
+         */
+        _performCall: function(args) {
+            var errorMsg = "_performCall not overloaded in subclass.";
+            IndicoUtil.errorReport(errorMsg);
+            return false;
+        },
+
+        /**
+         * To be overloaded - inheriting object to iterate data and apply set()
+         * to each.
+         */
+        _setItems: function(items) {
+            var errorMsg = "_setItems not overloaded in subclass.";
+            IndicoUtil.errorReport(errorMsg);
+            return false;
+        }
+    },
+
+    function (selectedObserver, onlyOne, listCssClass, selectedCssClass,
+              unselectedCssClass, mouseoverObserver, SDLParams, noMoreEntriesMsg) {
+
+        var self = this;
+        var defaultInterval = 15;
+
+        self.progress = progressIndicator(false, true);
+        self.APIMethod = SDLParams.method;
+        self.APIArgs = SDLParams.args;
+        self.interval = (self.APIArgs.limit === undefined)
+                        ? defaultInterval
+                        : self.APIArgs.limit;
+
+        self.noMoreEntriesMsg = any(noMoreEntriesMsg, $T('No more to load'));
+
+        self.SelectableListWidget(selectedObserver, onlyOne, listCssClass,
+                selectedCssClass, unselectedCssClass, mouseoverObserver, noMoreEntriesMsg);
+    }
+);
+
+
+type("SelectableDynamicListWidget", ["SelectableDynamicListWidgetBase"],
+    {
+
+        getList: function() {
+            return this.getSelectedList();
+        },
+
+         /**
+         * Prepare the items for the format required later by the form.
+         */
+
+        _prepareItems: function(itemsRaw) {
+            var items = {};
+
+            each(itemsRaw, function(item) {
+                items[item.name] = item;
+            });
+
+            return items;
+        },
+
+        _setItems: function(itemsRaw) {
+            var self = this;
+            var items = self._prepareItems(itemsRaw);
+            var ks = keys(items);
+
+            for (k in ks) {
+                this.set(k, $O(items[ks[k]]));
+            }
+        },
+
+        _extractResult: function(result) {
+            return result;
+        },
+
+        _performCall: function(args) {
+            var self = this;
+
+            indicoRequest(self.APIMethod, args, function(result, error) {
+                if (!error) {
+                    self.tmpBuffer = self._extractResult(result);
+
+                    if (self.tmpBuffer.length < self.getInterval()) {
+                        self._setComplete();
+                    }
+
+                    if (self._hasAjaxPending()) {
+                        self.ajaxPending.resolve();
+                    }
+                } else {
+                    IndicoUtil.errorReport(error);
+                }
+            });
+
+            return self.tmpBuffer;
+        }
+    },
+
+    function (observer, method, args, listCssClass, onlyOne, noMoreEntriesMsg) {
+        var self = this;
+        this.selected = new WatchList();
+
+        var SDLWidgetParams = {
+                method: method,
+                args: args
+        };
+
+        this.SelectableDynamicListWidgetBase(observer, onlyOne, listCssClass, null,
+                                         null, null, SDLWidgetParams, noMoreEntriesMsg);
+
+        self.loadInterval();
+
+    }
+);
+
+type("JTabWidget", ["IWidget"], {
+    _addTab: function(label, content, data) {
+        var id = _.uniqueId('x-tab-');
+        $(content).css('display', '').find('script').remove();
+        var container = $('<div/>', { id: id }).data(data || {}).html(content);
+        var navLink = $('<a>', {
+            href: '#' + id,
+            text: this._titleTemplate(label)
+        });
+        this.widget.append(container);
+        this.widget.find('.ui-tabs-nav').append($('<li>').append(navLink));
+        this.widget.tabs('refresh');
+        if(this.widget.tabs('option', 'active') === false) {
+            // focus first tab
+            this.widget.tabs('option', 'active', 0);
+        }
+    },
+    _titleTemplate: function(text) {
+        return text;
+    },
+    draw: function() {
+        var self = this;
+        // We are going to be visible right after this function, so let's update the scroll buttons when size information is available
+        _.defer(function() {
+            self._updateScrollButtons();
+            // Also call the on draw functions here
+            $.each(self._onDraw, function(i, func) {
+                func();
+            });
+            self._onDraw = [];
+        });
+        return self.widget[0];
+    },
+    enable: function() {
+        this.widget.tabs('enable');
+        for(var i = 0, num = this.widget.data('ui-tabs').anchors.length; i < num; i++) {
+            this.enableTab(i);
+        }
+        if(this.scrollable) {
+            this._updateScrollButtons();
+        }
+    },
+    disable: function() {
+        this.widget.tabs('disable');
+        for(var i = 0, num = this.widget.data('ui-tabs').anchors.length; i < num; i++) {
+            this.disableTab(i);
+        }
+        if(this.scrollable) {
+            this.scrollButtons.children().addClass('ui-state-disabled');
+        }
+    },
+    enableTab: function(index) {
+        this.widget.tabs('enable', index);
+    },
+    disableTab: function(index) {
+        this.widget.tabs('disable', index);
+    },
+    getLabel: function(index) {
+        return $('.ui-tabs-nav > li', this.widget).eq(index);
+    },
+    getTabIndex: function(label) {
+        var self = this;
+        return $('.ui-tabs-nav > li', self.widget).filter(function() {
+            return $(this).text() == self._titleTemplate(label);
+        }).eq(0).index();
+    },
+    getSelectedIndex: function() {
+        return this.widget.tabs('option', 'active');
+    },
+    getSelectedTab: function() {
+        return this.getLabel(this.getSelectedIndex());
+    },
+    setSelectedTab: function(labelOrIndex){
+        var idx = _.isNumber(labelOrIndex) ? labelOrIndex : this.getTabIndex(labelOrIndex);
+        this.widget.tabs('option', 'active', idx);
+        this.scrollToTab(idx, true);
+    },
+    getSelectedPanel: function() {
+        var index = this.widget.tabs('option', 'active');
+        return $('> div.ui-tabs-panel', this.widget).eq(index);
+    },
+    heightToTallestTab: function() {
+        var maxHeight = 0;
+        var panel = $('> div.ui-tabs-panel', this.widget);
+        panel.each(function() {
+            maxHeight = Math.max(maxHeight, $(this).height());
+        });
+        // Chrome sometimes shows scrollbars until a tab change if we don't wait a moment with applying the height
+        _.defer(function() {
+            panel.height(maxHeight);
+        });
+    },
+    makeScrollable: function() {
+        var self = this;
+        if(self.scrollable) {
+            return;
+        }
+        self.scrollable = true;
+        var nav = $('> .ui-tabs-nav', self.widget); // the ul containing the tabs
+        nav.css('padding', 0);
+        // by wrapping the div and disabling floating for tabs we ensure tabs do not wrap into another line
+        nav.wrap($('<div/>').css({
+            whiteSpace: 'nowrap',
+            overflow: 'hidden'
+        }));
+        nav.find('> li').css({
+            'display': 'block',
+            'float': 'left'
+        });
+        // save some space for the scroll buttons
+        nav.css({
+            marginLeft: '17px',
+            marginRight: '15px'
+        });
+
+        var arrowsTopMargin = '4px';
+        var arrowsCommonCss = {
+            cursor: 'pointer',
+            zIndex: 99,
+            position: 'absolute',
+            top: '1px',
+            height: '26px'
+        };
+
+        self.scrollOffset = 0; // how many tabs did the user scroll to the right
+        // Create buttons to scroll left/right
+        self.scrollButtons = $('<div/>').disableSelection().css({
+            position: 'relative',
+            zIndex: 100
+        });
+        $('<span/>')
+            .disableSelection()
+            .attr('title', $T('Previous tab'))
+            .css(arrowsCommonCss)
+            .css('left', 0)
+            .addClass('ui-state-active ui-corner-tl ui-corner-bl')
+            .append($('<span/>').disableSelection().addClass('ui-icon ui-icon-carat-1-w').html($T('Previous tab')).css('marginTop', arrowsTopMargin))
+            .click(function() {
+                if($(this).hasClass('ui-state-disabled')) {
+                    return;
+                }
+                self.scrollToTab(Math.max(0, self.scrollOffset - 1));
+            }).appendTo(self.scrollButtons);
+        $('<span/>')
+            .disableSelection()
+            .attr('title', $T('Next tab'))
+            .css(arrowsCommonCss)
+            .css('right', 0)
+            .addClass('ui-state-active ui-corner-tr ui-corner-br')
+            .append($('<span/>').addClass('ui-icon ui-icon-carat-1-e').html($T('Next tab')).css('marginTop', arrowsTopMargin))
+            .click(function() {
+                if($(this).hasClass('ui-state-disabled')) {
+                    return;
+                }
+                self.scrollToTab(Math.min(nav.find('> li').length - 1, self.scrollOffset + 1));
+            }).appendTo(self.scrollButtons);
+        self.scrollButtons.prependTo(self.widget);
+        // Scroll to the currently selected tab
+        self.scrollToTab(self.getSelectedIndex(), true);
+    },
+    _updateScrollButtons: function() {
+        if(!this.scrollable) {
+            return;
+        }
+        var nav = $('.ui-tabs-nav:first', this.widget);
+        var visibleTabs = 0;
+        var width = 0;
+        var navWidth = nav.width();
+        nav.find('> li:visible').each(function() {
+            width += $(this).outerWidth(true);
+            if(width >= navWidth) {
+                return false;
+            }
+            visibleTabs++;
+        });
+        var lastElementShown = false;
+        if(this.scrollOffset + visibleTabs == nav.find('> li').length) {
+            lastElementShown = true;
+        }
+        // no prev allowed if scrolled to the far left
+        this.scrollButtons.children().eq(0).toggleClass('ui-state-disabled', this.scrollOffset == 0);
+        // no next allowed if last element is visible
+        this.scrollButtons.children().eq(1).toggleClass('ui-state-disabled', lastElementShown);
+    },
+    scrollToTab: function(idx, fuzzy) {
+        var self = this;
+        if(!self.scrollable) {
+            return;
+        }
+        if(fuzzy && !$('.ui-tabs-nav:first', self.widget).width()) {
+            // If we want a fuzzy selection (show as many tabs as possible) and we do not have size information yet, delay everything
+            self._onDraw.push(function() {
+                self.scrollToTab(idx, fuzzy);
+            });
+            return;
+        }
+        else if(fuzzy && idx > 0) {
+            // Yuck! Since tabs have different sizes (due to content and also selected/unselected) we need to test how far we need to scroll.
+            // Would be much nicer if we could calculate it but the width is not available at all for hidden elements.
+            var nav = $('.ui-tabs-nav:first', self.widget);
+            if(!$.browser.msie) {
+                var origIdx = idx;
+                while(idx >= 0) {
+                    self.scrollToTab(idx - 1); // try scrolling left 1 tab
+                    if(nav.find(' > li').eq(origIdx).is(':hidden')) { // if our tab is now hidden, scroll one tab forward again and stop
+                        self.scrollToTab(idx);
+                        return;
+                    }
+                    idx--;
+                }
+                // if we did not break before, something probably went wrong - let's scroll to the tab directly
+                self.scrollToTab(origIdx);
+                return;
+            }
+            else {
+                // In IE it's too slow. Let's use a less perfect match that is much faster though.
+                var allTabs = nav.find('> li');
+                var totalWidth = 0;
+                $.each(allTabs, function() {
+                    totalWidth += $(this).outerWidth(true);
+                });
+                var avgTabWidth = Math.ceil(totalWidth / allTabs.length);
+                var avgVisibleTabs = Math.floor(nav.width() / avgTabWidth);
+                if(idx + avgVisibleTabs >= allTabs.length) {
+                    idx = allTabs.length - avgVisibleTabs + 1;
+                }
+            }
+        }
+
+        // Here we perform the actual "scrolling" (which is actually just hiding the "scrolled out" tabs)
+        self.scrollOffset = idx;
+        // show all tabs and then hide those before the visible ones
+        $('.ui-tabs-nav:first > li', self.widget).show().slice(0, self.scrollOffset).hide();
+        // hide the tabs after the visible ones (to ensure we don't get a "half" tab)
+        var nav = $('.ui-tabs-nav:first', self.widget);
+        var visibleTabs = 0;
+        var width = 0;
+        var updateTabsAfter = function() {
+            var navWidth = nav.width();
+            nav.find('> li:visible').each(function() {
+                width += $(this).outerWidth(true);
+                if(width >= navWidth) {
+                    return false;
+                }
+                visibleTabs++;
+            });
+            $('.ui-tabs-nav:first > li', self.widget).slice(self.scrollOffset + visibleTabs).hide();
+        };
+        // We only have a width if the tab widget is already visible - otherwise don't do anything
+        if(nav.width()) {
+            updateTabsAfter();
+        }
+        else {
+            self._onDraw.push(updateTabsAfter);
+        }
+        self._updateScrollButtons();
+    },
+    showNotification: function(index, text) {
+        var label = this.getLabel(index);
+        label.qtip({
+            content: text,
+            position: {
+                my: 'bottom middle',
+                at: 'top middle',
+                viewport: $(window)
+            },
+            show: {
+                event: false
+            },
+            hide: {
+                event: 'unfocus'
+            },
+            style: {
+                classes: 'qtip-rounded qtip-balloon',
+                tip: {
+                    corner: true,
+                    width: 20,
+                    height: 15
+                }
+            }
+        }).qtip('show');
+    },
+    hideNotification: function(index) {
+        var label = this.getLabel(index);
+        label.qtip('destroy');
+    },
+    _drawExtraButtons: function() {
+        // Add any extra buttons displayed under the tabs
+        var container = $('<div class="tabExtraButtons"/>');
+        $.each(this.extraButtons, function(i, btnData) {
+            var btn = $('<div class="buttonContainer"/>').append(btnData.btn.dom || btnData.btn).click(function() {
+                btnData.onclick(btn);
+            });
+            container.append(btn);
+        });
+        container.children(':first').addClass('buttonContainerLeft');
+        container.children(':last').addClass('buttonContainerRight');
+        this.widget.append(container);
+    },
+    _notifyTabChange: function() { }
+}, function(tabs, width, height, initialSelection, extraButtons, canvas) {
+    var self = this;
+    self.scrollable = false;
+    self._onDraw = [];
+    self.widget = $('<div><ul/></div>');
+    self.extraButtons = extraButtons || [];
+    // create canvas element
+    if(canvas) {
+        self.canvas = $(canvas.dom || canvas);
+    }
+    else {
+        self.canvas = $('<div/>');
+    }
+    self.width = exists(width) ? ((typeof(width)=='string' && width.indexOf('%') >= 0) ? width : pixels(width)) : width;
+    if(self.width) {
+        self.widget.width(self.width);
+    }
+    if(height) {
+        self.widget.css('minHeight', height);
+    }
+    if(self.extraButtons) {
+        self._drawExtraButtons();
+    }
+    self.widget.tabs({
+        beforeActivate: function(e, ui) {
+            self._notifyTabChange();
+        }
+    });
+    // add initial tabs
+    $.each(tabs, function(i, tab) {
+        var content = tab[1].dom ? tab[1].dom : tab[1];
+        self._addTab(tab[0], content);
+    });
+    if(initialSelection) {
+        self.setSelectedTab(initialSelection);
+    }
+});
+
+type("JLookupTabWidget", ["JTabWidget"], {
+    _addTab: function(label, generator) {
+        var content = '<div/>';
+        this.JTabWidget.prototype._addTab.call(this, label, content, {generator: generator});
+    },
+    _generateContent: function(panel) {
+        var container = $('> div', panel);
+        var generator = $(panel).data('generator');
+        try {
+            var content = generator();
+        } catch(e) {
+            if(e == 'stopDrawing') {
+                return;
+            }
+            throw e;
+        }
+        if(content.dom) {
+            content = content.dom;
+        }
+        this.canvas.empty().append(content);
+        container.empty().append(this.canvas);
+    }
+}, function(tabs, width, height, initialSelection, extraButtons, canvas) {
+    var self = this;
+    self.JTabWidget(tabs, width, height, initialSelection, extraButtons, canvas);
+    self.widget.bind('tabsactivate', function(e, ui) {
+        self._generateContent(ui.newPanel);
+    });
+    self._generateContent(self.getSelectedPanel());
+});
+
 
 type("TabWidget", ["IWidget"],{
     _titleTemplate: function(text) {
@@ -836,7 +1548,7 @@ type("PreloadedWidget", ["IWidget"],
          this.waitingList = waitingList;
      });
 
-progressIndicator = function(small, center) {
+var progressIndicator = function(small, center) {
     var htmlTag = small?Html.span:Html.div;
     return htmlTag(center?{style:{textAlign: 'center'}}:{},Html.img({src: imageSrc(small?"loading":"ui_loading"), alt: "Loading..."
 }));
@@ -889,30 +1601,22 @@ type("PopupWidget", [], {
          * call the constructor.
          */
         if(!exists(this.canvas)) {
-            this.canvas = Html.div();
+            this.canvas = Html.div({});
         }
 
         styles = any(styles, {
             // If the canvas has been set to fixed position don't change it
-            position: this.canvas.dom.style.position == 'fixed' ? 'fixed' : 'absolute',
+            position: 'absolute',
             left: pixels(x),
             top: pixels(y)
         });
 
         if(setWidth) {
-            // taken from jQuery width() function. TODO: replace with less-ugly code as soon as we have jquery embedded globally
-            var width = ('scrollTo' in document && document) ?
-                    document.compatMode === "CSS1Compat" && document.documentElement.clientWidth || document.body.clientWidth :
-                    Math.max(document.documentElement.clientWidth, document.body.scrollWidth, document.documentElement.scrollWidth,
-                             document.body.offsetWidth, document.documentElement.offsetWidth);
-            width -= x;
+            var width = $('body').width() - x;
             styles.width = pixels(width);
         }
 
-        each(styles, function(value, key) {
-                self.canvas.setStyle(key, value);
-        });
-        this.canvas.setContent(content);
+        $(this.canvas.dom).css(styles).html(content.dom);
 
         IndicoUI.assignLayerLevel(this.canvas);
 
@@ -922,7 +1626,7 @@ type("PopupWidget", [], {
          * Related bug report: http://code.google.com/p/chromium/issues/detail?id=72568
          */
         if(!addedWebkitJqueryFixDiv && navigator.userAgent.indexOf('WebKit') != -1) {
-            $E(document.body).append(Html.div());
+            $('body').append('<div/>');
         }
         addedWebkitJqueryFixDiv = true; // also set to true if we do not have a webkit browser so we don't check again
 
@@ -935,7 +1639,9 @@ type("PopupWidget", [], {
      * @param {Integer} y The vertical position of the top left corner.
      */
     open: function(x, y) {
-        $E(document.body).append(this.draw(x,y));
+        //$E(document.body).append(this.draw(x,y));
+        var stuff = this.draw(x, y).dom;
+        $('body').append(stuff);
         this.isopen = true;
         this.postDraw();
     },
@@ -945,16 +1651,6 @@ type("PopupWidget", [], {
     },
 
     postDraw: function() {
-        if (Browser.IE) {
-            this.canvas.dom.style.display = '';
-        }
-    },
-
-    openRelative: function(x, y) {
-        var iebody=(document.compatMode && document.compatMode != "BackCompat")? document.documentElement : document.body;
-        var dsocleft=document.all? iebody.scrollLeft : pageXOffset;
-        var dsoctop=document.all? iebody.scrollTop : pageYOffset;
-        this.open(x+dsocleft, y+dsoctop);
     },
 
     getCanvas: function() {
@@ -1018,7 +1714,7 @@ type("HistoryListener", [],
 type("ErrorAware", [],
      {
          _setElementErrorState: function(element, text) {
-             return IndicoUtil.markInvalidField(element, text)[1];
+             return IndicoUtil.markInvalidField(element, text);
          },
 
          setError: function(text) {
@@ -1037,6 +1733,7 @@ type("ErrorAware", [],
              } else {
                  this._setErrorState(text);
                  this._inError = true;
+                 this._currentErrorState = text;
              }
              return this._stopErrorList;
          },
@@ -1052,8 +1749,9 @@ type("ErrorAware", [],
                  // if we're already in error state,
                  // no need to do anything
 
-                 if (!this._inError) {
+                 if (!this._inError || this._currentErrorState != errorState) {
                      // otherwise, we have to set it
+                     this.setError(null);
                      this.setError(errorState);
                  }
                  return errorState;
@@ -1076,3 +1774,118 @@ type("ErrorAware", [],
      },
      function() {
      });
+
+type("ColorPickerWidget", [],
+        {
+            draw: function(content) {
+                var self = this;
+                var container = $("<div class='inputWrapper'/>");
+                var inputContainer = $("<div class='inputContainer clearfix'/>");
+                var input = $("<input type='text' name='{0}' value='{1}'/>".format(this.inputName, this.initialColor));
+                var preview = $("<div class='previewBlock'/>").css("background-color", "#" + this.initialColor);
+                inputContainer.append(preview);
+                inputContainer.append($("<div class='numberSign'/>").html("#"));
+                inputContainer.append(input);
+                container.append(inputContainer);
+                var updateColorInput = function(color){
+                    $(preview).css('backgroundColor', '#' + color);
+                    self.colorChangedHandler(color);
+                };
+                $(container).ColorPicker({
+                    color: "ffffff",
+                    onSubmit: function(hsb, hex, rgb, el) {
+                            $(el).val(hex);
+                            updateColorInput(hex);
+                            self.colorChangedHandler(hex);
+                            $(el).ColorPickerHide();
+                    },
+                    onBeforeShow: function () {
+                            if($(input).val() != ""){
+                                $(this).ColorPickerSetColor($(input).val());
+                            }
+                    },
+                    onChange: function (hsb, hex, rgb) {
+                            $(input).val(hex);
+                            updateColorInput(hex);
+                    },
+                    onShow: function (colpkr) {
+                        $(colpkr).fadeIn(500);
+                        return false;
+                    },
+                    onHide: function (colpkr) {
+                        $(colpkr).fadeOut(500);
+                        return false;
+                    }
+                });
+
+                $(input).bind('keyup', function(){
+                        $(container).ColorPickerSetColor(this.value);
+                        updateColorInput(this.value);
+                });
+                return container;
+            }
+        },
+        function(inputName, initialColor, colorChangedHandler) {
+            this.inputName = inputName;
+            this.initialColor = initialColor;
+            this.colorChangedHandler = any(colorChangedHandler, function() {return true;});
+        });
+
+
+
+type("AddItemWidget", [],
+        {
+            draw: function(content) {
+                var self = this;
+
+                var toolBar = $("<div class='toolbar'/>");
+                var container = $("<div class='toolbar'/>");
+                var addButton = $("<div class='i-button left'/>").text("Add consumer");
+                var addButtonContainer = $("<div class='left group'/>");
+                var addContainer = $("<div class='left group' style='display:none'/>");
+                var saveButton = $("<div class='i-button accept'/>").text("Add");
+                var cancelButton = $("<div class='i-button'/>").text("Cancel");
+                var input = $("<input type='text' id='consumer_name'/>");
+
+                addButton.click(function(){
+                    addContainer.show();
+                    addButtonContainer.hide();
+                });
+                cancelButton.click(function(){
+                    input.val("");
+                    addContainer.hide();
+                    addButtonContainer.show();
+                });
+                saveButton.click(function(){
+                    var params = {};
+                    params[self.itemName] =  input.val();
+                    var killProgress = IndicoUI.Dialogs.Util.progress($T("Saving..."));
+                    jsonRpc(Indico.Urls.JsonRpcService, self.method ,
+                            params,
+                            function(result, error){
+                                if (exists(error)) {
+                                    killProgress();
+                                    IndicoUtil.errorReport(error);
+                                } else {
+                                    killProgress();
+                                    self.addHandler(result);
+                                    input.val("");
+                                    addContainer.hide();
+                                    addButtonContainer.show();
+                                }
+                            });
+                    });
+                addButtonContainer.append(addButton);
+                addContainer.append(input);
+                addContainer.append(saveButton);
+                addContainer.append(cancelButton);
+                container.append(addButtonContainer);
+                container.append(addContainer);
+                return container;
+            }
+        },
+        function(itemName, method, addHandler) {
+            this.itemName = itemName;
+            this.method = method;
+            this.addHandler = addHandler;
+        });

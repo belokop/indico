@@ -1,44 +1,55 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 from copy import copy
 from pytz import timezone
+from indico.util.string import safe_upper, safe_slice
+from indico.util.i18n import i18nformat
 import ZODB
 from persistent import Persistent
 from persistent.list import PersistentList
 from BTrees.OOBTree import OOBTree, intersection, union
 from BTrees.IOBTree import IOBTree
 import BTrees.OIBTree as OIBTree
-from datetime import datetime,timedelta
+from datetime import datetime, timedelta
 import MaKaC
 from MaKaC.common.Counter import Counter
-from MaKaC.errors import MaKaCError
+from MaKaC.errors import MaKaCError, NoReportError
 from MaKaC.accessControl import AdminList
 from MaKaC.trashCan import TrashCanManager
 from MaKaC.common.timezoneUtils import nowutc
 from MaKaC.i18n import _
-#from MaKaC.abstractReviewing import AbstractReview
+from indico.core.config import Config
+from MaKaC.common.fossilize import fossilizes, Fossilizable
+from MaKaC.fossils.abstracts import IAbstractFieldFossil
+from MaKaC.fossils.abstracts import IAbstractTextFieldFossil
+from MaKaC.fossils.abstracts import IAbstractSelectionFieldFossil
+from MaKaC.fossils.abstracts import ISelectionFieldOptionFossil
+from indico.util.i18n import N_
+from indico.util.text import wordsCounter
+
+import tempfile
 
 
 class AbstractSorter:
     pass
+
 
 class AbstractFilter:
     pass
@@ -61,10 +72,10 @@ class _AbstractParticipationIndex(Persistent):
         integrity of the index.
     """
 
-    def __init__( self ):
+    def __init__(self):
         self._idx = OOBTree()
 
-    def index( self, participation ):
+    def index(self, participation):
         """Add a new participation to the index
         """
         #if the Participation is not linked to an Avatar there's no point to
@@ -75,14 +86,14 @@ class _AbstractParticipationIndex(Persistent):
         #ToDo: if the Participation corresponds to an abstract which doesn't
         #   correspond to the current CFAMgr, then an error must be raised
 
-        if not self._idx.has_key( a.getId() ):
+        if not self._idx.has_key(a.getId()):
             self._idx[a.getId()] = PersistentList()
         #if the participation is already in the index, no need for adding it
         if participation in self._idx[a.getId()]:
             return
-        self._idx[a.getId()].append( participation )
+        self._idx[a.getId()].append(participation)
 
-    def unindex( self, participation ):
+    def unindex(self, participation):
         """Remove an existing participation from the index
         """
         #if the Participation is not linked to an Avatar there's no point to
@@ -93,22 +104,22 @@ class _AbstractParticipationIndex(Persistent):
             return
         #if the Avatar associated to the participation isn't in the index do
         #   nothing
-        if not self._idx.has_key( a.getId() ):
+        if not self._idx.has_key(a.getId()):
             return
         #if the given participation is indexed remove it, otherwise do nothing
         if participation in self._idx[a.getId()]:
-             self._idx[a.getId()].remove( participation )
+            self._idx[a.getId()].remove(participation)
 
-    def getParticipationList( self, av ):
+    def getParticipationList(self, av):
         try:
-            return self._idx[ av.getId() ]
+            return self._idx[av.getId()]
         except KeyError, e:
             return []
 
 
 class AbstractParticipation(Persistent):
 
-    def __init__( self, abstract, **data ):
+    def __init__(self, abstract, **data):
         self._abstract = abstract
         self._firstName = ""
         self._surName = ""
@@ -118,47 +129,47 @@ class AbstractParticipation(Persistent):
         self._telephone = ""
         self._fax = ""
         self._title = ""
-        self.setData( **data )
+        self.setData(**data)
 
-    def setFromAvatar( self, av ):
-        data = {"title": av.getTitle(), \
-                "firstName": av.getName(), \
-                "surName": av.getSurName(), \
-                "email": av.getEmail(), \
-                "affiliation": av.getOrganisation(), \
-                "address": av.getAddress(), \
-                "telephone": av.getTelephone(), \
-                "fax": av.getFax() }
-        self.setData( **data )
+    def setFromAvatar(self, av):
+        data = {"title": av.getTitle(),
+                "firstName": av.getName(),
+                "surName": av.getSurName(),
+                "email": av.getEmail(),
+                "affiliation": av.getOrganisation(),
+                "address": av.getAddress(),
+                "telephone": av.getTelephone(),
+                "fax": av.getFax()}
+        self.setData(**data)
 
-    def setFromAbstractParticipation(self,part):
-        data = {"title": part.getTitle(), \
-                "firstName": part.getFirstName(), \
-                "surName": part.getSurName(), \
-                "email": part.getEmail(), \
-                "affiliation": part.getAffiliation(), \
-                "address": part.getAddress(), \
-                "telephone": part.getTelephone(), \
-                "fax": part.getFax() }
-        self.setData( **data )
+    def setFromAbstractParticipation(self, part):
+        data = {"title": part.getTitle(),
+                "firstName": part.getFirstName(),
+                "surName": part.getSurName(),
+                "email": part.getEmail(),
+                "affiliation": part.getAffiliation(),
+                "address": part.getAddress(),
+                "telephone": part.getTelephone(),
+                "fax": part.getFax()}
+        self.setData(**data)
 
-    def setData( self, **data ):
+    def setData(self, **data):
         if "firstName" in data:
-            self.setFirstName( data["firstName"] )
+            self.setFirstName(data["firstName"])
         if "surName" in data:
-            self.setSurName( data["surName"] )
+            self.setSurName(data["surName"])
         if "email" in data:
-            self.setEmail( data["email"] )
+            self.setEmail(data["email"])
         if "affiliation" in data:
-            self.setAffiliation( data["affiliation"] )
+            self.setAffiliation(data["affiliation"])
         if "address" in data:
-            self.setAddress( data["address"] )
+            self.setAddress(data["address"])
         if "telephone" in data:
-            self.setTelephone( data["telephone"] )
+            self.setTelephone(data["telephone"])
         if "fax" in data:
-            self.setFax( data["fax"] )
+            self.setFax(data["fax"])
         if "title" in data:
-            self.setTitle( data["title"] )
+            self.setTitle(data["title"])
     setValues = setData
 
     def getData(self):
@@ -175,139 +186,142 @@ class AbstractParticipation(Persistent):
         return data
     getValues = getData
 
-    def clone (self, abstract):
-        ap = AbstractParticipation(abstract,self.getData())
+    def clone(self, abstract):
+        ap = AbstractParticipation(abstract, self.getData())
         return ap
 
     def _notifyModification(self):
         self._abstract._notifyModification()
 
     def _unindex(self):
-        abs=self.getAbstract()
+        abs = self.getAbstract()
         if abs is not None:
-            mgr=abs.getOwner()
+            mgr = abs.getOwner()
             if mgr is not None:
                 mgr.unindexAuthor(self)
 
     def _index(self):
-        abs=self.getAbstract()
+        abs = self.getAbstract()
         if abs is not None:
-            mgr=abs.getOwner()
+            mgr = abs.getOwner()
             if mgr is not None:
                 mgr.indexAuthor(self)
 
-    def setFirstName( self, name ):
-        tmp=name.strip()
-        if tmp==self.getFirstName():
+    def setFirstName(self, name):
+        tmp = name.strip()
+        if tmp == self.getFirstName():
             return
         self._unindex()
-        self._firstName=tmp
+        self._firstName = tmp
         self._index()
         self._notifyModification()
 
-    def getFirstName( self ):
+    def getFirstName(self):
         return self._firstName
 
-    def getName( self ):
+    def getName(self):
         return self._firstName
 
-    def setSurName( self, name ):
-        tmp=name.strip()
-        if tmp==self.getSurName():
+    def setSurName(self, name):
+        tmp = name.strip()
+        if tmp == self.getSurName():
             return
         self._unindex()
-        self._surName=tmp
+        self._surName = tmp
         self._index()
         self._notifyModification()
 
-    def getSurName( self ):
+    def getSurName(self):
         return self._surName
 
-    def getFamilyName( self ):
+    def getFamilyName(self):
         return self._surName
 
-    def setEmail( self, email ):
+    def setEmail(self, email):
         email = email.strip().lower()
         if email != self.getEmail():
+            self._unindex()
             self._email = email
+            self._index()
             self._notifyModification()
 
-    def getEmail( self ):
+    def getEmail(self):
         return self._email
 
-    def setAffiliation( self, af ):
+    def setAffiliation(self, af):
         self._affilliation = af.strip()
         self._notifyModification()
 
-    setAffilliation=setAffiliation
+    setAffilliation = setAffiliation
 
-    def getAffiliation( self ):
+    def getAffiliation(self):
         return self._affilliation
 
-    def setAddress( self, address ):
+    def setAddress(self, address):
         self._address = address.strip()
         self._notifyModification()
 
-    def getAddress( self ):
+    def getAddress(self):
         return self._address
 
-    def setTelephone( self, telf ):
+    def setTelephone(self, telf):
         self._telephone = telf.strip()
         self._notifyModification()
 
-    def getTelephone( self ):
+    def getTelephone(self):
         return self._telephone
 
-    def setFax( self, fax ):
+    def setFax(self, fax):
         self._fax = fax.strip()
         self._notifyModification()
 
     def getFax(self):
         return self._fax
 
-    def setTitle( self, title ):
+    def setTitle(self, title):
         self._title = title.strip()
         self._notifyModification()
 
-    def getTitle( self ):
+    def getTitle(self):
         return self._title
 
-    def getFullName( self ):
-        res = self.getSurName().decode('utf-8').upper().encode('utf-8')
-        tmp=[]
+    def getFullName(self):
+        res = safe_upper(self.getSurName())
+        tmp = []
         for name in self.getFirstName().lower().split(" "):
-            if name.strip() == "":
+            if not name.strip():
                 continue
-            name=name.strip()
-            tmp.append("%s%s"%(name[0].upper(),name[1:]))
-        firstName=" ".join(tmp)
-        if firstName != "":
-            res = "%s, %s"%( res, firstName )
-        if self.getTitle() != "":
-            res = "%s %s"%( self.getTitle(), res )
+            name = name.strip()
+            tmp.append(safe_upper(safe_slice(name, 0, 1)) + safe_slice(name, 1))
+        firstName = " ".join(tmp)
+        if firstName:
+            res = "%s, %s" % (res, firstName)
+        if self.getTitle():
+            res = "%s %s" % (self.getTitle(), res)
         return res
 
     def getStraightFullName(self):
         name = ""
-        if self.getName() != "":
-            name = "%s "%self.getName()
-        return "%s%s"%(name, self.getSurName())
+        if self.getName():
+            name = "%s " % self.getName()
+        return "%s%s" % (name, self.getSurName())
 
     def getAbrName(self):
         res = self.getSurName()
-        if self.getFirstName() != "":
-            if res != "":
-                res = "%s, "%res
-            res = "%s%s."%(res, self.getFirstName()[0].upper())
+        if self.getFirstName():
+            if res:
+                res = "%s, " % res
+            res = "%s%s." % (res, safe_upper(safe_slice(self.getFirstName(), 0, 1)))
         return res
 
-    def getAbstract( self ):
+    def getAbstract(self):
         return self._abstract
 
     def setAbstract(self, abs):
         self._abstract = abs
 
-    def delete( self ):
+    def delete(self):
+        self._unindex()
         self._abstract = None
         TrashCanManager().add(self)
 
@@ -315,215 +329,425 @@ class AbstractParticipation(Persistent):
         TrashCanManager().remove(self)
 
 
-class Author( AbstractParticipation ):
+class Author(AbstractParticipation):
 
-    def __init__( self, abstract, **data ):
-        AbstractParticipation.__init__( self, abstract, **data )
+    def __init__(self, abstract, **data):
+        AbstractParticipation.__init__(self, abstract, **data)
         self._abstractId = ""
 
-    def getId( self ):
+    def getId(self):
         return self._id
 
-    def setId( self, newId ):
-        self._id = str( newId )
+    def setId(self, newId):
+        self._id = str(newId)
 
     def clone(self, abstract):
         auth = Author(abstract, self.getData())
         return auth
 
-class Submitter( AbstractParticipation ):
+    def isSpeaker(self):
+        return self._abstract.isSpeaker(self)
 
-    def __init__( self, abstract, av ):
-        if av == None:
-            raise MaKaCError( _("abstract submitter cannot be None") )
-        AbstractParticipation.__init__( self, abstract )
+
+class Submitter(AbstractParticipation):
+
+    def __init__(self, abstract, av):
+        if av is None:
+            raise MaKaCError(_("abstract submitter cannot be None"))
+        AbstractParticipation.__init__(self, abstract)
         self._user = None
-        self._setUser( av )
-        self.setFromAvatar( av )
+        self._setUser(av)
+        self.setFromAvatar(av)
 
-    def _setUser( self, av ):
+    def _setUser(self, av):
         if self.getUser() == av:
             return
         #if currently there's an association with a registered user, we notify
         #   the unidexation of the participation
         if self.getUser():
-            self.getAbstract().getOwner().unregisterParticipation( self )
+            self.getAbstract().getOwner().unregisterParticipation(self)
         self._user = av
         #if the participation is associated to any avatar, we make the
         #   association and index it
         if self.getUser():
-            self.getAbstract().getOwner().registerParticipation( self )
+            self.getAbstract().getOwner().registerParticipation(self)
 
     def clone(self, abstract):
-        sub = Submitter(abstract,self.getAvatar())
+        sub = Submitter(abstract, self.getAvatar())
         sub.setData(self.getData())
         return sub
 
-    def getUser( self ):
+    def getUser(self):
         return self._user
 
-    def getAvatar( self ):
+    def getAvatar(self):
         return self._user
 
-    def representsUser( self, av ):
+    def representsUser(self, av):
         return self.getUser() == av
 
 
 class _AuthIdx(Persistent):
 
-    def __init__(self,mgr):
-        self._mgr=mgr
-        self._idx=OOBTree()
+    def __init__(self, mgr):
+        self._mgr = mgr
+        self._idx = OOBTree()
 
-    def _getKey(self,auth):
-        return "%s %s"%(auth.getSurName().lower(),auth.getFirstName().lower())
+    def _getKey(self, auth):
+        return "%s %s" % (auth.getSurName().lower(), auth.getFirstName().lower())
 
-    def index(self,auth):
+    def index(self, auth):
         if auth.getAbstract() is None:
-            raise MaKaCError( _("cannot index an author of an abstract which is not included in a conference"))
-        if auth.getAbstract().getOwner()!=self._mgr:
-            raise MaKaCError( _("cannot index an author of an abstract which does not belong to this conference"))
-        key=self._getKey(auth)
-        abstractId=str(auth.getAbstract().getId())
+            raise MaKaCError(_("cannot index an author of an abstract which is not included in a conference"))
+        if auth.getAbstract().getOwner() != self._mgr:
+            raise MaKaCError(_("cannot index an author of an abstract which does not belong to this conference"))
+        key = self._getKey(auth)
+        abstractId = str(auth.getAbstract().getId())
         if not self._idx.has_key(key):
-            self._idx[key]=OIBTree.OIBTree()
+            self._idx[key] = OIBTree.OIBTree()
         if not self._idx[key].has_key(abstractId):
-            self._idx[key][abstractId]=0
-        self._idx[key][abstractId]+=1
+            self._idx[key][abstractId] = 0
+        self._idx[key][abstractId] += 1
 
-    def unindex(self,auth):
+    def unindex(self, auth):
         if auth.getAbstract() is None:
-            raise MaKaCError( _("cannot unindex an author of an abstract which is not included in a conference"))
-        if auth.getAbstract().getOwner()!=self._mgr:
-            raise MaKaCError( _("cannot unindex an author of an abstract which does not belong to this conference"))
-        key=self._getKey(auth)
+            raise MaKaCError(_("cannot unindex an author of an abstract which is not included in a conference"))
+        if auth.getAbstract().getOwner() != self._mgr:
+            raise MaKaCError(_("cannot unindex an author of an abstract which does not belong to this conference"))
+        key = self._getKey(auth)
         if not self._idx.has_key(key):
             return
-        abstractId=str(auth.getAbstract().getId())
-        self._idx[key][abstractId]-=1
-        if self._idx[key][abstractId]<=0:
+        abstractId = str(auth.getAbstract().getId())
+        if abstractId not in self._idx[key]:
+            return
+        self._idx[key][abstractId] -= 1
+        if self._idx[key][abstractId] <= 0:
             del self._idx[key][abstractId]
-        if len(self._idx[key])<=0:
+        if len(self._idx[key]) <= 0:
             del self._idx[key]
 
-    def match(self,query):
-        query=query.lower().strip()
-        res=OIBTree.OISet()
+    def match(self, query):
+        query = query.lower().strip()
+        res = OIBTree.OISet()
         for k in self._idx.keys():
-            if k.find(query)!=-1:
-                res=OIBTree.union(res,self._idx[k])
+            if k.find(query) != -1:
+                res = OIBTree.union(res, self._idx[k])
         return res
 
 
 class _PrimAuthIdx(_AuthIdx):
 
-    def __init__(self,mgr):
-        _AuthIdx.__init__(self,mgr)
+    def __init__(self, mgr):
+        _AuthIdx.__init__(self, mgr)
         for abs in self._mgr.getAbstractList():
             for auth in abs.getPrimaryAuthorList():
                 self.index(auth)
 
-class AbstractField(Persistent):
-    _fieldTypes = [ 'input', 'textarea' ]
 
-    def __init__(self, id, name, caption, maxlength=0, isMandatory=False, type="textarea"):
-        self._id = id
-        self._name = name
-        self._caption = caption
+class _AuthEmailIdx(_AuthIdx):
+
+    def __init__(self, mgr):
+        _AuthIdx.__init__(self, mgr)
+        for abs in self._mgr.getAbstractList():
+            for auth in abs.getPrimaryAuthorList():
+                self.index(auth)
+            for auth in abs.getCoAuthorList():
+                self.index(auth)
+
+    def _getKey(self, auth):
+        return auth.getEmail().lower()
+
+
+class AbstractField(Persistent, Fossilizable):
+    fossilizes(IAbstractFieldFossil)
+
+    fieldtypes = ["textarea", "input", "selection"]
+
+    @classmethod
+    def makefield(cls, params):
+        fieldType = params["type"]
+        if fieldType not in cls.fieldtypes:
+            return AbstractTextAreaField(params)
+        elif fieldType == "textarea":
+            return AbstractTextAreaField(params)
+        elif fieldType == "input":
+            return AbstractInputField(params)
+        elif fieldType == "selection":
+            return AbstractSelectionField(params)
+
+    def __init__(self, params):
+        self._id = params["id"]
+        self._caption = params.get("caption") if params.get("caption") else self._id
+        self._isMandatory = params.get("isMandatory") if params.get("isMandatory") else False
         self._active = True
-        self._maxLength = maxlength
-        self._isMandatory = isMandatory
-        self._type = type
 
     def clone(self):
-        af = AbstractField(self.getId(),self.getName(),self.getCaption(),self.getMaxLength(), self.isMandatory(), self.getType())
-        return af
+        """ To be implemented by subclasses """
+        pass
 
     def _notifyModification(self):
         self._p_changed = 1
 
-    def getType(self):
-        try:
-            return self._type
-        except:
-            self._type = "textarea"
-            return self._type
+    def check(self, content):
+        errors = []
 
-    def setType(self, type):
-        self._type = type
+        if self._active and self._isMandatory and content == "":
+                errors.append(_("The field '%s' is mandatory") % self._caption)
+
+        return errors
+
+    def getType(self):
+        return self._type
 
     def isMandatory(self):
-        try:
-            return self._isMandatory
-        except:
-            self._isMandatory = False
-            return self._isMandatory
+        return self._isMandatory
 
     def setMandatory(self, isMandatory=False):
         self._isMandatory = isMandatory
-        self._notifyModification()
-
-    def getMaxLength(self):
-        try:
-            return self._maxLength
-        except:
-            self._maxLength=0
-            return self._maxLength
-
-    def setValues(self, name, caption, maxlength, isMandatory, fieldType):
-        self._name = name
-        self._caption = caption
-        self._maxLength = maxlength
-        self._isMandatory = isMandatory
-        self._type = fieldType
-        self._notifyModification()
-
-    def setMaxLength(self, maxLength=0):
-        self._maxLength = maxLength
         self._notifyModification()
 
     def getId(self):
         return self._id
 
     def setId(self, id):
-        self._id=id
-        self._notifyModification()
-
-    def getName(self):
-        try:
-            if self._name:
-                pass
-        except AttributeError, e:
-            try:
-                if int(self._id):
-                    pass
-                self._name = ""
-            except ValueError, er:
-                self._name = self._id
-        return self._name
-
-    def setName(self, name):
-        self._name=name
+        self._id = id
         self._notifyModification()
 
     def getCaption(self):
         return self._caption
 
     def setCaption(self, caption):
-        self._caption=caption
+        self._caption = caption
         self._notifyModification()
 
     def isActive(self):
         return self._active
 
     def setActive(self, active):
-        self._active=active
+        self._active = active
         self._notifyModification()
+
+    def getValues(self):
+        values = []
+        values["id"] = self.getId()
+        values["caption"] = self.getCaption()
+        values["isMandatory"] = self.isMandatory()
+        return values
+
+    def setValues(self, params):
+        self.setCaption(params.get("caption") if params.get("caption") else self._id)
+        self.setMandatory(params.get("isMandatory") if params.get("isMandatory") else False)
+        self._notifyModification()
+
+
+class AbstractTextField(AbstractField):
+    fossilizes(IAbstractTextFieldFossil)
+
+    limitationtypes = ["chars", "words"]
+
+    def __init__(self, params):
+        AbstractField.__init__(self, params)
+        self._maxLength = params.get("maxLength") if params.get("maxLength") else 0
+        self._limitation = params.get("limitation") if params.get("limitation") in self.limitationtypes else "chars"
+
+    def clone(self):
+        return AbstractTextField(self.getValues())
+
+    def check(self, content):
+        errors = AbstractField.check(self, content)
+
+        if self._maxLength != 0:
+            if self._limitation == "words" and wordsCounter(str(content)) > self._maxLength:
+                errors.append(_("The field '%s' cannot be more than %s words") % (self._caption, self._maxLength))
+            elif self._limitation == "chars" and len(content) > self._maxLength:
+                errors.append(_("The field '%s' cannot be more than %s characters") % (self._caption, self._maxLength))
+
+        return errors
+
+    def getLimitation(self):
+        return self._limitation
+
+    def getMaxLength(self):
+        return self._maxLength
+
+    def setLimitation(self, limitation="chars"):
+        self._limitation = limitation if limitation in self.limitationtypes else "chars"
+        self._notifyModification()
+
+    def setMaxLength(self, maxLength=0):
+        self._maxLength = maxLength
+        self._notifyModification()
+
+    def getValues(self):
+        values = AbstractField.getValues(self)
+        values["maxLength"] = self.getMaxLength()
+        values["limitation"] = self.getLimitation()
+        return values
+
+    def setValues(self, params):
+        AbstractField.setValues(self, params)
+        self.setMaxLength(params.get("maxLength") if params.get("maxLength") else 0)
+        self.setLimitation(params.get("limitation") if params.get("limitation") in self.limitationtypes else "chars")
+        self._notifyModification()
+
+
+class AbstractTextAreaField(AbstractTextField):
+    _type = "textarea"
+    pass
+
+
+class AbstractInputField(AbstractTextField):
+    _type = "input"
+    pass
+
+
+class AbstractSelectionField(AbstractField):
+    fossilizes(IAbstractSelectionFieldFossil)
+    _type = "selection"
+
+    def __init__(self, params):
+        AbstractField.__init__(self, params)
+        self.__id_generator = Counter()
+        self._options = []
+        self._deleted_options = []
+        for o in params.get("options") if params.get("options") else []:
+            self._setOption(o)
+
+    def _deleteOption(self, option):
+        self._options.remove(option)
+        self._deleted_options.append(option)
+
+    def _updateDeletedOptions(self, options=[]):
+        stored_options = set(self._options)
+        updated_options = set(self.getOption(o["id"]) for o in options)
+
+        for deleted_option in stored_options - updated_options:
+            self._deleteOption(deleted_option)
+
+    def _setOption(self, option, index=None):
+        stored = self.getOption(option["id"])
+        if stored:
+            stored.value = option["value"]
+            oldindex = self._options.index(stored)
+            self._options.insert(index, self._options.pop(oldindex))
+        elif option["value"] is not "":
+            option["id"] = self.__id_generator.newCount()
+            self._options.append(SelectionFieldOption(option["id"], option["value"]))
+
+    def clone(self):
+        return AbstractSelectionField(self.getValues())
+
+    def check(self, content):
+        errors = AbstractField.check(self, content)
+
+        if self._active and self._isMandatory and content == "":
+            errors.append(_("The field '%s' is mandatory") % self._caption)
+        elif content != "":
+            if next((op for op in self._options if op.id == content), None) is None:
+                errors.append(_("The option with ID '%s' in the field %s") % (content, self._caption))
+
+        return errors
+
+    def getDeletedOption(self, id):
+        return next((o for o in self._deleted_options if o.getId() == id), None)
+
+    def getDeletedOptions(self, id):
+        return self._deleted_options
+
+    def getOption(self, id):
+        return next((o for o in self._options if o.getId() == id), None)
+
+    def getOptions(self):
+        return self._options
+
+    def setOptions(self, options=[]):
+        self._updateDeletedOptions(options)
+        for i, o in enumerate(options):
+            self._setOption(o, i)
+        self._notifyModification()
+
+    def getValues(self):
+        values = AbstractField.getValues(self)
+
+        options = []
+        for o in self._options:
+            options.append(o.__dict__)
+        values["options"] = options
+
+        return values
+
+    def setValues(self, params):
+        AbstractField.setValues(self, params)
+        self.setOptions(params.get("options"))
+        self._notifyModification()
+
+
+class SelectionFieldOption(Fossilizable):
+    fossilizes(ISelectionFieldOptionFossil)
+
+    def __init__(self, id, value):
+        self.id = id
+        self.value = value
+        self.deleted = False
+
+    def __eq__(self, other):
+        if isinstance(other, SelectionFieldOption):
+            return self.id == other.id
+        return False
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def __repr__(self):
+        return self.id
+
+    def __str__(self):
+        return self.value
+
+    def getValue(self):
+        return self.value
+
+    def getId(self):
+        return self.id
+
+    def isDeleted(self):
+        return self.deleted
+
+
+class AbstractFieldContent(Persistent):
+
+    def __init__(self, field, value):
+        self.field = field
+        self.value = value
+
+    def __eq__(self, other):
+        if isinstance(other, AbstractFieldContent) and self.field == other.field:
+            return self.value == other.value
+        elif not isinstance(other, AbstractFieldContent):
+            return self.value == other
+        return False
+
+    def __len__(self):
+        return len(self.value)
+
+    def __ne__(self, other):
+        if isinstance(other, AbstractFieldContent) and self.field == other.field:
+            return self.value != other.value
+        elif not isinstance(other, AbstractFieldContent):
+            return self.value != other
+        return True
+
+    def __str__(self):
+        if isinstance(self.field, AbstractSelectionField):
+            return str(self.field.getOption(self.value))
+        else:
+            return str(self.value)
+
 
 class AbstractFieldsMgr(Persistent):
 
     def __init__(self):
-        self._fields=self._initFields()
+        self._fields = self._initFields()
         self.__fieldGenerator = Counter()
 
     def clone(self):
@@ -536,7 +760,7 @@ class AbstractFieldsMgr(Persistent):
         try:
             if self.__fieldGenerator:
                 pass
-        except AttributeError,e:
+        except AttributeError, e:
             self.__fieldGenerator = Counter()
         return self.__fieldGenerator
 
@@ -544,11 +768,11 @@ class AbstractFieldsMgr(Persistent):
         self._p_changed = 1
 
     def _initFields(self):
-        d=[]
-        su=AbstractField("content",_("Content"), _("Abstract content"),0,True)
-        d.append(su)
-        su=AbstractField("summary",_("Summary"), _("Summary"),0)
-        d.append(su)
+        d = []
+        params = {"type": "textarea", "id": "content", "caption": N_("Content"), "isMandatory": True}
+        d.append(AbstractField.makefield(params))
+        params = {"type": "textarea", "id": "summary", "caption": N_("Summary")}
+        d.append(AbstractField.makefield(params))
         return d
 
     def hasField(self, id):
@@ -559,7 +783,8 @@ class AbstractFieldsMgr(Persistent):
 
     def getFields(self):
         if not self.hasField("content"):
-            ac=AbstractField("content","Content", _("Abstract content"),0,True)
+            params = {"type": "textarea", "id": "content", "caption": _("Content"), "isMandatory": True}
+            ac = AbstractField.makefield(params)
             self._fields.insert(0, ac)
         return self._fields
 
@@ -573,7 +798,7 @@ class AbstractFieldsMgr(Persistent):
     def hasActiveField(self, id):
         return self.hasField(id) and self.getFieldById(id).isActive()
 
-    def hasAnyActiveField( self ):
+    def hasAnyActiveField(self):
         for f in self._fields:
             if f.isActive():
                 return True
@@ -604,15 +829,15 @@ class AbstractFieldsMgr(Persistent):
     def _addField(self, field):
         self._fields.append(field)
 
-    def addField(self, id, name, caption, maxlength=0, isMandatory=False, fieldType="textarea"):
-        if self.hasField(id):
-            self.getFieldById(id).setValues(name, caption, maxlength, isMandatory, fieldType)
+    def setField(self, params):
+        if self.hasField(params["id"]):
+            self.getFieldById(params["id"]).setValues(params)
         else:
-            id=str(self.getFieldGenerator().newCount())
-            absf = AbstractField(id, name, caption, maxlength, isMandatory, fieldType)
+            params["id"] = str(self.getFieldGenerator().newCount())
+            absf = AbstractField.makefield(params)
             self._fields.append(absf)
         self._notifyModification()
-        return id
+        return params["id"]
 
     def removeField(self, id):
         if self.hasField(id):
@@ -627,7 +852,7 @@ class AbstractFieldsMgr(Persistent):
             if idx == 0:
                 self._fields.append(f)
             else:
-                self._fields.insert(idx-1,f)
+                self._fields.insert(idx-1, f)
             self._notifyModification()
 
     def moveAbsFieldDown(self, id):
@@ -636,10 +861,11 @@ class AbstractFieldsMgr(Persistent):
             idx = self._fields.index(f)
             self._fields.remove(f)
             if idx == len(self._fields):
-                self._fields.insert(0,f)
+                self._fields.insert(0, f)
             else:
-                self._fields.insert(idx+1,f)
+                self._fields.insert(idx+1, f)
             self._notifyModification()
+
 
 class AbstractMgr(Persistent):
 
@@ -649,45 +875,90 @@ class AbstractMgr(Persistent):
         self._participationIdx = _AbstractParticipationIndex()
         self.__abstractGenerator = Counter()
         self._activated = False
-        self.setStartSubmissionDate( datetime.now() )
-        self.setEndSubmissionDate( datetime.now() )
+        self.setStartSubmissionDate(datetime.now())
+        self.setEndSubmissionDate(datetime.now())
 ##        self._contribTypes = PersistentList()
-        self.setAnnouncement( "" )
-        self._notifTpls=IOBTree()
-        self._notifTplsOrder=PersistentList()
-        self.__notifTplsCounter=Counter()
+        self.setAnnouncement("")
+        self._notifTpls = IOBTree()
+        self._notifTplsOrder = PersistentList()
+        self.__notifTplsCounter = Counter()
         self._authorizedSubmitter = PersistentList()
-        self._primAuthIdx =_PrimAuthIdx(self)
-        self._abstractFieldsMgr=AbstractFieldsMgr()
-        self._submissionNotification=SubmissionNotification()
+        self._primAuthIdx = _PrimAuthIdx(self)
+        self._authEmailIdx = _AuthEmailIdx(self)
+        self._abstractFieldsMgr = AbstractFieldsMgr()
+        self._submissionNotification = SubmissionNotification()
         self._multipleTracks = True
         self._tracksMandatory = False
+        self._attachFiles = False
+        self._showSelectAsSpeaker = True
+        self._selectSpeakerMandatory = True
+        self._showAttachedFilesContribList = False
 
-    def getMultipleTracks( self ):
+    def getMultipleTracks(self):
         try:
             return self._multipleTracks
         except:
-            self.setMultipleTracks( True )
+            self.setMultipleTracks(True)
             return self._multipleTracks
 
-    def setMultipleTracks( self, multipleTracks = True ):
+    def setMultipleTracks(self, multipleTracks=True):
         self._multipleTracks = multipleTracks
 
-    def areTracksMandatory( self ):
+    def areTracksMandatory(self):
         try:
             return self._tracksMandatory
         except:
-            self.setTracksMandatory( False )
+            self.setTracksMandatory(False)
             return self._tracksMandatory
 
-    def setTracksMandatory( self, tracksMandatory = False ):
+    def canAttachFiles(self):
+        try:
+            return self._attachFiles
+        except:
+            self.setAllowAttachFiles(False)
+            return self._attachFiles
+
+    def setAllowAttachFiles(self, attachedFiles):
+        self._attachFiles = attachedFiles
+
+    def setTracksMandatory(self, tracksMandatory=False):
         self._tracksMandatory = tracksMandatory
+
+    def showSelectAsSpeaker(self):
+        try:
+            return self._showSelectAsSpeaker
+        except:
+            self._showSelectAsSpeaker = True
+            return self._showSelectAsSpeaker
+
+    def setShowSelectAsSpeaker(self, showSelectAsSpeaker):
+        self._showSelectAsSpeaker = showSelectAsSpeaker
+
+    def isSelectSpeakerMandatory(self):
+        try:
+            return self._selectSpeakerMandatory
+        except:
+            self._selectSpeakerMandatory = True
+            return self._selectSpeakerMandatory
+
+    def setSelectSpeakerMandatory(self, selectSpeakerMandatory):
+        self._selectSpeakerMandatory = selectSpeakerMandatory
+
+    def showAttachedFilesContribList(self):
+        try:
+            return self._showAttachedFilesContribList
+        except:
+            self._showAttachedFilesContribList = False
+            return self._showAttachedFilesContribList
+
+    def setSwitchShowAttachedFilesContribList(self, showshowAttachedFilesContribList):
+        self._showAttachedFilesContribList = showshowAttachedFilesContribList
 
     def getAbstractFieldsMgr(self):
         try:
             return self._abstractFieldsMgr
         except:
-            self._abstractFieldsMgr=AbstractFieldsMgr()
+            self._abstractFieldsMgr = AbstractFieldsMgr()
             return self._abstractFieldsMgr
 
     def clone(self, conference):
@@ -700,19 +971,19 @@ class AbstractMgr(Persistent):
         amgr.setEndSubmissionDate(self.getEndSubmissionDate() + timeDifference)
 
         modifDeadline = self.getModificationDeadline()
-        if modifDeadline is not None :
+        if modifDeadline is not None:
             amgr.setModificationDeadline(self.getModificationDeadline() + timeDifference)
 
         amgr.setActive(self.isActive())
-        if self.getCFAStatus() :
+        if self.getCFAStatus():
             amgr.activeCFA()
-        else :
+        else:
             amgr.desactiveCFA()
 
-        for a in self.getAbstractList() :
+        for a in self.getAbstractList():
             amgr.addAbstract(a.clone(conference, amgr._generateNewAbstractId()))
 
-        for tpl in self.getNotificationTplList() :
+        for tpl in self.getNotificationTplList():
             amgr.addNotificationTpl(tpl.clone())
 
         # Cloning submission notification:
@@ -773,25 +1044,25 @@ class AbstractMgr(Persistent):
         return self._activated
 
     def setStartSubmissionDate(self, date):
-        self._submissionStartDate = datetime(date.year,date.month,date.day,0,0,0)
+        self._submissionStartDate = datetime(date.year, date.month, date.day, 0, 0, 0)
 
     def getStartSubmissionDate(self):
         return timezone(self.getTimezone()).localize(self._submissionStartDate)
 
     def setEndSubmissionDate(self, date):
-        self._submissionEndDate = datetime(date.year,date.month,date.day,23,59,59)
+        self._submissionEndDate = datetime(date.year, date.month, date.day, 23, 59, 59)
 
     def getEndSubmissionDate(self):
         return timezone(self.getTimezone()).localize(self._submissionEndDate)
 
-    def inSubmissionPeriod( self, date = None ):
+    def inSubmissionPeriod(self, date=None):
         if date is None:
-            date=nowutc()
+            date = nowutc()
         sd = self.getStartSubmissionDate()
         ed = self.getEndSubmissionDate()
         return date <= ed and date >= sd
 
-    def getModificationDeadline( self ):
+    def getModificationDeadline(self):
         """Returns the deadline for modifications on the submitted abstracts.
         """
         try:
@@ -799,30 +1070,30 @@ class AbstractMgr(Persistent):
                 pass
         except AttributeError, e:
             self._modifDeadline = None
-        if self._modifDeadline != None:
+        if self._modifDeadline is not None:
             return timezone(self.getTimezone()).localize(self._modifDeadline)
         else:
             return None
 
-    def setModificationDeadline( self, newDL ):
+    def setModificationDeadline(self, newDL):
         """Sets a new deadline for modifications on the submitted abstracts.
         """
-        if newDL != None:
-            self._modifDeadline = datetime( newDL.year,newDL.month,newDL.day,23,59,59)
+        if newDL is not None:
+            self._modifDeadline = datetime(newDL.year, newDL.month, newDL.day, 23, 59, 59)
         else:
             self._modifDeadline = newDL
 
-    def inModificationPeriod( self, date=None ):
+    def inModificationPeriod(self, date=None):
         """Tells whether is possible to modify a submitted abstract in a
             certain date.
         """
         if date is None:
-            date=nowutc()
+            date = nowutc()
         if not self.getModificationDeadline():
             return True
         return date <= self.getModificationDeadline()
 
-    def getAnnouncement( self ):
+    def getAnnouncement(self):
         #to be removed
         try:
             if self._announcement:
@@ -832,7 +1103,7 @@ class AbstractMgr(Persistent):
 
         return self._announcement
 
-    def setAnnouncement( self, newAnnouncement ):
+    def setAnnouncement(self, newAnnouncement):
         self._announcement = newAnnouncement.strip()
 
 ##    def addContribType(self, type):
@@ -848,7 +1119,7 @@ class AbstractMgr(Persistent):
 ##    def getContribTypeList(self):
 ##        return self._contribTypes
 
-    def _generateNewAbstractId( self ):
+    def _generateNewAbstractId(self):
         """Returns a new unique identifier for the current conference
             contributions
         """
@@ -860,12 +1131,12 @@ class AbstractMgr(Persistent):
     def _getOldAbstractCounter(self):
         return self.__abstractGenerator._getCount()
 
-    def newAbstract( self, av, **data ):
+    def newAbstract(self, av, **data):
         """Creates a new abstract under this manager
         """
         id = self._generateNewAbstractId()
-        a = Abstract( self, id, av, **data )
-        self._abstracts[ id ] = a
+        a = Abstract(self, id, av, **data)
+        self._abstracts[id] = a
         for auth in a.getPrimaryAuthorList():
             self.indexAuthor(auth)
         return a
@@ -873,24 +1144,24 @@ class AbstractMgr(Persistent):
     def addAbstract(self, abstract):
         if abstract in self.getAbstractList():
             return
-        if isinstance(abstract.getCurrentStatus(),AbstractStatusWithdrawn):
-            raise MaKaCError(  _("Cannot add an abstract which has been withdrawn"), ("Event"))
+        if isinstance(abstract.getCurrentStatus(), AbstractStatusWithdrawn):
+            raise MaKaCError(_("Cannot add an abstract which has been withdrawn"), ("Event"))
         abstract._setOwner(self)
         self._abstracts[abstract.getId()] = abstract
         for auth in abstract.getPrimaryAuthorList():
             self.indexAuthor(auth)
 
-    def removeAbstract( self, abstract ):
-        if self._abstracts.has_key( abstract.getId() ):
+    def removeAbstract(self, abstract):
+        if self._abstracts.has_key(abstract.getId()):
             #for auth in abstract.getPrimaryAuthorList():
             #    self.unindexAuthor(auth)
             # * Remove dependencies with another abstracts:
             #       - If it's an accepted abstract-->remove abstract from contribution
             if isinstance(abstract.getCurrentStatus(), AbstractStatusAccepted):
-                raise MaKaCError( _("Cannot remove an accepted abstract before removing the contribution linked to it"))
+                raise NoReportError(_("Cannot remove an accepted abstract before removing the contribution linked to it"))
             # If it's a withdrawn abstract-->remove abstract from contribution
             if isinstance(abstract.getCurrentStatus(), AbstractStatusWithdrawn) and abstract.getContribution():
-                raise MaKaCError( _("Cannot remove the abstract before removing the contribution linked to it"))
+                raise NoReportError(_("Cannot remove the abstract before removing the contribution linked to it"))
             for abs in self._abstracts.values():
                 if abs != abstract:
                     st = abs.getCurrentStatus()
@@ -904,25 +1175,26 @@ class AbstractMgr(Persistent):
                             abs.setCurrentStatus(AbstractStatusSubmitted(abs))
             #unindex participations!!!
             self.unregisterParticipation(abstract.getSubmitter())
-            del self._abstracts[ abstract.getId() ]
+            del self._abstracts[abstract.getId()]
             abstract.delete()
 
     def recoverAbstract(self, abstract):
         self.addAbstract(abstract)
         abstract.recoverFromTrashCan()
+
     def getAbstractList(self):
         return self._abstracts.values()
 
     def getAbstractById(self, id):
-        return self._abstracts.get(str(id),None)
+        return self._abstracts.get(str(id), None)
 
-    def registerParticipation( self, p ):
-        self._participationIdx.index( p )
+    def registerParticipation(self, p):
+        self._participationIdx.index(p)
 
-    def unregisterParticipation( self, p ):
-        self._participationIdx.unindex( p )
+    def unregisterParticipation(self, p):
+        self._participationIdx.unindex(p)
 
-    def getAbstractListForAvatar( self, av ):
+    def getAbstractListForAvatar(self, av):
         try:
             if self._participationIdx:
                 pass
@@ -930,112 +1202,93 @@ class AbstractMgr(Persistent):
             self._participationIdx = self._partipationIdx
             self._partipationIdx = None
         res = []
-        for participation in self._participationIdx.getParticipationList( av ):
+        for participation in self._participationIdx.getParticipationList(av):
             abstract = participation.getAbstract()
-            if abstract is not None and abstract.isSubmitter( av ):
+            if abstract is not None and abstract.isSubmitter(av):
                 if abstract not in res:
-                    res.append( abstract )
+                    res.append(abstract)
         return res
 
     def getAbstractListForAuthorEmail(self, email):
-        ''' Get list of abstracts where the email belongs to a primary author
-        '''
-        res = set()
-        for abs in self._abstracts.values():
-            for author in abs.getPrimaryAuthorList():
-                if email == author.getEmail():
-                    res.add(abs)
-
-            for author in abs.getCoAuthorList():
-                if email == author.getEmail():
-                    res.add(abs)
-        return list(res)
-
-    def isInAuthorizedViewList(self, user, abstract):
-        ''' Check if the user is submitter, primary author or co-author of the abstract
-        '''
-        # Check if the user is a submitter or (co-author)
-        if abstract.isSubmitter(user) or self.getAbstractListForAuthorEmail(user.getEmail()):
-            return True
-
-        return False
+        """ Get list of abstracts where the email belongs to an author"""
+        return [self.getAbstractById(i) for i in self._getAuthEmailIndex().match(email)]
 
     def getNotificationTplList(self):
         try:
             if self._notifTpls:
                 pass
         except AttributeError:
-            self._notifTpls=IOBTree()
+            self._notifTpls = IOBTree()
         try:
             if self._notifTplsOrder:
                 pass
         except AttributeError:
-            self._notifTplsOrder=PersistentList()
+            self._notifTplsOrder = PersistentList()
             for tpl in self._notifTpls.values():
                 self._notifTplsOrder.append(tpl)
         return self._notifTplsOrder
 
-    def addNotificationTpl(self,tpl):
+    def addNotificationTpl(self, tpl):
         try:
             if self._notifTpls:
                 pass
         except AttributeError:
-            self._notifTpls=IOBTree()
+            self._notifTpls = IOBTree()
         try:
             if self._notifTplsOrder:
                 pass
         except AttributeError:
-            self._notifTplsOrder=PersistentList()
+            self._notifTplsOrder = PersistentList()
             for tpl in self._notifTpls.values():
                 self._notifTplsOrder.append(tpl)
         try:
             if self._notifTplsCounter:
                 pass
         except AttributeError:
-            self._notifTplsCounter=Counter()
-        if tpl.getOwner()==self and self._notifTpls.has_key(tpl.getId()):
+            self._notifTplsCounter = Counter()
+        if tpl.getOwner() == self and self._notifTpls.has_key(tpl.getId()):
             return
         id = tpl.getId()
         if id == "":
-            id=self._notifTplsCounter.newCount()
-        tpl.includeInOwner(self,id)
-        self._notifTpls[int(id)]=tpl
+            id = self._notifTplsCounter.newCount()
+        tpl.includeInOwner(self, id)
+        self._notifTpls[int(id)] = tpl
         self._notifTplsOrder.append(tpl)
 
-    def removeNotificationTpl(self,tpl):
+    def removeNotificationTpl(self, tpl):
         try:
             if self._notifTpls:
                 pass
         except AttributeError:
-            self._notifTpls=IOBTree()
+            self._notifTpls = IOBTree()
         try:
             if self._notifTplsOrder:
                 pass
         except AttributeError:
-            self._notifTplsOrder=PersistentList()
+            self._notifTplsOrder = PersistentList()
             for tpl in self._notifTpls.values():
                 self._notifTplsOrder.append(tpl)
-        if tpl.getOwner()!=self or not self._notifTpls.has_key(int(tpl.getId())):
+        if tpl.getOwner() != self or not self._notifTpls.has_key(int(tpl.getId())):
             return
         del self._notifTpls[int(tpl.getId())]
         self._notifTplsOrder.remove(tpl)
-        tpl.includeInOwner(None,tpl.getId()) # We don't change the id for
-                                             # recovery purposes.
+        tpl.includeInOwner(None, tpl.getId())  # We don't change the id for
+                                               # recovery purposes.
         tpl.delete()
 
     def recoverNotificationTpl(self, tpl):
         self.addNotificationTpl(tpl)
         tpl.recover()
 
-    def getNotificationTplById(self,id):
+    def getNotificationTplById(self, id):
         try:
             if self._notifTpls:
                 pass
         except AttributeError:
-            self._notifTpls=IOBTree()
-        return self._notifTpls.get(int(id),None)
+            self._notifTpls = IOBTree()
+        return self._notifTpls.get(int(id), None)
 
-    def getNotifTplForAbstract(self,abs):
+    def getNotifTplForAbstract(self, abs):
         """
         """
         for tpl in self.getNotificationTplList():
@@ -1043,72 +1296,78 @@ class AbstractMgr(Persistent):
                 return tpl
         return None
 
-    def moveUpNotifTpl(self,tpl):
+    def moveUpNotifTpl(self, tpl):
         """
         """
         try:
             if self._notifTplsOrder:
                 pass
         except AttributeError:
-            self._notifTplsOrder=PersistentList()
+            self._notifTplsOrder = PersistentList()
             for tpl in self._notifTpls.values():
                 self._notifTplsOrder.append(tpl)
         if tpl not in self._notifTplsOrder:
             return
-        idx=self._notifTplsOrder.index(tpl)
-        if idx==0:
+        idx = self._notifTplsOrder.index(tpl)
+        if idx == 0:
             return
         self._notifTplsOrder.remove(tpl)
-        self._notifTplsOrder.insert(idx-1,tpl)
+        self._notifTplsOrder.insert(idx-1, tpl)
 
-
-    def moveDownNotifTpl(self,tpl):
+    def moveDownNotifTpl(self, tpl):
         """
         """
         try:
             if self._notifTplsOrder:
                 pass
         except AttributeError:
-            self._notifTplsOrder=PersistentList()
+            self._notifTplsOrder = PersistentList()
             for tpl in self._notifTpls.values():
                 self._notifTplsOrder.append(tpl)
-        idx=self._notifTplsOrder.index(tpl)
-        if idx==len(self._notifTplsOrder):
+        idx = self._notifTplsOrder.index(tpl)
+        if idx == len(self._notifTplsOrder):
             return
         self._notifTplsOrder.remove(tpl)
-        self._notifTplsOrder.insert(idx+1,tpl)
+        self._notifTplsOrder.insert(idx+1, tpl)
 
-    def indexAuthor(self,auth):
-        a=auth.getAbstract()
+    def indexAuthor(self, auth):
+        a = auth.getAbstract()
         if a.isPrimaryAuthor(auth):
             self._getPrimAuthIndex().index(auth)
+        self._getAuthEmailIndex().index(auth)
 
-    def unindexAuthor(self,auth):
-        a=auth.getAbstract()
+    def unindexAuthor(self, auth):
+        a = auth.getAbstract()
         if a.isPrimaryAuthor(auth):
             self._getPrimAuthIndex().unindex(auth)
+        self._getAuthEmailIndex().unindex(auth)
 
     def _getPrimAuthIndex(self):
         try:
             if self._primAuthIdx:
                 pass
         except AttributeError:
-            self._primAuthIdx=_PrimAuthIdx(self)
+            self._primAuthIdx = _PrimAuthIdx(self)
         return self._primAuthIdx
 
-    def getAbstractsMatchingAuth(self,query,onlyPrimary=True):
-        if str(query).strip()=="":
+    def _getAuthEmailIndex(self):
+        if not hasattr(self, '_authEmailIdx'):
+            self._authEmailIdx = _AuthEmailIdx(self)
+        return self._authEmailIdx
+
+    def getAbstractsMatchingAuth(self, query, onlyPrimary=True):
+        if str(query).strip() == "":
             return self.getAbstractList()
-        res=self._getPrimAuthIndex().match(query)
+        res = self._getPrimAuthIndex().match(query)
         return [self.getAbstractById(id) for id in res]
 
-    def addAbstractField(self, id, name, caption, maxLength=0, isMandatory=False, fieldType="textarea"):
-        return self.getAbstractFieldsMgr().addField(id, name, caption, maxLength, isMandatory, fieldType)
+    def setAbstractField(self, params):
+        return self.getAbstractFieldsMgr().setField(params)
 
     def removeAbstractField(self, id):
         self.getAbstractFieldsMgr().removeField(id)
 
-    def hasAnyEnabledAbstractField( self ):
+    def hasAnyEnabledAbstractField(self):
         return self.getAbstractFieldsMgr().hasAnyActiveField()
 
     def hasEnabledAbstractField(self, key):
@@ -1135,11 +1394,11 @@ class AbstractMgr(Persistent):
             if self._submissionNotification:
                 pass
         except AttributeError, e:
-            self._submissionNotification=SubmissionNotification()
+            self._submissionNotification = SubmissionNotification()
         return self._submissionNotification
 
     def setSubmissionNotification(self, sn):
-        self._submissionNotification=sn
+        self._submissionNotification = sn
 
     def recalculateAbstractsRating(self, scaleLower, scaleHigher):
         ''' recalculate the values of the rating for all the abstracts in the conference '''
@@ -1152,7 +1411,8 @@ class AbstractMgr(Persistent):
             abs.removeAnswersOfQuestion(questionId)
 
     def notifyModification(self):
-        self._p_changed=1
+        self._p_changed = 1
+
 
 class SubmissionNotification(Persistent):
 
@@ -1161,7 +1421,7 @@ class SubmissionNotification(Persistent):
         self._ccList = PersistentList()
 
     def hasDestination(self):
-        return self._toList!=[] or self._toList!=[]
+        return self._toList != [] or self._toList != []
 
     def getToList(self):
         return self._toList
@@ -1188,34 +1448,35 @@ class SubmissionNotification(Persistent):
         self._ccList = PersistentList()
 
     def clone(self):
-        nsn=SubmissionNotification()
+        nsn = SubmissionNotification()
         for i in self.getToList():
             nsn.addToList(i)
         for i in self.getCCList():
             nsn.addCCList(i)
         return nsn
 
+
 class Comment(Persistent):
 
-    def __init__(self,res,content=""):
-        self._abstract=None
-        self._id=""
-        self._responsible=res
-        self._content=""
-        self._creationDate=nowutc()
-        self._modificationDate=nowutc()
+    def __init__(self, res, content=""):
+        self._abstract = None
+        self._id = ""
+        self._responsible = res
+        self._content = ""
+        self._creationDate = nowutc()
+        self._modificationDate = nowutc()
 
     def getLocator(self):
-        loc=self._abstract.getLocator()
-        loc["intCommentId"]=self._id
+        loc = self._abstract.getLocator()
+        loc["intCommentId"] = self._id
         return loc
 
-    def includeInAbstract(self,abstract,id):
-        self._abstract=abstract
-        self._id=id
+    def includeInAbstract(self, abstract, id):
+        self._abstract = abstract
+        self._id = id
 
     def delete(self):
-        self._abstract=None
+        self._abstract = None
         TrashCanManager().add(self)
 
     def recover(self):
@@ -1225,7 +1486,7 @@ class Comment(Persistent):
         if dt:
             self._modificationDate = dt
         else:
-            self._modificationDate=nowutc()
+            self._modificationDate = nowutc()
 
     def getResponsible(self):
         return self._responsible
@@ -1240,7 +1501,7 @@ class Comment(Persistent):
         return self._content
 
     def setContent(self, newContent):
-        self._content=newContent
+        self._content = newContent
         self._notifyModification()
 
     def getCreationDate(self):
@@ -1249,15 +1510,16 @@ class Comment(Persistent):
     def getModificationDate(self):
         return self._modificationDate
 
-    def canModify(self,aw):
+    def canModify(self, aw):
         return self.canUserModify(aw.getUser())
 
-    def canUserModify(self,user):
-        abstract=self.getAbstract()
-        conf=abstract.getConference()
-        return self.getResponsible()==user and \
+    def canUserModify(self, user):
+        abstract = self.getAbstract()
+        conf = abstract.getConference()
+        return self.getResponsible() == user and \
             (abstract.canUserModify(user) or \
-            len(conf.getConference().getCoordinatedTracks(user))>0)
+            len(conf.getConference().getCoordinatedTracks(user)) > 0)
+
 
 class Abstract(Persistent):
 
@@ -1289,6 +1551,19 @@ class Abstract(Persistent):
         self._submitter=None
         self._setSubmitter( submitter )
         self._rating = None # It needs to be none to avoid the case of having the same value as the lowest value in the judgement
+        self._attachments = {}
+        self._attachmentsCounter = Counter()
+
+    def __cmp__(self, other):
+        if type(self) is not type(other):
+            # This is actually dangerous and the ZODB manual says not to do this
+            # because it relies on memory order. However, this branch should never
+            # be taken anyway since we do not store different types in the same set
+            # or use them as keys.
+            return cmp(hash(self), hash(other))
+        if self.getConference() == other.getConference():
+            return cmp(self.getId(), other.getId())
+        return cmp(self.getConference(), other.getConference())
 
     def clone(self, conference, abstractId):
 
@@ -1332,15 +1607,13 @@ class Abstract(Persistent):
 
         # the track, to which the abstract belongs to
         # legacy list implementation
-        track = None
         for tr in self.getTrackList() :
             for newtrack in conference.getTrackList():
                 if newtrack.getTitle() == tr.getTitle() :
                     abs.addTrack(newtrack)
-                    track = newtrack
 
         # overall abstract status (accepted / rejected)
-        abs._currentStatus = self._currentStatus.clone(track)
+        abs._currentStatus = self._currentStatus.clone(abs)
 
         for ta in self.getTrackAcceptanceList() :
             for newtrack in conference.getTrackList():
@@ -1349,19 +1622,24 @@ class Abstract(Persistent):
                     abs._addTrackAcceptance(newta)
                     abs._addTrackJudgementToHistorical(newta)
 
-        for trj in self._trackRejections.values() :
+        for trj in self.getTrackRejections().values() :
             for newtrack in conference.getTrackList():
                 if newtrack.getTitle() == trj.getTrack().getTitle() :
                     newtrj = trj.clone(newtrack)
                     abs._addTrackRejection(newtrj)
                     abs._addTrackJudgementToHistorical(newtrj)
 
-        for trl in self._trackReallocations.values() :
+        for trl in self.getTrackReallocations().values() :
             for newtrack in conference.getTrackList():
                 if newtrack.getTitle() == trl.getTrack().getTitle() :
                     newtrl = trl.clone(newtrack)
                     abs._addTrackReallocation(newtrl)
                     abs._addTrackJudgementToHistorical(newtrl)
+
+        # Cloning materials
+        for f in self.getAttachments().values():
+            newFile = f.clone(abs, protection=False)
+            abs.__addFile(newFile)
 
         return abs
 
@@ -1407,6 +1685,53 @@ class Abstract(Persistent):
     def setComments(self, comments):
         self._comments = comments
 
+    def __addFile(self, file):
+        file.archive(self.getConference()._getRepository())
+        self.getAttachments()[file.getId()] = file
+        self._notifyModification()
+
+
+    def saveFiles(self, files):
+        cfg = Config.getInstance()
+        from MaKaC.conference import LocalFile
+        for fileUploaded in files:
+            if fileUploaded.filename:
+                # create a temp file
+                tempPath = cfg.getUploadedFilesTempDir()
+                tempFileName = tempfile.mkstemp(suffix="IndicoAbstract.tmp", dir=tempPath)[1]
+                f = open(tempFileName, "wb")
+                f.write(fileUploaded.file.read() )
+                f.close()
+                file = LocalFile()
+                file.setFileName(fileUploaded.filename)
+                file.setFilePath(tempFileName)
+                file.setOwner(self)
+                file.setId(self._getAttachmentsCounter())
+                self.__addFile(file)
+
+    def deleteFilesNotInList(self, keys):
+        """This method is used in order to delete all the files that are not present (by id) in the
+        parameter "keys".
+        This is useful when files are deleted from the abstract form using Javascript, and so it is
+        the only way to know that they are deleted.
+        """
+        existingKeys = self.getAttachments().keys()
+        for key in existingKeys:
+            if not key in keys:
+                self._deleteFile(key)
+
+    def _deleteFile(self, key):
+        file = self.getAttachments()[key]
+        file.delete()
+        del self.getAttachments()[key]
+        self._notifyModification()
+
+    def removeResource(self, res):
+        """Necessary because LocalFile.delete (see _deleteFile) is calling this method.
+        In our case, nothing to do.
+        """
+        pass
+
     def _setOwner( self, owner ):
         self._owner = owner
 
@@ -1422,11 +1747,15 @@ class Abstract(Persistent):
     def _setSubmissionDate( self, newDate ):
         self._submissionDate = newDate
 
-    def _notifyModification( self, dt=None ):
+    def setModificationDate(self, dt = None):
         if dt:
             self._modificationDate = dt
         else:
             self._modificationDate = nowutc()
+
+    def _notifyModification( self, dt=None ):
+        self.setModificationDate(dt)
+        self._p_changed = 1
 
     def getModificationDate( self ):
         return self._modificationDate
@@ -1471,50 +1800,27 @@ class Abstract(Persistent):
     def getTitle(self):
         return self._title
 
-    def getFields( self ):
-        try:
-            return self._fields
-        except:
-            self._fields = {}
-            try:
-                if self._content != "":
-                    self._fields["content"] = self._content
-                del self._content
-            except:
-                pass
-            try:
-                if self._summary != "":
-                    self._fields["summary"] = self._summary
-                del self._summary
-            except:
-                pass
-            return self._fields
+    def getFields(self):
+        return self._fields
 
     def removeField(self, field):
         if self.getFields().has_key(field):
             del self.getFields()[field]
             self._notifyModification()
 
-    def setField( self, field, value ):
+    def setField(self, fid, v):
+        if isinstance(v, AbstractFieldContent):
+            v = v.value
         try:
-            self.getFields()[field] = value
+            self.getFields()[fid].value = v
             self._notifyModification()
         except:
-            pass
+            afm = self.getConference().getAbstractMgr().getAbstractFieldsMgr()
+            f = next(f for f in afm.getFields() if f.getId() == fid)
+            if f is not None:
+                self.getFields()[fid] = AbstractFieldContent(f, v)
 
-    def getField( self, field):
-        try:
-            if self._content != "":
-                self._fields["content"] = self._content
-            del self._content
-        except:
-            pass
-        try:
-            if self._summary != "":
-                self._fields["summary"] = self._summary
-            del self._summary
-        except:
-            pass
+    def getField(self, field):
         if self.getFields().has_key(field):
             return self.getFields()[field]
         else:
@@ -1529,7 +1835,8 @@ class Abstract(Persistent):
         return self._submissionDate
 
     def getConference( self ):
-        return self.getOwner().getOwner()
+        mgr = self.getOwner()
+        return mgr.getOwner() if mgr else None
 
     def _newAuthor( self, **data ):
         author = Author( self, **data )
@@ -1570,6 +1877,12 @@ class Abstract(Persistent):
         return self._primaryAuthors
     #XXX: I keep it for compatibility but it should be removed
     getPrimaryAuthorsList = getPrimaryAuthorList
+
+    def getPrimaryAuthorEmailList(self, lower=False):
+        emailList = []
+        for pAuthor in self.getPrimaryAuthorList():
+            emailList.append(pAuthor.getEmail().lower() if lower else pAuthor.getEmail())
+        return emailList
 
     def clearPrimaryAuthors(self):
         while len(self._primaryAuthors)>0:
@@ -1623,6 +1936,12 @@ class Abstract(Persistent):
     def getCoAuthorList( self ):
         self._comp_CoAuthors()
         return self._coAuthors
+
+    def getCoAuthorEmailList(self, lower=False):
+        emailList = []
+        for coAuthor in self.getCoAuthorList():
+            emailList.append(coAuthor.getEmail().lower() if lower else coAuthor.getEmail())
+        return emailList
 
     def clearCoAuthors(self):
         while len(self._coAuthors)>0:
@@ -1765,7 +2084,7 @@ class Abstract(Persistent):
     def isProposedForTrack( self, track ):
         return self._tracks.has_key( track.getId() )
 
-    def getNumTracks( self ):
+    def getNumTracks(self):
         return len( self._tracks )
 
     def getLocator(self):
@@ -1773,7 +2092,7 @@ class Abstract(Persistent):
         loc["abstractId"] = self.getId()
         return loc
 
-    def isAllowedToCoordinate(self,av):
+    def isAllowedToCoordinate(self, av):
         """Tells whether or not the specified user can coordinate any of the
             tracks of this abstract
         """
@@ -1782,99 +2101,120 @@ class Abstract(Persistent):
                 return True
         return False
 
-    def isAllowedToAccess( self, av ):
+    def canAuthorAccess(self, user):
+        if user is None:
+            return False
+        el = self.getCoAuthorEmailList(True)+self.getPrimaryAuthorEmailList(True)
+        for e in user.getEmails():
+            if e.lower() in el:
+                return True
+        return False
+
+    def isAllowedToAccess(self, av):
         """Tells whether or not an avatar can access an abstract independently
             of the protection
         """
         #any author is allowed to access
         #CFA managers are allowed to access
-        #??? any user granted with access privileges is allowed to access
-        #??? any user begin able to modify is also allowed to access
+        #any user being able to modify is also allowed to access
         #any TC is allowed to access
+        if self.canAuthorAccess(av):
+            return True
         if self.isAllowedToCoordinate(av):
             return True
         return self.canUserModify(av)
 
-    def canAccess(self,aw):
+    def canAccess(self, aw):
         #if the conference is protected, then only allowed AW can access
-        return self.isAllowedToAccess( aw.getUser() )
+        return self.isAllowedToAccess(aw.getUser())
 
     def canView(self, aw):
         #in the future it would be possible to add an access control
         #only those users allowed to access are allowed to view
-        return self.isAllowedToAccess( aw.getUser() )
+        return self.isAllowedToAccess(aw.getUser())
 
-    def canModify( self, aw ):
-        return self.canUserModify( aw.getUser() )
+    def canModify(self, aw):
+        return self.canUserModify(aw.getUser())
 
-    def canUserModify( self, av ):
+    def canUserModify(self, av):
         #the submitter can modify
-        if self.isSubmitter( av ):
+        if self.isSubmitter(av):
             return True
         #??? any CFA manager can modify
         #??? any user granted with modification privileges can modify
         #conference managers can modify
         conf = self.getConference()
-        return conf.canUserModify( av )
+        return conf.canUserModify(av)
 
-    def getModifKey( self ):
+    def getModifKey(self):
         return ""
 
-    def getAccessKey( self ):
+    def getAccessKey(self):
         return ""
 
-    def delete( self ):
+    def getAccessController(self):
+        return self.getConference().getAccessController()
+
+    def isProtected(self):
+        return self.getConference().isProtected()
+
+    def delete(self):
         if self._owner:
-            self.getSubmitter().delete()
+            self.getOwner().unregisterParticipation(self._submitter)
+            self._submitter.getUser().unlinkTo(self, "submitter")
+            self._submitter.delete()
             self._submitter = None
             self.clearAuthors()
             self.clearSpeakers()
             self.clearTracks()
             owner = self._owner
             self._owner = None
-            owner.removeAbstract( self )
+            owner.removeAbstract(self)
             self.setCurrentStatus(AbstractStatusNone(self))
             TrashCanManager().add(self)
 
     def recoverFromTrashCan(self):
         TrashCanManager().remove(self)
 
-    def getCurrentStatus( self ):
+    def getCurrentStatus(self):
         try:
             if self._currentStatus:
                 pass
         except AttributeError, e:
-            self._currentStatus = AbstractStatusSubmitted( self )
+            self._currentStatus = AbstractStatusSubmitted(self)
         return self._currentStatus
 
-    def setCurrentStatus( self, newStatus ):
+    def setCurrentStatus(self, newStatus):
         self._currentStatus = newStatus
         #If we want to keep a history of status changes we should add here
         #   the old status to a list
 
-    def accept(self,responsible,destTrack,type,comments="",session=None):
+    def accept(self, responsible, destTrack, type, comments="", session=None):
         """
         """
-        self.getCurrentStatus().accept(responsible,destTrack,type,comments )
+        self.getCurrentStatus().accept(responsible, destTrack, type, comments)
         #add the abstract to the track for which it has been accepted so it
         #   is visible for it.
         if destTrack is not None:
-            destTrack.addAbstract( self )
+            destTrack.addAbstract(self)
         #once the abstract is accepted a new contribution under the destination
         #   track must be created
         # ATTENTION: This import is placed here explicitely for solving
         #   problems with circular imports
         from MaKaC.conference import AcceptedContribution
-        contrib=AcceptedContribution(self)
-        if session != None:
+        contrib = AcceptedContribution(self)
+        if session:
             contrib.setSession(session)
-        self.getCurrentStatus().setContribution( contrib )
-        self._setContribution( contrib )
+            contrib.setDuration(dur=session.getContribDuration())
+        else:
+            contrib.setDuration()
+        self.getCurrentStatus().setContribution(contrib)
+        self._setContribution(contrib)
 
-    def reject( self, responsible, comments="" ):
+    def reject(self, responsible, comments=""):
         """
         """
-        self.getCurrentStatus().reject( responsible, comments )
+        self.getCurrentStatus().reject(responsible, comments)
 
     def _cmpByDate(self, tj1, tj2):
         return cmp(tj1.getDate(), tj2.getDate())
@@ -1884,12 +2224,18 @@ class Abstract(Persistent):
             if self._trackJudgementsHistorical:
                 pass
             if type(self._trackJudgementsHistorical) == tuple:
-                self._trackJudgementsHistorical={}
-        except AttributeError, e:
-            self._trackJudgementsHistorical={}
+                self._trackJudgementsHistorical = {}
+        except AttributeError:
+            self._trackJudgementsHistorical = {}
             for track in self.getTrackList():
-                if self.getTrackJudgement(track) is not None:
-                    self._trackJudgementsHistorical[track.getId()]= [self.getTrackJudgement(track)]
+                judgement = None
+                if self.getTrackAcceptances().has_key(track.getId()):
+                    judgement = self.getTrackAcceptances()[track.getId()]
+                elif self.getTrackRejections().has_key(track.getId()):
+                    judgement = self.getTrackRejections()[track.getId()]
+                elif self.getTrackReallocations().has_key(track.getId()):
+                    judgement = self.getTrackReallocations()[track.getId()]
+                self._trackJudgementsHistorical[track.getId()] = [judgement]
             self._notifyModification()
         return self._trackJudgementsHistorical
 
@@ -1915,109 +2261,58 @@ class Abstract(Persistent):
     def _removeTrackAcceptance( self, track ):
         """
         """
-        try:
-            if self._trackAcceptances:
-                pass
-        except AttributeError, e:
-            self._trackAcceptances = OOBTree()
-
-        if self._trackAcceptances.has_key( track.getId() ):
-            del self._trackAcceptances[ track.getId() ]
+        if self.getTrackAcceptances().has_key( track.getId() ):
+            del self.getTrackAcceptances()[ track.getId() ]
 
     def _addTrackAcceptance( self, judgement ):
         """
         """
-        try:
-            if self._trackAcceptances:
-                pass
-        except AttributeError, e:
-            self._trackAcceptances = OOBTree()
-
         self._removeTrackRejection( judgement.getTrack() )
         self._removeTrackReallocation( judgement.getTrack() )
-        self._trackAcceptances[ judgement.getTrack().getId() ] = judgement
+        self.getTrackAcceptances()[ judgement.getTrack().getId() ] = judgement
         self._addTrackJudgementToHistorical(judgement)
 
     def _removeTrackRejection( self, track ):
         """
         """
-        try:
-            if self._trackRejections:
-                pass
-        except AttributeError, e:
-            self._trackRejections = OOBTree()
-
-        if self._trackRejections.has_key( track.getId() ):
-            del self._trackRejections[ track.getId() ]
+        if self.getTrackRejections().has_key( track.getId() ):
+            del self.getTrackRejections()[ track.getId() ]
 
     def _addTrackRejection( self, judgement ):
         """
         """
-        try:
-            if self._trackRejections:
-                pass
-        except AttributeError, e:
-            self._trackRejections = OOBTree()
-
         self._removeTrackAcceptance( judgement.getTrack() )
         self._removeTrackReallocation( judgement.getTrack() )
-        self._trackRejections[ judgement.getTrack().getId() ] = judgement
+        self.getTrackRejections()[ judgement.getTrack().getId() ] = judgement
         self._addTrackJudgementToHistorical(judgement)
 
     def _removeTrackReallocation( self, track ):
         """
         """
-        try:
-            if self._trackReallocations:
-                pass
-        except AttributeError, e:
-            self._trackReallocations = OOBTree()
-
-        if self._trackReallocations.has_key( track.getId() ):
-            del self._trackReallocations[ track.getId() ]
+        if self.getTrackReallocations().has_key( track.getId() ):
+            del self.getTrackReallocations()[ track.getId() ]
 
     def _addTrackReallocation( self, judgement ):
         """
         """
-        try:
-            if self._trackReallocations:
-                pass
-        except AttributeError, e:
-            self._trackReallocations = OOBTree()
-
         self._removeTrackAcceptance( judgement.getTrack() )
         self._removeTrackRejection( judgement.getTrack() )
-        self._trackReallocations[ judgement.getTrack().getId() ] = judgement
+        self.getTrackReallocations()[ judgement.getTrack().getId() ] = judgement
         self._addTrackJudgementToHistorical(judgement)
 
     def _clearTrackRejections( self ):
-        try:
-            if self._trackRejections:
-                pass
-        except AttributeError, e:
-            self._trackRejections = OOBTree()
-        while len(self._trackRejections.values())>0:
-            t = self._trackRejections.values()[0].getTrack()
+        while len(self.getTrackRejections().values())>0:
+            t = self.getTrackRejections().values()[0].getTrack()
             self._removeTrackRejection( t )
 
     def _clearTrackAcceptances( self ):
-        try:
-            if self._trackAcceptances:
-                pass
-        except AttributeError, e:
-            self._trackAcceptances = OOBTree()
-        while len(self._trackAcceptances.values())>0:
-            t = self._trackAcceptances.values()[0].getTrack()
+        while len(self.getTrackAcceptances().values())>0:
+            t = self.getTrackAcceptances().values()[0].getTrack()
             self._removeTrackAcceptance( t )
 
     def _clearTrackReallocations( self ):
-        try:
-            if self._trackReallocations:
-                pass
-        except AttributeError, e:
-            self._trackReallocations = OOBTree()
-        while len(self._trackReallocations.values())>0:
-            t = self._trackReallocations.values()[0].getTrack()
+        while len(self.getTrackReallocations().values())>0:
+            t = self.getTrackReallocations().values()[0].getTrack()
             self._removeTrackReallocation(t)
 
     def _removePreviousJud(self, responsible, track):
@@ -2113,90 +2408,72 @@ class Abstract(Persistent):
         self._notifyModification()
 
     def getTrackJudgement( self, track ):
-        """
-        """
+        if not self.getJudgementHistoryByTrack(track):
+            return None
+        lastJud = self.getJudgementHistoryByTrack(track)[0]
+        # check if judgements for specified trak are the same. If not there is a conflict.
+        if all(jud.__class__ == lastJud.__class__ for jud in self.getJudgementHistoryByTrack(track)):
+            return lastJud
+        return AbstractInConflict(track)
+
+    def getTrackAcceptances( self ):
         try:
             if self._trackAcceptances:
                 pass
         except AttributeError, e:
             self._trackAcceptances = OOBTree()
-        try:
-            if self._trackRejections:
-                pass
-        except AttributeError, e:
-            self._trackRejections = OOBTree()
-        try:
-            if self._trackReallocations:
-                pass
-        except AttributeError, e:
-            self._trackReallocations = OOBTree()
-
-        if self._trackAcceptances.has_key( track.getId() ):
-            return self._trackAcceptances[ track.getId() ]
-        elif self._trackRejections.has_key( track.getId() ):
-            return self._trackRejections[ track.getId() ]
-        elif self._trackReallocations.has_key( track.getId() ):
-            return self._trackReallocations[ track.getId() ]
-        return None
+        return self._trackAcceptances
 
     def getTrackAcceptanceList( self ):
-        try:
-            if self._trackAcceptances:
-                pass
-        except AttributeError, e:
-            self._trackAcceptances = OOBTree()
         res = []
-        for trackId in intersection( self._tracks, self._trackAcceptances ):
-            res.append( self._trackAcceptances[ trackId ] )
+        for trackId in intersection( self._tracks, self.getTrackAcceptances() ):
+            res.append( self.getTrackAcceptances()[ trackId ] )
         return res
 
     def getNumProposedToAccept( self ):
-        try:
-            if self._trackAcceptances:
-                pass
-        except AttributeError, e:
-            self._trackAcceptances = OOBTree()
-        return len( intersection( self._tracks, self._trackAcceptances ) )
+        return len( intersection( self._tracks, self.getTrackAcceptances() ) )
 
-    def getNumProposedToReject( self ):
+    def getTrackRejections( self ):
         try:
             if self._trackRejections:
                 pass
         except AttributeError, e:
             self._trackRejections = OOBTree()
-        return len( intersection( self._tracks, self._trackRejections ) )
+        return self._trackRejections
+
+    def getNumProposedToReject( self ):
+        return len( intersection( self._tracks, self.getTrackRejections() ) )
+
+    def getTrackReallocations( self ):
+        try:
+            if self._trackReallocations:
+                pass
+        except AttributeError, e:
+            self._trackReallocations = OOBTree()
+        return self._trackReallocations
+
+
+    def getNumProposedToReallocate( self ):
+        return len( intersection( self._tracks, self.getTrackReallocations() ) )
+
 
     def getNumJudgements( self ):
         """
+        Returns the number of tracks for which some proposal has been done.
+        For instance, let's suppose:
+           Track 1: 2 propose to accept, 3 propose to reject
+           Track 2: 1 propose to accept
+           Track 3: None
+        The result would be 2 (out of 3)
         """
-        try:
-            if self._trackAcceptances:
-                pass
-        except AttributeError, e:
-            self._trackAcceptances = OOBTree()
-        try:
-            if self._trackRejections:
-                pass
-        except AttributeError, e:
-            self._trackRejections = OOBTree()
-        try:
-            if self._trackReallocations:
-                pass
-        except AttributeError, e:
-            self._trackReallocations = OOBTree()
-        tmp1 = union( self._trackAcceptances, self._trackRejections )
-        judgements = union( tmp1, self._trackReallocations )
+        tmp1 = union( self.getTrackAcceptances(), self.getTrackRejections() )
+        judgements = union( tmp1, self.getTrackReallocations() )
         return len( intersection( self._tracks, judgements ) )
 
     def getReallocationTargetedList( self, track ):
-        try:
-            if self._trackReallocations:
-                pass
-        except AttributeError, e:
-            self._trackReallocations = OOBTree()
         #XXX: not optimal
         res = []
-        for r in self._trackReallocations.values():
+        for r in self.getTrackReallocations().values():
             if track in r.getProposedTrackList():
                 res.append( r )
         return res
@@ -2430,6 +2707,36 @@ class Abstract(Persistent):
             if (jud.getResponsible() == user):
                 return jud.getJudValue()
 
+    def getLastJudgementPerReviewer(self, user, track):
+        """
+        Get the last judgement of the user for the abstract in the track given.
+        """
+        for jud in self.getJudgementHistoryByTrack(track):
+            if (jud.getResponsible() == user):
+                return jud
+
+    def _getAttachmentsCounter(self):
+        try:
+            if self._attachmentsCounter:
+                pass
+        except AttributeError:
+            self._attachmentsCounter = Counter()
+        return self._attachmentsCounter.newCount()
+
+    def setAttachments(self, attachments):
+        self._attachments = attachments
+
+    def getAttachments(self):
+        try:
+            if self._attachments:
+                pass
+        except AttributeError:
+            self._attachments = {}
+        return self._attachments
+
+    def getAttachmentById(self, id):
+        return self.getAttachments().get(id, None)
+
 
 class AbstractJudgement( Persistent ):
     """This class represents each of the judgements made by a track about a
@@ -2572,6 +2879,15 @@ class AbstractReallocation( AbstractJudgement ):
     def getProposedTrackList( self ):
         return self._proposedTracks
 
+class AbstractInConflict( AbstractJudgement ):
+
+    def __init__( self, track ):
+        AbstractJudgement.__init__( self, track, None, '' )
+
+    def clone(self, track):
+        aic = AbstractInConflict(track, None, '')
+        return aic
+
 class AbstractMarkedAsDuplicated( AbstractJudgement ):
 
     def __init__( self, track, responsible, originalAbst, answers ):
@@ -2640,22 +2956,24 @@ class AbstractStatus( Persistent ):
     def _getStatusClass( self ):
         """
         """
-        numAccepts = self._abstract.getNumProposedToAccept()
-        numJudgements = self._abstract.getNumJudgements()
-        if numJudgements>0:
-            numTracks = self._abstract.getNumTracks()
-            if numTracks == numJudgements:
-                if numAccepts == 1:
-                    s = AbstractStatusProposedToAccept
+        numAccepts = self._abstract.getNumProposedToAccept() # number of tracks that have at least one proposal to accept
+        numReallocate = self._abstract.getNumProposedToReallocate() # number of tracks that have at least one proposal to reallocate
+        numJudgements = self._abstract.getNumJudgements() # number of tracks that have at least one judgement
+        if numJudgements > 0:
+            # If at least one track status is in conflict the abstract status is in conflict too.
+            if any(isinstance(self._abstract.getTrackJudgement(track), AbstractInConflict) for track in self._abstract.getTrackList()):
+                return AbstractStatusInConflict
+            numTracks = self._abstract.getNumTracks() # number of tracks that this abstract has assigned
+            if numTracks == numJudgements: # Do we have judgements for all tracks?
+                if numReallocate == numTracks:
+                    return AbstractStatusInConflict
+                elif numAccepts == 1:
+                    return AbstractStatusProposedToAccept
                 elif numAccepts == 0:
-                    s = AbstractStatusProposedToReject
-                else:
-                    s = AbstractStatusInConflict
-            else:
-                s=AbstractStatusUnderReview
-        else:
-            s=AbstractStatusSubmitted
-        return s
+                    return AbstractStatusProposedToReject
+                return AbstractStatusInConflict
+            return AbstractStatusUnderReview
+        return AbstractStatusSubmitted
 
 
     def update( self ):
@@ -2723,6 +3041,9 @@ class AbstractStatus( Persistent ):
         """
         """
         raise MaKaCError( _("Only merged abstracts can be unmerged"))
+
+    def getComments(self):
+        return ""
 
 
 
@@ -2825,9 +3146,6 @@ class AbstractStatusAccepted( AbstractStatus ):
     def proposeToReallocate( self ):
         raise MaKaCError( _("Cannot propose for reallocation an abstract which is already accepted"))
 
-    #def withdraw( self, comments="" ):
-    #    raise MaKaCError( "Cannot withdraw an ACCEPTED abstract" )
-
     def markAsDuplicated(self,responsible,originalAbs,comments=""):
         raise MaKaCError( _("Cannot mark as duplicated an abstract which is accepted"))
 
@@ -2848,7 +3166,7 @@ class AbstractStatusAccepted( AbstractStatus ):
         from MaKaC.conference import ContribStatusWithdrawn
         if contrib is not None and \
                 not isinstance(contrib.getCurrentStatus(),ContribStatusWithdrawn):
-            contrib.withdraw(resp, _(""" _("abstract withdrawn"): %s""")%comments)
+            contrib.withdraw(resp, i18nformat(""" _("abstract withdrawn"): %s""")%comments)
         AbstractStatus.withdraw(self,resp,comments)
 
 
@@ -3182,6 +3500,7 @@ class NotificationTemplate(Persistent):
         self._tplSubject=""
         self._tplBody=""
         self._fromAddr = ""
+        self._CAasCCAddr = False
         self._ccAddrList=PersistentList()
         self._toAddrs = PersistentList()
         self._conditions=PersistentList()
@@ -3195,6 +3514,7 @@ class NotificationTemplate(Persistent):
         tpl.setTplSubject(self.getTplSubject())
         tpl.setTplBody(self.getTplBody())
         tpl.setFromAddr(self.getFromAddr())
+        tpl.setCAasCCAddr(self.getCAasCCAddr())
 
         for cc in self.getCCAddrList() :
             tpl.addCCAddr(cc)
@@ -3203,9 +3523,6 @@ class NotificationTemplate(Persistent):
 
         for con in self.getConditionList() :
             tpl.addCondition(con.clone(tpl))
-
-        # kto to jest OWNER..??
-        # bo nie konferencja..!!
 
         return tpl
 
@@ -3304,6 +3621,17 @@ class NotificationTemplate(Persistent):
         for addr in l:
             self.addCCAddr(addr)
 
+    def setCAasCCAddr(self, CAasCCAddr):
+        self._CAasCCAddr = CAasCCAddr
+
+    def getCAasCCAddr(self):
+        try:
+            if self._CAasCCAddr:
+                pass
+        except AttributeError:
+            self._CAasCCAddr = False
+        return self._CAasCCAddr
+
     def clearCCAddrList(self):
         self._ccAddrList=PersistentList()
 
@@ -3311,7 +3639,7 @@ class NotificationTemplate(Persistent):
         try:
             return self._fromAddr
         except AttributeError:
-            self._fromAddr = self._owner.getConference().getSupportEmail()
+            self._fromAddr = self._owner.getConference().getSupportInfo().getEmail()
             return self._fromAddr
 
     def setFromAddr(self, addr):
@@ -3435,17 +3763,22 @@ class NotificationTemplate(Persistent):
         result = content.replace("%", "%%")
         # find the vars and make the expressions, it is necessary to do in reverse in order to find the longest tags first
         for var in varList:
-            result = result.replace("|"+var.getName()+"|", "%("+var.getName()+")s")
+            result = result.replace("{"+var.getName()+"}", "%("+var.getName()+")s")
         return result
 
     def parseTplContentUndo(self, content, varList):
         # The body content is shown without "%()" and with "%" in instead of "%%" but it is not modified
         result = content
         for var in varList:
-            result = result.replace("%("+var.getName()+")s", "|"+var.getName()+"|")
+            result = result.replace("%("+var.getName()+")s", "{"+var.getName()+"}")
         # replace the %% by %
         result = result.replace("%%", "%")
         return result
+
+    def getModifKey( self ):
+        return self.getConference().getModifKey()
+
+
 
 class NotifTplToAddr(Persistent):
     """

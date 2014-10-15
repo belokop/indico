@@ -1,41 +1,39 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 """
 Tests for `indico.core.index` module
 """
 
-import unittest, zope.interface
+import zope.interface
 
 from indico.core.index.base import IIIndex, IOIndex, IUniqueIdProvider, \
      ElementNotFoundException, ElementAlreadyInIndexException
 
 
-from MaKaC.common import DBMgr
-
-from persistent import Persistent
+from indico.tests.python.unit.util import IndicoTestCase
 
 
-class TestIIIndex(unittest.TestCase):
+class TestIIIndex(IndicoTestCase):
 
     def setUp(self):
+        super(TestIIIndex, self).setUp()
         self._idx = IIIndex()
 
     def testIndexOperation(self):
@@ -85,9 +83,9 @@ class TestIIIndex(unittest.TestCase):
         Check that queries over the index work
         """
         self.testIndexCollisionOperation()
-        self.assertEqual(list(self._idx.apply((1500,3000))), [1, 2, 3, 4, 5])
-        self.assertEqual(list(self._idx.apply((1500,1500))), [3, 4, 5])
-        self.assertEqual(list(self._idx.apply((4000,5000))), [])
+        self.assertEqual(list(self._idx.apply((1500, 3000))), [1, 2, 3, 4, 5])
+        self.assertEqual(list(self._idx.apply((1500, 1500))), [3, 4, 5])
+        self.assertEqual(list(self._idx.apply((4000, 5000))), [])
 
     def testFaultyUnindex(self):
         """
@@ -109,7 +107,7 @@ class TestIIIndex(unittest.TestCase):
 class IDummyAdapter(zope.interface.Interface):
     pass
 
-class DummyObject(Persistent):
+class DummyObject(object):
 
     zope.interface.implements(IUniqueIdProvider,
                               IDummyAdapter)
@@ -120,15 +118,19 @@ class DummyObject(Persistent):
     def getUniqueId(self):
         return self._id
 
+    def __cmp__(self, obj):
+        return cmp(self._id, obj._id)
+
     def __conform__(self, proto):
         if proto == IDummyAdapter:
             # 10, 11, 12 ... -> 1 / 20, 21, 22 ... -> 2 ...
             return self._id / 10
 
 
-class TestIOIndex(unittest.TestCase):
+class TestIOIndex(IndicoTestCase):
 
     def setUp(self):
+        super(TestIOIndex, self).setUp()
         self._idx = IOIndex(IDummyAdapter)
 
     def _indexSomeElements(self):
@@ -146,6 +148,15 @@ class TestIOIndex(unittest.TestCase):
         self.assertEqual(list(self._idx[1]), objs[10:20])
         self.assertEqual(len(self._idx), 200)
 
+    def testFwdIndex(self):
+        objs = self._indexSomeElements()
+        for i in range(0, 200):
+            self.assertTrue(objs[i] in self._idx._fwd_index[i/10])
+
+    def testRevIndex(self):
+        self._indexSomeElements()
+        for i in range(0, 200):
+            self.assertEqual(list(self._idx._rev_index[i]), [i/10])
 
     def testUnindexing(self):
         objs = self._indexSomeElements()
@@ -155,8 +166,8 @@ class TestIOIndex(unittest.TestCase):
 
         self.assertEqual(len(self._idx), 0)
 
-        for i in range(0,20):
-            self.assertRaises(KeyError, self._idx.get, i)
+        for i in range(0, 20):
+            self.assertEqual(self._idx.get(i), None)
 
     def testUnindexingNonExisting(self):
         self.assertRaises(ElementNotFoundException,
@@ -169,4 +180,3 @@ class TestIOIndex(unittest.TestCase):
         self.assertRaises(ElementAlreadyInIndexException,
                           self._idx.index_obj,
                           obj)
-

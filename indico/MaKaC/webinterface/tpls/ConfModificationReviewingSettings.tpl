@@ -1,4 +1,3 @@
-
 <% from MaKaC.paperReviewing import ConferencePaperReview %>
 <% from MaKaC.paperReviewing import Template %>
 <% from MaKaC.common.utils import formatDateTime %>
@@ -6,52 +5,50 @@
 <% import MaKaC.common.Configuration as Configuration %>
 <table width="90%" border="0" style="padding-bottom:5px;">
     <tr>
-        <td nowrap class="groupTitle"><%= _("Step 1 - Choose type of paper reviewing")%>
+        <td nowrap class="groupTitle">${ _("Step 1 - Choose type of paper reviewing")}
         </td>
     </tr>
 </table>
 
 <table style="padding-left: 20px; padding-bottom: 20px;">
     <tr>
-        <td id="reviewingModeHelp" class="subGroupTitle" style="width:480px;"><%= _("Type of reviewing")%></td>
+        <td id="reviewingModeHelp" class="subGroupTitle" style="width:480px;">${ _("Type of reviewing")}</td>
     </tr>
     <tr>
         <td nowrap style="vertical-align:top; padding-top: 5px; padding-left:5px;">
-            <span id="inPlaceEditReviewingMode" style="display:inline"><%= ConferencePaperReview.reviewingModes[choice] %></span>
+            <span id="inPlaceEditReviewingMode" style="display:inline">${ ConferencePaperReview.reviewingModes[choice] }</span>
         </td>
     </tr>
 </table>
-<% if ConfReview.hasReviewing(): %>
+% if ConfReview.hasReviewing():
     <% display = 'table' %>
-<% end %>
-<% else: %>
+% else:
     <% display = 'none' %>
-<% end %>
-<table id='steptitle' width="90%" border="0" style="padding-bottom:5px; display:<%=display%>">
+% endif
+<table id='steptitle' width="90%" border="0" style="padding-bottom:5px; display:${display}">
     <tr>
         <td class="groupTitle">
-            <%= _("Step 2 - Set up the options for ")%><span id="title">
-            <%if ConferencePaperReview.reviewingModes[choice]==ConferencePaperReview.reviewingModes[2]: %><%= _("content reviewing")%><% end %>
-            <%if ConferencePaperReview.reviewingModes[choice]==ConferencePaperReview.reviewingModes[3]: %><%= _("layout reviewing")%><% end %>
-            <%if ConferencePaperReview.reviewingModes[choice]==ConferencePaperReview.reviewingModes[4]: %><%= _("content and layout reviewing")%><% end %>
+            ${ _("Step 2 - Set up the options for ")}<span id="title">
+            ${ _("content reviewing") if ConferencePaperReview.reviewingModes[choice]==ConferencePaperReview.reviewingModes[2] else ""}
+            ${ _("layout reviewing") if ConferencePaperReview.reviewingModes[choice]==ConferencePaperReview.reviewingModes[3] else ""}
+            ${ _("content and layout reviewing") if ConferencePaperReview.reviewingModes[choice]==ConferencePaperReview.reviewingModes[4] else ""}
             </span>
         </td>
     </tr>
 </table>
-<% if ConfReview.hasPaperReviewing(): %>
+% if ConfReview.hasPaperReviewing():
     <% display = 'table' %>
-<% end %>
-<% else: %>
+% else:
     <% display = 'none' %>
-<% end %>
-<table id='statusTable' style="padding-left: 20px; padding-bottom: 20px; display:<%=display%>">
+% endif
+<table id='statusTable' style="padding-left: 20px; padding-bottom: 20px; display:${display}">
     <tr>
-        <td id="reviewingStatesHelp" class="subGroupTitle" colspan="3"><%= _("Add your own statuses for the paper reviewing")%></td>
+        <td id="reviewingStatesHelp" class="subGroupTitle" colspan="3">${ _("Add your own statuses for the paper reviewing")}</td>
     </tr>
     <tr>
         <td class="questionContent">
             <div  style="padding-top:5px; padding-left:5px;">
-                <%= _("The default statuses are: ")%><em><b><%= _("Accept, To be corrected")%></b></em><%=_(" and ")%><em><b><%=_("Reject")%></b></em>.
+                ${ _("The default statuses are: ")}<em><b>${ _("Accept, To be corrected")}</b></em>${_(" and ")}<em><b>${_("Reject")}</b></em>.
             </div>
             <div id="inPlaceEditStates"  style="padding-top: 5px;"></div>
         </td>
@@ -63,15 +60,14 @@
     </tr>
 </table>
 
-<% if ConfReview.hasPaperReviewing(): %>
+% if ConfReview.hasPaperReviewing():
     <% display = 'table' %>
-<% end %>
-<% else: %>
+% else:
     <% display = 'none' %>
-<% end %>
-<table id="reviewingQuestionsTable" style="padding-left: 20px; padding-bottom: 20px; display:<%=display%>">
+% endif
+<table id="reviewingQuestionsTable" style="padding-left: 20px; padding-bottom: 20px; display:${display}">
     <tr>
-        <td id="reviewingQuestionsHelp" class="subGroupTitle" colspan="3"><%= _("Add the questions that the referees and the content reviewers must answer")%></td>
+        <td id="reviewingQuestionsHelp" class="subGroupTitle" colspan="3">${ _("Add the questions that the referees and the content reviewers must answer")}</td>
     </tr>
     <tr>
         <td>
@@ -81,15 +77,14 @@
 </table>
 
 
-<% if ConfReview.hasPaperEditing(): %>
+% if ConfReview.hasPaperEditing():
     <% display = 'table' %>
-<% end %>
-<% else: %>
+% else:
     <% display = 'none' %>
-<% end %>
-<table id="editingCriteriaTable" style="padding-left: 20px; padding-bottom: 20px; display:<%=display%>">
+% endif
+<table id="editingCriteriaTable" style="padding-left: 20px; padding-bottom: 20px; display:${display}">
     <tr>
-        <td id="editingCriteriaHelp" class="subGroupTitle" colspan="3"><%= _("Add the questions that the layout reviewers must answer")%></td>
+        <td id="editingCriteriaHelp" class="subGroupTitle" colspan="3">${ _("Add the questions that the layout reviewers must answer")}</td>
     </tr>
     <tr>
         <td>
@@ -99,108 +94,80 @@
 </table>
 
 
-<% if ConfReview.hasReviewing(): %>
+% if ConfReview.hasReviewing():
     <% display = 'table' %>
-<% end %>
-<% else: %>
+% else:
     <% display = 'none' %>
-<% end %>
-<table id="defaultDueDatesTable" style="padding-left: 20px; padding-bottom: 20px; min-width: 320px; display:<%=display%>">
+% endif
+<table id="defaultDueDatesTable" style="padding-left: 20px; padding-bottom: 20px; min-width: 320px; display:${display}">
     <tr>
-        <td id="defaultDatesHelp" colspan="2" class="subGroupTitle" style="min-width:500px;"><%= _("Default deadlines for the judgements")%></td>
+        <td id="defaultDatesHelp" colspan="2" class="subGroupTitle" style="min-width:500px;">${ _("Default deadlines for the assessments")}</td>
     </tr>
-    <% if ConfReview.hasPaperReviewing(): %>
+    % if ConfReview.hasPaperReviewing():
         <% display = 'table-row' %>
-    <% end %>
-    <% else: %>
+    % else:
         <% display = 'none' %>
-    <% end %>
-    <tr id="refereeDefaultDateRow" style="white-space:nowrap; display: <%=display%>">
+    % endif
+    <tr id="refereeDefaultDateRow" style="white-space:nowrap; display: ${display}">
         <td nowrap class="deadLineCell"><span  align="left">
-            <%= _("Referee Deadline")%>
+            ${ _("Referee Deadline")}
         </span></td>
         <td style="color: #000000;">
             <span id="inPlaceEditDefaultRefereeDueDate">
-                <% date = ConfReview.getAdjustedDefaultRefereeDueDate() %>
-                <% if date is None: %>
-                    <%= _("Date has not been set yet.")%>
-                <% end %>
-                <% else: %>
-                    <%= formatDateTime(date) %>
-                <% end %>
-            </span>
         </td>
     </tr>
-    <% if ConfReview.hasPaperEditing(): %>
+    % if ConfReview.hasPaperEditing():
         <% display = 'table-row' %>
-    <% end %>
-    <% else: %>
+    % else:
         <% display = 'none' %>
-    <% end %>
-    <tr id="editorDefaultDateRow" style="white-space:nowrap; display: <%=display%>">
+    % endif
+    <tr id="editorDefaultDateRow" style="white-space:nowrap; display: ${display}">
         <td nowrap class="deadLineCell"><span>
-            <%= _("Layout Reviewer Deadline")%>
+            ${ _("Layout Reviewer Deadline")}
         </span></td>
         <td  style="color: #000000;">
             <span id="inPlaceEditDefaultEditorDueDate">
-                <% date = ConfReview.getAdjustedDefaultEditorDueDate() %>
-                <% if date is None: %>
-                    <%= _("Date has not been set yet.")%>
-                <% end %>
-                <% else: %>
-                    <%= formatDateTime(date) %>
-                <% end %>
             </span>
         </td>
-        <% if not ConfReview.hasPaperReviewing(): %>
+        % if not ConfReview.hasPaperReviewing():
             <% display = 'table-row' %>
-        <% end %>
-        <% else: %>
+        % else:
             <% display = 'none' %>
-        <% end %>
+        % endif
     </tr>
-    <% if ConfReview.hasPaperReviewing(): %>
+    % if ConfReview.hasPaperReviewing():
         <% display = 'table-row' %>
-    <% end %>
-    <% else: %>
+    % else:
         <% display = 'none' %>
-    <% end %>
-    <tr id="reviewerDefaultDateRow" style="white-space:nowrap;display: <%=display%>">
+    % endif
+    <tr id="reviewerDefaultDateRow" style="white-space:nowrap;display: ${display}">
         <td nowrap class="deadLineCell"><span>
-            <%= _("Content Reviewer Deadline")%>
+            ${ _("Content Reviewer Deadline")}
         </span></td>
         <td style="color: #000000;">
             <span id="inPlaceEditDefaultReviewerDueDate">
-                <% date = ConfReview.getAdjustedDefaultReviewerDueDate() %>
-                <% if date is None: %>
-                    <%= _("Date has not been set yet.")%>
-                <% end %>
-                <% else: %>
-                    <%= formatDateTime(date) %>
-                <% end %>
             </span>
         </td>
     </tr>
 </table>
 
 <table id="automaticNotification" style="padding-left: 20px; padding-bottom: 20px;">
-    <% if ConfReview.hasReviewing(): %>
+        % if ConfReview.hasReviewing():
             <% display = 'table' %>
-        <% end %>
-        <% else: %>
+        % else:
             <% display = 'none' %>
-        <% end %>
-	    <tr id="autoEmails" style="display:<%=display%>">
-	        <td id="automaticNotificationHelp"  class="subGroupTitle" style="width:500px;"><%= _("Automatic e-mails can be sent")%>:
-	           <% inlineContextHelp(_('Here you can enable/disable automatic e-mails sending.<br/>Notifications can be send to the Reviewing Team in the next several situations<br/><ul><li>when are added/removed Reviewers for the conference</li><li>when are assinged/removed contributions to Reviewers</li><li>when authors of the contributions have been submitted materials</li></ul>Notifications can be send to the authors when their contributions had been judged by the Reviewers.'))%>
-	        </td>
-	    </tr>
-	    <tr id="autoEmailsPRMLabel" style="display:<%=display%>">
+        % endif
+        <tr id="autoEmails" style="display:${display}">
+            <td id="automaticNotificationHelp"  class="subGroupTitle" style="width:500px;">${ _("Automatic e-mails can be sent")}:
+               ${inlineContextHelp(_('Here you can enable/disable automatic e-mails sending.<br/>Notifications can be send to the Reviewing Team in the next several situations<br/><ul><li>when are added/removed Reviewers for the conference</li><li>when are assinged/removed contributions to Reviewers</li><li>when authors of the contributions have been submitted materials</li></ul>Notifications can be send to the authors when their contributions had been assessed by the Reviewers.'))}
+            </td>
+        </tr>
+        <tr id="autoEmailsPRMLabel" style="display:${display}">
            <td style="padding-top: 7px; padding-left: 7px;">
-               <%= _("To the Paper Review Managers when")%>:
+               ${ _("To the Paper Review Managers when")}:
            </td>
         </tr>
-       <tr id="PRMNotif" style="white-space:nowrap; display: <%=display%>">
+       <tr id="PRMNotif" style="white-space:nowrap; display: ${display}">
         <td style="padding-left: 20px;">
             <div>
                 <span id="PRMNotifButton">
@@ -208,26 +175,25 @@
             </div>
         </td>
        </tr>
-        <% if ConfReview.hasPaperReviewing(): %>
+        % if ConfReview.hasPaperReviewing():
             <% display = 'table-row' %>
-        <% end %>
-        <% else: %>
+        % else:
             <% display = 'none' %>
-        <% end %>
-        <tr id="autoEmailsRefereeLabel" style="display:<%=display%>">
+        % endif
+        <tr id="autoEmailsRefereeLabel" style="display:${display}">
            <td style="padding-top: 7px; padding-left: 7px;">
-               <%= _("To the Referees when")%>:
+               ${ _("To the Referees when")}:
            </td>
         </tr>
-	   <tr id="refereeNotif" style="white-space:nowrap; display: <%=display%>">
-	    <td style="padding-left: 20px;">
+       <tr id="refereeNotif" style="white-space:nowrap; display: ${display}">
+        <td style="padding-left: 20px;">
             <div>
                 <span id="refereeNotifButton">
                 </span>
             </div>
         </td>
        </tr>
-       <tr id="refereeNotifForContribution" style="white-space:nowrap; display: <%=display%>">
+       <tr id="refereeNotifForContribution" style="white-space:nowrap; display: ${display}">
         <td style="padding-left: 20px;">
             <div>
                 <span id="refereeNotifForContributionButton">
@@ -235,7 +201,7 @@
             </div>
         </td>
        </tr>
-       <tr id="authorSubmittedMatRefereeNotif" style="white-space:nowrap; display: <%=display%>">
+       <tr id="authorSubmittedMatRefereeNotif" style="white-space:nowrap; display: ${display}">
         <td style="padding-left: 20px;">
             <div>
                 <span id="authorSubmittedMatRefereeNotifButton">
@@ -243,12 +209,28 @@
             </div>
         </td>
        </tr>
-        <tr id="autoEmailsContentLabel" style="display:<%=display%>">
+       <tr id="editorSubmittedRefereeNotif" style="white-space:nowrap; display: ${display}">
+        <td style="padding-left: 20px;">
+            <div>
+                <span id="editorSubmittedRefereeNotifButton">
+                </span>
+            </div>
+        </td>
+       </tr>
+        <tr id="reviewerSubmittedRefereeNotif" style="white-space:nowrap; display: ${display}">
+        <td style="padding-left: 20px;">
+            <div>
+                <span id="reviewerSubmittedRefereeNotifButton">
+                </span>
+            </div>
+        </td>
+       </tr>
+        <tr id="autoEmailsContentLabel" style="display:${display}">
            <td style="padding-top: 7px; padding-left: 7px;">
-               <%= _("To the Content Reviewers when")%>:
+               ${ _("To the Content Reviewers when")}:
            </td>
         </tr>
-       <tr id="reviewerNotif" style="white-space:nowrap; display: <%=display%>">
+       <tr id="reviewerNotif" style="white-space:nowrap; display: ${display}">
         <td style="padding-left: 20px;">
             <div>
                 <span id="reviewerNotifButton">
@@ -256,7 +238,7 @@
             </div>
         </td>
        </tr>
-       <tr id="reviewerNotifForContribution" style="white-space:nowrap; display: <%=display%>">
+       <tr id="reviewerNotifForContribution" style="white-space:nowrap; display: ${display}">
         <td style="padding-left: 20px;">
             <div>
                 <span id="reviewerNotifForContributionButton">
@@ -264,7 +246,7 @@
             </div>
         </td>
        </tr>
-       <tr id="authorSubmittedMatReviewerNotif" style="white-space:nowrap; display: <%=display%>">
+       <tr id="authorSubmittedMatReviewerNotif" style="white-space:nowrap; display: ${display}">
         <td style="padding-left: 20px;">
             <div>
                 <span id="authorSubmittedMatReviewerNotifButton">
@@ -272,18 +254,17 @@
             </div>
         </td>
        </tr>
-        <% if ConfReview.hasPaperEditing(): %>
+        % if ConfReview.hasPaperEditing():
             <% display = 'table-row' %>
-        <% end %>
-        <% else: %>
+        % else:
             <% display = 'none' %>
-        <% end %>
-        <tr id="autoEmailsEditorLabel" style="display:<%=display%>">
+        % endif
+        <tr id="autoEmailsEditorLabel" style="display:${display}">
            <td style="padding-top: 7px; padding-left: 7px;">
-               <%= _("To the Layout Reviewers when")%>:
+               ${ _("To the Layout Reviewers when")}:
            </td>
         </tr>
-       <tr id="editorNotif" style="white-space:nowrap; display: <%=display%>">
+       <tr id="editorNotif" style="white-space:nowrap; display: ${display}">
           <td style="padding-left: 20px;">
             <div>
                 <span id="editorNotifButton">
@@ -291,7 +272,7 @@
             </div>
          </td>
        </tr>
-       <tr id="editorNotifForContribution" style="white-space:nowrap; display: <%=display%>">
+       <tr id="editorNotifForContribution" style="white-space:nowrap; display: ${display}">
           <td style="padding-left: 20px;">
             <div>
                 <span id="editorNotifForContributionButton">
@@ -299,7 +280,7 @@
             </div>
          </td>
        </tr>
-       <tr id="authorSubmittedMatEditorNotif" style="white-space:nowrap; display: <%=display%>">
+       <tr id="authorSubmittedMatEditorNotif" style="white-space:nowrap; display: ${display}">
           <td style="padding-left: 20px;">
             <div>
                 <span id="authorSubmittedMatEditorNotifButton">
@@ -307,24 +288,22 @@
             </div>
          </td>
        </tr>
-       <% if ConfReview.hasReviewing(): %>
+       % if ConfReview.hasReviewing():
             <% display = 'table-row' %>
-        <% end %>
-        <% else: %>
+        % else:
             <% display = 'none' %>
-        <% end %>
-        <tr id="autoEmailsAuthor" style="display:<%=display%>">
+        % endif
+        <tr id="autoEmailsAuthor" style="display:${display}">
            <td style="padding-top: 7px; padding-left: 7px;">
-               <%= _("To the Author of the paper when a judgement is submitted by")%>:
+               ${ _("To the Author of the paper when an assessment is submitted by")}:
            </td>
         </tr>
-         <% if ConfReview.hasPaperReviewing(): %>
+         % if ConfReview.hasPaperReviewing():
             <% display = 'table-row' %>
-        <% end %>
-        <% else: %>
+        % else:
             <% display = 'none' %>
-        <% end %>
-       <tr id="refereeJudgementNotif" style="white-space:nowrap; display: <%=display%>">
+        % endif
+       <tr id="refereeJudgementNotif" style="white-space:nowrap; display: ${display}">
         <td style="padding-left: 20px;">
             <div>
                 <span id="refereeJudgementNotifButton">
@@ -332,7 +311,7 @@
             </div>
         </td>
        </tr>
-       <tr id="reviewerJudgementNotif" style="white-space:nowrap; display: <%=display%>">
+       <tr id="reviewerJudgementNotif" style="white-space:nowrap; display: ${display}">
         <td style="padding-left: 20px;">
             <div>
                 <span id="reviewerJudgementNotifButton">
@@ -340,13 +319,12 @@
             </div>
         </td>
        </tr>
-        <% if ConfReview.hasPaperEditing(): %>
+        % if ConfReview.hasPaperEditing():
             <% display = 'table-row' %>
-        <% end %>
-        <% else: %>
+        % else:
             <% display = 'none' %>
-        <% end %>
-       <tr id="editorJudgementNotif" style="white-space:nowrap; display: <%=display%>">
+        % endif
+       <tr id="editorJudgementNotif" style="white-space:nowrap; display: ${display}">
           <td style="padding-left: 20px;">
             <div>
                 <span id="editorJudgementNotifButton">
@@ -356,69 +334,62 @@
        </tr>
 </table>
 
-<% if ConfReview.hasReviewing(): %>
+% if ConfReview.hasReviewing():
     <% display = 'table' %>
-<% end %>
-<% else: %>
+% else:
     <% display = 'none' %>
-<% end %>
-<form action="<%= setTemplateURL %>" method="post" ENCTYPE="multipart/form-data">
-<table id="templateTable" style="padding-left: 20px; padding-bottom: 20px; display:<%=display%>">
+% endif
+<form action="${ setTemplateURL }" method="post" ENCTYPE="multipart/form-data">
+<table id="templateTable" style="padding-left: 20px; padding-bottom: 20px; display:${display}">
     <tr>
-        <td id="uploadTemplateHelp" class="subGroupTitle" style="width:500px;"><%= _("Upload a template")%></td>
+        <td id="uploadTemplateHelp" class="subGroupTitle" style="width:500px;">${ _("Upload a template")}</td>
     </tr>
-    <tr><td>
-        <% if ConfReview.hasTemplates(): %>
+    <tr><td style="padding-top: 10px;">
+        % if ConfReview.hasTemplates():
          <% display = 'table' %>
-       <% end %>
-       <% else: %>
+       % else:
          <% display = 'none' %>
-       <% end %>
-    <table id="templateListTableAll" width="90%" align="left" border="0" style="padding-left:3px; display:<%=display%>">
+       % endif
+    <table id="templateListTableAll" class="infoTable" cellspacing="0" width="100%" style="display:${display}">
     <!-- here to put table for the uploaded templates info :) -->
      <thead>
         <tr>
-            <td nowrap width="50%" class="titleCellFormat" style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;border-bottom: 1px solid #DDDDDD;">
-                <%= _("Name")%>
-            </td>
-            <td nowrap class="titleCellFormat" style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;border-bottom: 1px solid #DDDDDD;">
-                <%= _("Format")%>
-            </td>
-            <td nowrap class="titleCellFormat" style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;border-bottom: 1px solid #DDDDDD;">
-                <%= _("Description")%>
-            </td>
+            <td nowrap width="20%" class="tableHeader">${ _("Name")}</td>
+            <td nowrap class="tableHeader">${ _("Format")}</td>
+            <td nowrap class="tableHeader">${ _("Description")}</td>
+            <td nowrap width="27%" class="tableHeader" style="text-align:center;">${ _("Actions")}</td>
         </tr>
         </thead>
         <tbody id="templateListTable">
         </tbody>
         </table>
-        <% if ConfReview.hasTemplates(): %>
+        % if ConfReview.hasTemplates():
          <% display = 'none' %>
-       <% end %>
-       <% else: %>
+       % else:
          <% display = 'table' %>
-       <% end %>
-        <table id="NoTemplateTable" style="display:<%=display%>">
+       % endif
+        <table id="NoTemplateTable" style="display:${display}">
         <tr><td style="padding-left: 7px;">
-            <%= _("No templates have been uploaded yet.")%>
+            ${ _("No templates have been uploaded yet.")}
         </td></tr>
         </table>
     </tr></td>
     <tr><a name="UploadTemplate" />
-        <td style="padding-left: 7px;" ><input id='uploadTpl' type="button" value="<%= _('Upload Template')%>"></a>
+        <td style="padding-top: 5px;" ><input id='uploadTpl' type="button" value="${ _('Upload Template')}"></a>
         </td>
     </tr>
     <tr><td style="padding-bottom:15px;"></td></tr>
         <tr><td colspan="5" style="padding-top: 20px;">
-            <em><%= _("Once this step is done you may want to assign the team for paper reviewing. Please click on the next tab ") %><a href="<%=urlHandlers.UHConfModifReviewingControl.getURL(ConfReview.getConference())%>"><%= _("Team")%></a><%= _(" and follow the steps")%></em>
+            <em>${ _("Once this step is done you may want to assign the team for paper reviewing. Please click on the next tab ") }<a href="${urlHandlers.UHConfModifReviewingControl.getURL(ConfReview.getConference())}">${ _("Team")}</a>${ _(" and follow the steps")}</em>
         </td></tr>
 </table>
 </form>
 
 <script type="text/javascript">
 
-var observer = function(value) {
+var observer = function() {
 
+    var value = reviewingModeSelect.getCurrentValue();
     if (value == "No reviewing") {
         $E('steptitle').dom.style.display = 'none';
         $E('title').dom.style.display = 'none';
@@ -448,11 +419,14 @@ var observer = function(value) {
         $E('authorSubmittedMatRefereeNotif').dom.style.display = 'none';
         $E('authorSubmittedMatEditorNotif').dom.style.display = 'none';
         $E('authorSubmittedMatReviewerNotif').dom.style.display = 'none';
+        $E('editorSubmittedRefereeNotif').dom.style.display = 'none';
+        $E('reviewerSubmittedRefereeNotif').dom.style.display = 'none';
+
         $E('templateTable').dom.style.display = 'none';
     }
     if (value == "Content reviewing") {
         $E('steptitle').dom.style.display = '';
-        $E('title').set('<%= _("content reviewing team")%>');
+        $E('title').set('${ _("content reviewing team")}');
         $E('title').dom.style.display = '';
         $E('statusTable').dom.style.display = '';
         $E('reviewingQuestionsTable').dom.style.display = '';
@@ -480,6 +454,8 @@ var observer = function(value) {
         $E('authorSubmittedMatRefereeNotif').dom.style.display = '';
         $E('authorSubmittedMatEditorNotif').dom.style.display = 'none';
         $E('authorSubmittedMatReviewerNotif').dom.style.display = '';
+        $E('editorSubmittedRefereeNotif').dom.style.display = 'none';
+        $E('reviewerSubmittedRefereeNotif').dom.style.display = '';
         $E('templateTable').dom.style.display = '';
 
         showReviewingStates();
@@ -490,7 +466,7 @@ var observer = function(value) {
     if (value == "Layout reviewing") {
         $E('steptitle').dom.style.display = '';
         $E('title').dom.style.display = '';
-        $E('title').set('<%= _("layout reviewing team")%>');
+        $E('title').set('${ _("layout reviewing team")}');
         $E('statusTable').dom.style.display = 'none';
         $E('reviewingQuestionsTable').dom.style.display = 'none';
         $E('editingCriteriaTable').dom.style.display = '';
@@ -517,6 +493,8 @@ var observer = function(value) {
         $E('authorSubmittedMatRefereeNotif').dom.style.display = 'none';
         $E('authorSubmittedMatEditorNotif').dom.style.display = '';
         $E('authorSubmittedMatReviewerNotif').dom.style.display = 'none';
+        $E('editorSubmittedRefereeNotif').dom.style.display = 'none';
+        $E('reviewerSubmittedRefereeNotif').dom.style.display = 'none';
         $E('templateTable').dom.style.display = '';
 
         showEditingCriteria();
@@ -524,7 +502,7 @@ var observer = function(value) {
     }
     if (value == "Content and layout reviewing") {
         $E('steptitle').dom.style.display = '';
-        $E('title').set('<%= _("content and layout reviewing team")%>');
+        $E('title').set('${ _("content and layout reviewing team")}');
         $E('title').dom.style.display = '';
         $E('statusTable').dom.style.display = '';
         $E('reviewingQuestionsTable').dom.style.display = '';
@@ -552,6 +530,8 @@ var observer = function(value) {
         $E('authorSubmittedMatRefereeNotif').dom.style.display = '';
         $E('authorSubmittedMatEditorNotif').dom.style.display = '';
         $E('authorSubmittedMatReviewerNotif').dom.style.display = '';
+        $E('editorSubmittedRefereeNotif').dom.style.display = '';
+        $E('reviewerSubmittedRefereeNotif').dom.style.display = '';
         $E('templateTable').dom.style.display = '';
 
         showReviewingStates();
@@ -563,261 +543,311 @@ var observer = function(value) {
     }
 }
 
-new IndicoUI.Widgets.Generic.selectionField($E('inPlaceEditReviewingMode'),
-                    'reviewing.conference.changeReviewingMode',
-                    {conference: '<%= ConfReview.getConference().getId() %>'},
-                    <%= ConferencePaperReview.reviewingModes[1:] %>,
-                    "<%= ConfReview.getReviewingMode() %>",
-                    observer);
+var reviewingModeSelect = new SelectEditWidget('reviewing.conference.changeReviewingMode',
+        {conference: '${ ConfReview.getConference().getId() }'}, ${ reviewingModesDict }
+        , "${ ConfReview.getReviewingMode() }", observer);
+$E('inPlaceEditReviewingMode').set(reviewingModeSelect.draw());
 
 var showReviewingStates = function() {
     $E('inPlaceEditStates').set(new ManageListOfElements({'get':'reviewing.paperReviewing.getStatuses',
         'add':'reviewing.paperReviewing.addStatus', 'remove':'reviewing.paperReviewing.removeStatus',
         'edit': 'reviewing.paperReviewing.editStatus'},
-        {conference: '<%= ConfReview.getConference().getId() %>'},'status', 'statusComponent', false).draw());
+        {conference: '${ ConfReview.getConference().getId() }'},'status', 'statusComponent', false).draw());
 }
 
 var showReviewingQuestions = function() {
-	$E('inPlaceEditContentQuestions').set(new ManageListOfElements({'get':'reviewing.paperReviewing.getContentQuestions',
+    $E('inPlaceEditContentQuestions').set(new ManageListOfElements({'get':'reviewing.paperReviewing.getContentQuestions',
         'add':'reviewing.paperReviewing.addContentQuestion', 'remove':'reviewing.paperReviewing.removeContentQuestion',
         'edit': 'reviewing.paperReviewing.editContentQuestion'},
-        {conference: '<%= ConfReview.getConference().getId() %>'},'question', 'contentReviewerQuestion', false).draw());
+        {conference: '${ ConfReview.getConference().getId() }'},'question', 'contentReviewerQuestion', false).draw());
 }
 
 var showEditingCriteria = function() {
     $E('inPlaceEditLayoutQuestions').set(new ManageListOfElements({'get':'reviewing.paperReviewing.getLayoutQuestions',
         'add':'reviewing.paperReviewing.addLayoutQuestion', 'remove':'reviewing.paperReviewing.removeLayoutQuestion',
         'edit': 'reviewing.paperReviewing.editLayoutQuestion'},
-        {conference: '<%= ConfReview.getConference().getId() %>'},'question', 'layoutReviewerQuestion', false).draw());
+        {conference: '${ ConfReview.getConference().getId() }'},'question', 'layoutReviewerQuestion', false).draw());
 }
 
 
 
 var showDefaultRefereeDate = function() {
-    new IndicoUI.Widgets.Generic.dateEditor($E('inPlaceEditDefaultRefereeDueDate'),
-                       'reviewing.conference.changeDefaultDueDate',
-                       {conference: '<%= ConfReview.getConference().getId() %>',
-                        dueDateToChange: 'Referee'},
-                       null, true);
+    $('#inPlaceEditDefaultRefereeDueDate').html(new DateDeadlineWidget('reviewing.conference.changeDefaultDueDate',
+            {conference: '${ ConfReview.getConference().getId() }',
+             dueDateToChange: 'Referee'}, ${ConfReview.getAdjustedDefaultRefereeDueDate() | n,j}, ${ConfReview.getConference().getNumberOfContributions() > 0 | n,j}).draw().dom);
 }
 
 var showDefaultEditorDate = function() {
-    new IndicoUI.Widgets.Generic.dateEditor($E('inPlaceEditDefaultEditorDueDate'),
-                       'reviewing.conference.changeDefaultDueDate',
-                       {conference: '<%= ConfReview.getConference().getId() %>',
-                        dueDateToChange: 'Editor'},
-                       null, true);
+    $('#inPlaceEditDefaultEditorDueDate').html(new DateDeadlineWidget('reviewing.conference.changeDefaultDueDate',
+            {conference: '${ ConfReview.getConference().getId() }',
+             dueDateToChange: 'Editor'}, ${ConfReview.getAdjustedDefaultEditorDueDate() | n,j}, ${ConfReview.getConference().getNumberOfContributions() > 0 | n,j}).draw().dom);
 }
 
 var showDefaultReviewerDate = function() {
-    new IndicoUI.Widgets.Generic.dateEditor($E('inPlaceEditDefaultReviewerDueDate'),
-                       'reviewing.conference.changeDefaultDueDate',
-                       {conference: '<%= ConfReview.getConference().getId() %>',
-                        dueDateToChange: 'Reviewer'},
-                       null, true);
+    $('#inPlaceEditDefaultReviewerDueDate').html(new DateDeadlineWidget('reviewing.conference.changeDefaultDueDate',
+        {conference: '${ ConfReview.getConference().getId() }',
+    dueDateToChange: 'Reviewer'}, ${ConfReview.getAdjustedDefaultReviewerDueDate() | n,j}, ${ConfReview.getConference().getNumberOfContributions() > 0 | n,j}).draw().dom);
 }
 
 
 var TemplateList = function(){
             <% keys = ConfReview.getTemplates().keys() %>
-            <% for k in keys: %>
+            % for k in keys:
                 <% t = ConfReview.getTemplates()[k] %>
-                    var row = Html.tr({id:'TemplateRow_'+'<%=t.getId()%>'});
-                var menu;
-                    menu = Html.span(
-                        {},
-                        Widget.link(command( function(){
-                            var params = {conference: <%= ConfReview.getConference().getId() %>,templateId: '<%=t.getId()%>'}
-		                    if (confirm("Are you sure you want to delete '"+ '<%=t.getName()%>'+"'?")) {
-		                        var killProgress = IndicoUI.Dialogs.Util.progress($T('Removing...'));
-		                        jsonRpc(Indico.Urls.JsonRpcService,
-		                            'reviewing.conference.deleteTemplate',
-		                            params,
-		                            function(response,error) {
-		                                    if (exists(error)) {
-		                                        killProgress();
-		                                        IndicoUtil.errorReport(error);
-		                                    } else {
-		                                        killProgress();
-		                                        $E('templateListTable').remove($E('TemplateRow_'+'<%=t.getId()%>'));
-		                                        tablerows = document.getElementById('templateListTableAll').rows.length;
-				                                if(tablerows == '1'){
-				                                    $E('NoTemplateTable').dom.style.display = '';
-				                                    $E('templateListTableAll').dom.style.display = 'none';}
-		                                    }
-		                                }
-		                    );}
-                           },
-                            IndicoUI.Buttons.removeButton()
-                        )));
-                    var linkName = Html.a({href: "<%= urlHandlers.UHDownloadContributionTemplate.getURL() %>" + "?reviewingTemplateId=" + '<%= t.getId()%>' + "&confId=<%= ConfReview.getConference().getId()%>", style:{color:'#5FA5D4'}}, '<%= t.getName()%>');
-                    var cellName = Html.td({id:'TemplateName_'+'<%= t.getId()%>', style:{borderRight: '5px solid #FFFFFF', borderLeft:'5px solid #FFFFFF'}}, linkName);
-                    cellName.append(linkName);
-                    <% if CanDelete: %>
-                        cellName.append(menu);
-                    <% end %>
-                    var cellFormat = Html.td({id:'TemplateName_'+'<%= t.getId()%>', style:{borderRight: '5px solid #FFFFFF', borderLeft:'5px solid #FFFFFF'}}, '<%= t.getFormat()%>');
-                    var cellDescription = Html.td({id:'TemplateName_'+'<%= t.getId()%>', style:{borderRight: '5px solid #FFFFFF', borderLeft:'5px solid #FFFFFF'}}, '<%= t.getDescription()%>');
+                    var row = Html.tr({id:'TemplateRow_'+'${t.getId()}', className:'infoTR'});
+
+                    var deleteTpl = function(selectedRow) {
+                        var params = {conference: ${ ConfReview.getConference().getId() },
+                                      templateId: selectedRow.dom.id.split("TemplateRow_")[1]};
+                        var name = $E('TemplateSpanName_' + selectedRow.dom.id.split("TemplateRow_")[1]).dom.innerHTML;
+
+                        new ConfirmPopup($T("Delete template"),$T("Are you sure you want to delete {0}?").format(name), function(confirmed) {
+                            if(confirmed) {
+                                var killProgress = IndicoUI.Dialogs.Util.progress($T('Removing...'));
+                                jsonRpc(Indico.Urls.JsonRpcService,
+                                    'reviewing.conference.deleteTemplate',
+                                    params,
+                                    function(response,error) {
+                                            if (exists(error)) {
+                                                killProgress();
+                                                IndicoUtil.errorReport(error);
+                                            } else {
+                                                killProgress();
+                                                $E('templateListTable').remove(selectedRow);
+                                                tablerows = document.getElementById('templateListTableAll').rows.length;
+                                                if(tablerows == '1'){
+                                                    $E('NoTemplateTable').dom.style.display = '';
+                                                    $E('templateListTableAll').dom.style.display = 'none';}
+                                            }
+                                        });
+                            }
+                        }).open();
+                    };
+
+                    var nameSpan = Html.span({id:'TemplateSpanName_'+'${ t.getId()}'}, '${ t.getName()}');
+                    var cellName = Html.td({id:'TemplateName_'+'${ t.getId()}', className:'content'}, nameSpan);
+
+                    var cellFormat = Html.td({id:'TemplateName_'+'${ t.getId()}', className:'content'}, '${ t.getFormat()}');
+                    var cellDescription = Html.td({id:'TemplateName_'+'${ t.getId()}', className:'content'}, ${t.getDescription() | n,j});
+                    var downloadURL = "${ urlHandlers.UHDownloadContributionTemplate.getURL(t) }";
+                    var downloadSpan = Html.a({href: downloadURL}, "Download");
+                    var barSpan = Html.span({className:'horizontalSeparator'}, "|");
+                    var removeSpan = Html.span({className:'link'}, "Remove");
+                    var cellActions = Html.td({className:'content', style:{textAlign: 'right'}});
+                    cellActions.append(downloadSpan);
+                    cellActions.append(barSpan);
+                    cellActions.append(removeSpan);
                     row.append(cellName);
                     row.append(cellFormat);
                     row.append(cellDescription);
+                    row.append(cellActions);
+                    removeSpan.observeClick(function(event){
+                        var selectedRow = $E('TemplateRow_'+'${t.getId()}');
+                        deleteTpl(selectedRow);
+                    });
+
+
                     $E('templateListTable').append(row);
-             <% end %>
+             % endfor
 
           }
 
 
-$E('PRMNotifButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.PRMEmailNotif',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+$('#PRMNotifButton').html(new SwitchOptionButton('reviewing.conference.PRMEmailNotif',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'PRM'},
                                             $T('are added to/removed from the conference'),
-                                            'message1'
-));
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
 
-$E('refereeNotifButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.RefereeEmailNotif',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+$('#refereeNotifButton').html(new SwitchOptionButton('reviewing.conference.RefereeEmailNotif',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Referee'},
                                             $T('are added to/removed from the conference'),
-                                            'message2'
-));
-$E('reviewerNotifButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.ReviewerEmailNotif',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#reviewerNotifButton').html(new SwitchOptionButton('reviewing.conference.ReviewerEmailNotif',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Reviewer'},
                                             $T('are added to/removed from the conference'),
-                                            'message3'
-));
-$E('editorNotifButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.EditorEmailNotif',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#editorNotifButton').html(new SwitchOptionButton('reviewing.conference.EditorEmailNotif',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Editor'},
                                             $T('are added to/removed from the conference'),
-                                            'message4'
-));
-$E('refereeNotifForContributionButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.RefereeEmailNotifForContribution',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#refereeNotifForContributionButton').html(new SwitchOptionButton('reviewing.conference.RefereeEmailNotifForContribution',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Referee'},
                                             $T('have been assigned to/unassigned from contributions'),
-                                            'message5'
-));
-$E('reviewerNotifForContributionButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.ReviewerEmailNotifForContribution',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#reviewerNotifForContributionButton').html(new SwitchOptionButton('reviewing.conference.ReviewerEmailNotifForContribution',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Reviewer'},
                                             $T('have been assigned to/unassigned from contributions'),
-                                            'message6'
-));
-$E('editorNotifForContributionButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.EditorEmailNotifForContribution',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#editorNotifForContributionButton').html(new SwitchOptionButton('reviewing.conference.EditorEmailNotifForContribution',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Editor'},
                                             $T('have been assigned to/unassigned from contributions'),
-                                            'message7'
-));
-$E('refereeJudgementNotifButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.RefereeEmailJudgementNotif',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#refereeJudgementNotifButton').html(new SwitchOptionButton('reviewing.conference.RefereeEmailJudgementNotif',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Referee'},
-                                            $T('Referee'),
-                                            'message8'
-));
-$E('reviewerJudgementNotifButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.ReviewerEmailJudgementNotif',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+                                            $T('Referee (for any assessment)'),
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#reviewerJudgementNotifButton').html(new SwitchOptionButton('reviewing.conference.ReviewerEmailJudgementNotif',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Reviewer'},
-                                            $T('Content Reviewer'),
-                                            'message9'
-));
-$E('editorJudgementNotifButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.EditorEmailJudgementNotif',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+                                            $T('Content Reviewer (for assessments that imply corrections)'),
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#editorJudgementNotifButton').html(new SwitchOptionButton('reviewing.conference.EditorEmailJudgementNotif',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Editor'},
-                                            $T('Layout Reviewer'),
-                                            'message10'
-));
-$E('authorSubmittedMatRefereeNotifButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.AuthorSubmittedMatRefereeNotif',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+                                            $T('Layout Reviewer') + ${ _("' (for assessments that imply corrections)'") if ConferencePaperReview.reviewingModes[choice]!=ConferencePaperReview.reviewingModes[3] else "''"},
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#authorSubmittedMatRefereeNotifButton').html(new SwitchOptionButton('reviewing.conference.AuthorSubmittedMatRefereeNotif',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Referee'},
                                             $T('the author submits a paper'),
-                                            'message11'
-));
-$E('authorSubmittedMatReviewerNotifButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.AuthorSubmittedMatEditorNotif',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#authorSubmittedMatReviewerNotifButton').html(new SwitchOptionButton('reviewing.conference.AuthorSubmittedMatEditorNotif',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Reviewer'},
                                             $T('the author submits a paper'),
-                                            'message12'
-));
-$E('authorSubmittedMatEditorNotifButton').set(IndicoUI.Widgets.Generic.switchOptionButton('reviewing.conference.AuthorSubmittedMatReviewerNotif',
-                                            {conference: '<%= ConfReview.getConference().getId() %>',
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#authorSubmittedMatEditorNotifButton').html(new SwitchOptionButton('reviewing.conference.AuthorSubmittedMatReviewerNotif',
+                                            {conference: '${ ConfReview.getConference().getId() }',
                                             AutoEmailsToChange: 'Editor'},
                                             $T('the author submits a paper'),
-                                            'message13'
-));
+                                            $T("Saved"),
+                                            null,
+                                            false
+).draw());
+$('#editorSubmittedRefereeNotifButton').html(new SwitchOptionButton('reviewing.conference.EditorSubmittedRefereeNotif',
+        {conference: '${ ConfReview.getConference().getId() }',
+        AutoEmailsToChange: 'Referee'},
+        $T('a layout reviewer submits an assessment'),
+        $T("Saved"),
+        null,
+        false
+).draw());
+$('#reviewerSubmittedRefereeNotifButton').html(new SwitchOptionButton('reviewing.conference.ReviewerSubmittedRefereeNotif',
+        {conference: '${ ConfReview.getConference().getId() }',
+    AutoEmailsToChange: 'Referee'},
+    $T('a content reviewer submits an assessment'),
+    $T("Saved"),
+    null,
+    false
+).draw());
 
-
-<% if ConfReview.hasReviewing(): %>
+% if ConfReview.hasReviewing():
     TemplateList();
 
     $E('uploadTpl').observeClick(function(){ var popup = new UploadTemplateDialog( 'Upload Template',
-        {conference: '<%= ConfReview.getConference().getId() %>'}, '350px', '30px',
-        <%= jsonEncode(Template.formats) %>, '<%= urlHandlers.UHSetTemplate.getURL() %>',
+        {conference: '${ ConfReview.getConference().getId() }'}, '350px', '30px',
+        ${ jsonEncode(Template.formats) }, '${ urlHandlers.UHSetTemplate.getURL(ConfReview.getConference()) }',
         function(value) {
             $E('NoTemplateTable').dom.style.display = 'none';
             $E('templateListTableAll').dom.style.display = '';
 
-	        /* this is a little hack who is needed to get the URL of the new uploaded template*/
-	        //linkDelete = "<%= urlHandlers.UHDeleteContributionTemplate.getURL() %>" + "?reviewingTemplateId=" + value.id + "&confId=<%= ConfReview.getConference().getId()%>";
-            //var deleteIcon = Html.img({className: 'imglink',style:{paddingLeft: '20px', verticalAlign: 'bottom', width: '15px', height: '15px'}, alt: 'delete template', src: imageSrc("remove")});
-            //var deleteLink = Html.a({href: linkDelete},deleteIcon);
-
-            var row = Html.tr();
-            var params = {conference: '<%= ConfReview.getConference().getId() %>',templateId: value.id}
+            var row = Html.tr({id:'TemplateRow_' + value.id, className:'infoTR'});
+            var params = {conference: '${ ConfReview.getConference().getId() }',templateId: value.id}
             var deleteTemplate = function() {
-            if (confirm("Are you sure you want to delete '"+ value.name+"'?")) {
-                var killProgress = IndicoUI.Dialogs.Util.progress($T('Removing...'));
-	            jsonRpc(Indico.Urls.JsonRpcService,
-		            'reviewing.conference.deleteTemplate',
-		            params,
-		            function(response,error) {
-                            if (exists(error)) {
-                                killProgress();
-                                IndicoUtil.errorReport(error);
-                            } else {
-                                killProgress();
-                                $E('templateListTable').remove(row);
-                                tablerows = document.getElementById('templateListTableAll').rows.length;
-                                if(tablerows == '1'){
-                                    $E('NoTemplateTable').dom.style.display = '';
-                                    $E('templateListTableAll').dom.style.display = 'none';}
-                            }
-                        });}};
-        var menu;
-            menu = Html.span(
-                {},
-                Widget.link(command(
-                    deleteTemplate,
-                    IndicoUI.Buttons.removeButton()
-                )));
-            var linkName = Html.a({href: "<%= urlHandlers.UHDownloadContributionTemplate.getURL() %>" + "?reviewingTemplateId=" + value.id + "&confId=<%= ConfReview.getConference().getId()%>", style:{color:'#5FA5D4'}}, value.name);
-            var cellName = Html.td({id:'TemplateName_'+value.id, style:{borderRight: '5px solid #FFFFFF', borderLeft:'5px solid #FFFFFF'}}, linkName);
-            cellName.append(linkName);
-            <% if CanDelete: %>
-                cellName.append(menu);
-            <% end %>
-            var cellFormat = Html.td({id:'TemplateName_'+value.id, style:{borderRight: '5px solid #FFFFFF', borderLeft:'5px solid #FFFFFF'}}, value.format);
-            var cellDescription = Html.td({id:'TemplateName_'+value.id, style:{borderRight: '5px solid #FFFFFF', borderLeft:'5px solid #FFFFFF'}}, value.description);
+                new ConfirmPopup($T("Delete template"),$T("Are you sure you want to delete {0}?").format(name), function(confirmed) {
+                    if(confirmed) {
+                        var killProgress = IndicoUI.Dialogs.Util.progress($T('Removing...'));
+                        jsonRpc(Indico.Urls.JsonRpcService,
+                        'reviewing.conference.deleteTemplate',
+                        params,
+                            function(response,error) {
+                                if (exists(error)) {
+                                    killProgress();
+                                    IndicoUtil.errorReport(error);
+                                } else {
+                                    killProgress();
+                                    $E('templateListTable').remove(row);
+                                    tablerows = document.getElementById('templateListTableAll').rows.length;
+                                    if(tablerows == '1'){
+                                        $E('NoTemplateTable').dom.style.display = '';
+                                        $E('templateListTableAll').dom.style.display = 'none';}
+                                }
+                            });
+                    }
+                }).open();
+            };
+
+            var nameSpan = Html.span({}, value.name);
+            var cellName = Html.td({id:'TemplateName_'+ value.id, className:'content'}, nameSpan);
+            var cellFormat = Html.td({id:'TemplateName_'+ value.id, className:'content'}, value.format);
+            var cellDescription = Html.td({id:'TemplateName_'+ value.id, className:'content'}, value.description);
+            var downloadURL = build_url(${ urlHandlers.UHDownloadContributionTemplate.getURL().js_router | j,n }, {
+                reviewingTemplateId: value.id,
+                confId: ${ConfReview.getConference().getId()}
+            });
+            var downloadSpan = Html.a({href: downloadURL}, "Download");
+            var barSpan = Html.span({className:'horizontalSeparator'}, "|");
+            var removeSpan = Html.span({className:'link'}, "Remove");
+            var cellActions = Html.td({className:'content', style:{textAlign: 'right'}});
+            cellActions.append(downloadSpan);
+            cellActions.append(barSpan);
+            cellActions.append(removeSpan);
             row.append(cellName);
             row.append(cellFormat);
             row.append(cellDescription);
+            row.append(cellActions);
+
+            removeSpan.observeClick(deleteTemplate);
 
             return $E('templateListTable').append(row);
 
             }); popup.open();
             }
             );
-<% end %>
-<% if ConfReview.hasPaperReviewing(): %>
+% endif
+% if ConfReview.hasPaperReviewing():
     showReviewingStates();
     showReviewingQuestions();
     showDefaultReviewerDate();
     showDefaultRefereeDate();
-<% end %>
-<% if ConfReview.hasPaperEditing(): %>
+% endif
+% if ConfReview.hasPaperEditing():
     showEditingCriteria();
     showDefaultEditorDate();
-<% end %>
+% endif
 
 </script>

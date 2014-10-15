@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 import contextlib, csv, dateutil, os, tempfile, time
 from indico.ext.livesync import SyncManager
@@ -26,7 +25,7 @@ from indico.ext.livesync.tasks import LiveSyncUpdateTask
 import logging
 from indico.tests.util import TestZEOServer
 
-from MaKaC.common import DBMgr
+from indico.core.db import DBMgr
 from MaKaC.plugins import PluginsHolder
 from MaKaC.conference import CategoryManager, DefaultConference
 from MaKaC import user
@@ -70,7 +69,7 @@ def runTests(host='localhost', port=FAKE_SERVICE_PORT,
     avatar.setName( "fake" )
     avatar.setSurName( "fake" )
     avatar.setOrganisation( "fake" )
-    avatar.setLang( "en_US" )
+    avatar.setLang( "en_GB" )
     avatar.setEmail( "fake@fake.fake" )
 
     #registering user
@@ -78,10 +77,10 @@ def runTests(host='localhost', port=FAKE_SERVICE_PORT,
     ah.add(avatar)
 
     #setting up the login info
-    li = user.LoginInfo( "dummyuser", "dummyuser" )
-    ih = AuthenticatorMgr()
-    userid = ih.createIdentity( li, avatar, "Local" )
-    ih.add( userid )
+    li = user.LoginInfo("dummyuser", None)
+    am = AuthenticatorMgr()
+    userid = am.createIdentity( li, avatar, "Local" )
+    am.add( userid )
 
     #activate the account
     avatar.activateAccount()
@@ -93,7 +92,7 @@ def runTests(host='localhost', port=FAKE_SERVICE_PORT,
 
     dummy = avatar
 
-    ContextManager.create()
+    ContextManager.destroy()
 
     HelperMaKaCInfo.getMaKaCInfoInstance().setDefaultConference(DefaultConference())
 

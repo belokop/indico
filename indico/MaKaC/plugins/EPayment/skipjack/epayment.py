@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 from MaKaC.epayment import BaseEPayMod, BaseTransaction
 import MaKaC.webinterface.urlHandlers as urlHandlers
@@ -97,7 +96,7 @@ class SkipjackMod( BaseEPayMod ):
         self.setTextCallBackSuccess(data.get("APResponse", "epayment"))
         self.setTextCallBackCancelled(data.get("CPResponse", "epayment"))
 
-    def getFormHTML(self,prix,Currency,conf,registrant,lang = "en_US", secure=False):
+    def getFormHTML(self,prix,Currency,conf,registrant,lang = "en_GB", secure=False):
         """build the registration form to be send to skipjack"""
         url_confirm=localUrlHandlers.UHPayConfirmSkipjack.getURL()
         url_cancel_return=localUrlHandlers.UHPayCancelSkipjack.getURL(registrant)
@@ -109,16 +108,13 @@ class SkipjackMod( BaseEPayMod ):
 
         confId = conf.getId()
         registrantId = registrant.getId()
-        s="""<form name="Button" action="%s" method="post">
+        s="""<form name="Button" action="%s" method="post" id="%s">
              <input type="hidden" name="skipjack" value="v9RmPSdKf+6q4J93Mz8atwxwFlt1zopZckVx4+uFvIR0Y1dw8/6PcxmfMJwCYGhU1NcMIVp5TlJ5FmaWrECDR5g2AqQ2LgclQt9tCFtnK2S11B+qCpES2H2R0MLXIomO089EIb9HLkN0i0kGLPW2u5b88SD7cibsGXNtYTRRu0RTXmTHyKmkANufwDXlmZ4GjwNmTWTj6W76tikblKyzBw1MEcQ4KEA0OdNsjTIQY4O28/a0PF8bk8jYL03zP5u5gxUdxL9L+K1Gu9ITsXO3U3sjvJC5x2wP/pixl0SZ6SJl+bq50FCnjETicwLkxAgPUTuBgUI8PdzBArlCspDhdQrou++KyORRGbCAuamHfdJ4Hl9cabj7YAugUBPRVt0FhNg+aKv4Y/VgXF626ZMsiC1q9YrP/jMy78DKr5XYpUIJxNMJuDFslzskboAVNF9mdpo1+PuEIiLMKFs9O2q6omel0LqscMOc+96AdRL15iRcraiImHz9VgOUN5slcLOGrwXCr4r2/ksRqD33at26o2Vxgrst4Y0RVafsO70jWZht5Al4hrTFKtktSHIDJ/ypMU8t8qb/JsUzlryLfpWuAhiHHnmJprruoMvvK5NlMI42zQCzhdTIGjWUMrlav6V4X6uPUy6BjtY6ycqbZz9dnw==" />
              <input type="hidden" name="ezPay" value="0pwX0LyFqo/neAMW/8avcxpnQJmlVjudDtdXHa0IFDc=" />
              <input type="hidden" name="creator" value="uPvEbaODYgLAoPjMf0mO7Q==" />
-             <td align="center">
-             <input type="submit" name="Button" value="Proceed with SKIPJACK" />
-             </td>
              <input type="hidden" name="UserDefined1" value="%s" />
              <input type="hidden" name="UserDefined2"  value="%s" />
-             </form>""" % (url, confId, registrantId)
+             </form>""" % (url, self.getId(), confId, registrantId)
 
 
         return s

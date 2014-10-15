@@ -1,43 +1,45 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 from MaKaC.plugins.InstantMessaging.notificationComponents import IInstantMessagingListener
 from MaKaC.plugins.base import Observable, PluginsHolder
 from MaKaC.plugins.util import PluginsWrapper, PluginFieldsWrapper
 from MaKaC.plugins.InstantMessaging.XMPP.helpers import GeneralLinkGenerator
-from MaKaC.plugins.helpers import DBHelpers, MailHelper
+from MaKaC.plugins.helpers import DBHelpers
 from MaKaC.plugins.InstantMessaging.indexes import IndexByConf, IndexByCRName, IndexByID, IndexByUser
 from MaKaC.plugins.InstantMessaging import urlHandlers
+from MaKaC.plugins.InstantMessaging.pages import WPluginHelp
 from MaKaC.i18n import _
+from MaKaC.plugins import InstantMessaging
+from indico.util.i18n import i18nformat, i18nformat, N_
 from MaKaC.conference import ConferenceHolder
-from MaKaC.common.contextManager import ContextManager
 from MaKaC.common.externalOperationsManager import ExternalOperationsManager
 from MaKaC.common.mail import GenericMailer
-from MaKaC.common.info import HelperMaKaCInfo
 from MaKaC.webinterface import wcomponents
 from MaKaC.webinterface.mail import GenericNotification
-from MaKaC.services.interface.rpc.common import ServiceError, NoReportError
+from MaKaC.services.interface.rpc.common import ServiceError
 import zope.interface
 
-from indico.core.api import Component
-from indico.core.api.conference import INavigationContributor
+from indico.core.extpoint import Component
+from indico.core.extpoint.events import INavigationContributor
+from indico.core.extpoint.plugins import IPluginDocumentationContributor
+from indico.core.config import Config
 
 
 class ChatSMContributor(Component, Observable):
@@ -49,7 +51,11 @@ class ChatSMContributor(Component, Observable):
 
     @classmethod
     def fillManagementSideMenu(cls, obj, params={}):
-        params['Instant Messaging'] = wcomponents.SideMenuItem(_("Chat Rooms"),
+        instantMessagingAdmins = []
+        for imPlugin in PluginsHolder().getPluginType('InstantMessaging').getPluginList():
+            instantMessagingAdmins.extend(imPlugin.getOption("admins").getValue())
+        if obj._conf.canModify(obj._rh._aw) or  obj._rh._aw.getUser() in instantMessagingAdmins:
+            params['Instant Messaging'] = wcomponents.SideMenuItem(_("Chat Rooms"),
                                                                urlHandlers.UHConfModifChat.getURL( obj._conf ))
 
     @classmethod
@@ -62,8 +68,8 @@ class ChatSMContributor(Component, Observable):
         conf = params['conf']
 
         sideMenuItemsDict["instantMessaging"] =  { \
-                "caption": _("Chat Rooms"), \
-                "URL": str(urlHandlers.UHConferenceInstantMessaging.getURL(conf)), \
+                "caption": N_("Chat Rooms"), \
+                "URL": urlHandlers.UHConferenceInstantMessaging, \
                 "staticURL": "", \
                 "parent": ""}
 
@@ -75,7 +81,7 @@ class ChatSMContributor(Component, Observable):
     @classmethod
     def confDisplaySMShow(cls, obj, params):
         obj._instantMessaging = obj._sectionMenu.getLinkByName("instantMessaging")
-        if not DBHelpers.roomsToShow(obj._conf):
+        if obj._instantMessaging and not DBHelpers.roomsToShow(obj._conf):
             obj._instantMessaging.setVisible(False)
 
 
@@ -122,9 +128,9 @@ class ChatSMContributor(Component, Observable):
             * There are rooms in the event created by the user who wants to clone
         """
         #list of creators of the chat rooms
-        ownersList = [cr.getOwner() for cr in DBHelpers().getChatroomList(obj._conf)]
-        if PluginsWrapper('InstantMessaging', 'XMPP').isActive() and obj._rh._aw._currentUser in ownersList:
-            list['cloneOptions'] += _("""<li><input type="checkbox" name="cloneChatrooms" id="cloneChatrooms" value="1" />_("Chat Rooms")</li>""")
+        if PluginsWrapper('InstantMessaging', 'XMPP').isActive():
+            list['cloneOptions'] += '<li><input type="checkbox" name="cloneChatrooms"' \
+                ' id="cloneChatrooms" value="1" />{0}</li>'.format(_("Chat Rooms"))
 
     @classmethod
     def fillCloneDict(self, obj, params):
@@ -138,17 +144,14 @@ class ChatSMContributor(Component, Observable):
         conf = params['conf']
         user = params['user']
         options = params['options']
-        ContextManager.getdefault('mailHelper', MailHelper())
 
         if options.get("chatrooms", True):
             crList = DBHelpers().getChatroomList(confToClone)
             ownersList = [cr.getOwner() for cr in crList]
             if PluginsWrapper('InstantMessaging', 'XMPP').isActive():
-                 for cr in crList:
-                     if user is cr.getOwner():
-                         cls()._notify('addConference2Room', {'room':cr, 'conf':conf.getId()})
-
-        ContextManager.get('mailHelper').sendMails()
+                for cr in crList:
+                    if user is cr.getOwner():
+                        cls()._notify('addConference2Room', {'room':cr, 'conf':conf.getId(), 'clone': True})
 
 
 class ChatroomStorage(Component):
@@ -191,12 +194,19 @@ class ChatroomStorage(Component):
     def editChatroom(self, obj, params):
         oldTitle = params['oldTitle']
         newRoom = params['newRoom']
+        userId = params['userId']
+
         #we have an index by the chat room name. If, while editing, someone changes the chat room name, we'll have to update the index
         if oldTitle != newRoom.getTitle():
             #the title has been changed. Get rid of the old index and substitute it for the new one
             crNameIndex = IndexByCRName()
             crNameIndex.unindex(newRoom, oldTitle)
             crNameIndex.index(newRoom)
+
+            # For dynamic loading this needs to be in alphabetical order,
+            # therefore reindex on change.
+            userIndex = IndexByUser()
+            userIndex.reindex(userId, newRoom, oldTitle)
 
     @classmethod
     def deleteChatroom(cls, obj, params):
@@ -229,7 +239,7 @@ class ChatroomStorage(Component):
             don't know it, we have to check the parameters accordingly"""
         room = params['room']
         confId = params['conf']
-
+        room.setConference(ConferenceHolder().getById(confId))
         confIndex = IndexByConf()
         confIndex.index(confId, room)
 
@@ -262,10 +272,11 @@ class ChatroomMailer(Component):
 
     @classmethod
     def addConference2Room(cls, obj, params):
-        room = params['room']
-        conf = ConferenceHolder().getById(params['conf'])
-        #without the number added it would only send 1 mail, because for every new chat room it'd think that there has been a retry
-        ExternalOperationsManager.execute(cls, "add_"+str(cls.__class__)+str(room.getId()), cls.performOperation, 'create', conf, room, room, conf)
+        if not params.get("clone", False):
+            room = params['room']
+            conf = ConferenceHolder().getById(params['conf'])
+            #without the number added it would only send 1 mail, because for every new chat room it'd think that there has been a retry
+            ExternalOperationsManager.execute(cls, "add_"+str(cls.__class__)+str(room.getId()), cls.performOperation, 'create', conf, room, room, conf)
 
     @classmethod
     def performOperation(cls, operation, conf, room, *args):
@@ -280,10 +291,8 @@ class ChatroomMailer(Component):
         if not len(userList) is 0:
             try:
                 cn = ChatroomsNotification(room, userList)
-                ContextManager.get('mailHelper').newMail(GenericMailer.sendAndLog, getattr(cn, operation)(*args), \
-                                         conf, \
-                                         "MaKaC/plugins/InstantMessaging/XMPP/components.py", \
-                                         room.getOwner())
+                GenericMailer.sendAndLog(getattr(cn, operation)(*args), conf,
+                                         PluginsHolder().getPluginType('InstantMessaging').getPlugin("XMPP").getName())
             except Exception, e:
                 raise ServiceError(message=_('There was an error while contacting the mail server. No notifications were sent: %s'%e))
 
@@ -293,7 +302,7 @@ class ChatroomsNotification(GenericNotification):
 
     def __init__(self, room, userList):
         GenericNotification.__init__(self)
-        self.setFromAddr("Indico Mailer<%s>"%HelperMaKaCInfo.getMaKaCInfoInstance().getSupportEmail())
+        self.setFromAddr("Indico Mailer <%s>"%Config.getInstance().getSupportEmail())
         self.setToList(userList)
 
     def create(self, room, conference=None):
@@ -326,3 +335,11 @@ by the user %s.
 
 Thank you for using our system.""" %(room.getTitle(), conference.getTitle(), conference.getId(), room.getOwner().getFullName()))
         return self
+
+
+class PluginDocumentationContributor(Component):
+
+    zope.interface.implements(IPluginDocumentationContributor)
+
+    def providePluginDocumentation(self, obj):
+        return WPluginHelp.forModule(InstantMessaging).getHTML({})

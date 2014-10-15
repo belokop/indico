@@ -1,7 +1,23 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 type("ChainedPopupWidget", ["PopupWidget"],
      {
          clickTriggersClose: function(target) {
-
              var result = true;
 
              // check chain
@@ -17,9 +33,8 @@ type("ChainedPopupWidget", ["PopupWidget"],
 
          open: function(x, y) {
              var self = this;
-
              if (this.active) {
-                 // don't let the popup open twice
+                 // don't let the popup open twice [** Update: It's not working ! **]
                  return;
              } else {
                  this.active = true;
@@ -27,13 +42,11 @@ type("ChainedPopupWidget", ["PopupWidget"],
 
              this.PopupWidget.prototype.open.call(this, x, y);
 
-             // define a handler for onclick events
-             this.handler = function(event) {
+             var handler = function(event) {
                  if (self.clickTriggersClose($E(eventTarget(event)))) {
-                     // if the click should be followeb by a
+                     // if the click should be followed by a
                      // closing action (out of the chain)
                      self.close();
-
                      // call close() over the whole chain
                      each(self.chainElements, function(element) {
                          if (element.ChainedPopupWidget) {
@@ -43,7 +56,9 @@ type("ChainedPopupWidget", ["PopupWidget"],
                  }
              };
 
-             IndicoUtil.onclickHandlerAdd(this.handler);
+             // define a handler for onclick events
+             $('html').on('click.chained_menu', handler);
+             this.handler = handler;
          },
 
          postDraw: function () {
@@ -68,10 +83,9 @@ type("ChainedPopupWidget", ["PopupWidget"],
          close: function() {
              // close() cleans up the onclick handler too
              this.active = false;
-             IndicoUtil.onclickHandlerRemove(this.handler);
+             $('html').off('click.chained_menu', this.handler);
              this.PopupWidget.prototype.close.call(this);
          }
-
      },
      function(chainElements, alignRight) {
          this.PopupWidget();
@@ -85,10 +99,12 @@ type("PopupMenu", ["ChainedPopupWidget"],
         _processItem: function(pair) {
             var self = this;
             var value = pair.get();
-            var link = Html.a('fakeLink', pair.key);
+            var link = Html.a('fakeLink', value.display);
+            link.setAttribute("id", pair.key);
+            link.setAttribute("title", value.description);
 
-            if(typeof value == "string" ) {
-                link.setAttribute('href', value);
+            if(typeof value.action == "string" ) {
+                link.setAttribute('href', value.action);
                 if (self.linkToExternalWindow) {
                     link.setAttribute('target', '_blank');
                 }
@@ -99,7 +115,7 @@ type("PopupMenu", ["ChainedPopupWidget"],
                 }
             }
             else {
-                link.observeClick(pair.get().PopupWidget?
+                link.observeClick((value.action.PopupWidget || value.action.ExclusivePopup)?
                                   function(e) {
 
                                       if (self.selected) {
@@ -109,7 +125,6 @@ type("PopupMenu", ["ChainedPopupWidget"],
 
                                       link.dom.className = 'selected';
                                       self.selected = link;
-
                                       var pos = listItem.getAbsolutePosition();
 
                                       each(self.items, function(item, key) {
@@ -119,15 +134,15 @@ type("PopupMenu", ["ChainedPopupWidget"],
                                       });
 
                                       IndicoUtil.onclickHandlerRemove(self.handler);
-                                      var target = pair.get();
+                                      var target = pair.get().action;
                                       target.open(pos.x + (target.alignRight ? 0 : link.dom.offsetWidth), pos.y - 1);
 
                                       return false;
                                   }:
                                   function() {
                                       // assume it's a callback function
-                                      pair.get()(self);
-                                      if (self.closeOnClick) {
+                                      var ret = pair.get().action(self);
+                                      if ((self.closeOnClick && ret !== false) || ret === true) {
                                           self.close();
                                       }
                                   });
@@ -140,11 +155,20 @@ type("PopupMenu", ["ChainedPopupWidget"],
             else {
                 listItem = Html.li({}, link);
             }
+
             return listItem;
         },
         close: function() {
             if(this.closeHandler()) {
                 this.ChainedPopupWidget.prototype.close.call(this);
+            }
+        },
+        drawInfoBubbles: function(infoItems){
+            for(var item in infoItems){
+                var span = Html.span('infoBubble');
+                $E(item).append(span);
+                span.dom.innerHTML = infoItems[item];
+                span.dom.style.visibility = "visible";
             }
         },
         draw: function(x, y) {
@@ -162,7 +186,7 @@ type("PopupMenu", ["ChainedPopupWidget"],
     function(items, chainElements, cssClass, closeOnClick, alignRight, closeHandler, currentItem, linkToExternalWindow) {
         this.ChainedPopupWidget(chainElements, alignRight);
         this.items = items;
-        this.currentItem = currentItem;
+        this.currentItem = any(currentItem, []);
         this.selected = null;
         this.cssClass = "popupList " + any(cssClass,"");
         this.closeOnClick = any(closeOnClick, false);
@@ -181,10 +205,11 @@ type("SectionPopupMenu", ["PopupMenu"], {
                 var section = null;
                 if (key !== ""){
                     section = Html.li('section', Html.div('line', Html.div('name', key)));
+                    section.setAttribute('title', item['description']);
                 }
 
                 // add the menu items
-                var tmp = $B(Html.ul('subPopupList'), item, self._processItem);
+                var tmp = $B(Html.ul('subPopupList'), item['content'], _.bind(self._processItem, self));
                 sectionContent.append(Html.li({}, section, tmp));
             });
 
@@ -204,7 +229,6 @@ type("SectionPopupMenu", ["PopupMenu"], {
 /* For add Session menu popup, we add some colored squares for each session */
 type("SessionSectionPopupMenu", ["SectionPopupMenu"], {
     _processItem: function(pair) {
-
         var self = this;
         var value = pair.get();
         var color = null;
@@ -258,8 +282,7 @@ type("SessionSectionPopupMenu", ["SectionPopupMenu"], {
                                   });
 
                                   IndicoUtil.onclickHandlerRemove(self.handler);
-                                  var target = value;
-                                  target.open(pos.x + (target.alignRight ? 0 : link.dom.offsetWidth), pos.y - 1);
+                                  value.open(pos.x + (value.alignRight ? 0 : link.dom.offsetWidth), pos.y - 1);
 
                                   return false;
                               }:
@@ -533,7 +556,7 @@ type("ColorPicker", ["WatchValue", "ChainedPopupWidget"], {
         var currentColors = this.get();
         var showCustom = true;
         for (var i in this.defaultColors) {
-            colors = this.defaultColors[i];
+            var colors = this.defaultColors[i];
             if (colors.textColor == currentColors.textColor &&
                 colors.bgColor == currentColors.bgColor) {
                 showCustom = false;

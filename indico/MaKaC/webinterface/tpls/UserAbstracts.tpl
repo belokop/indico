@@ -1,35 +1,32 @@
+<%inherit file="ConfDisplayBodyBase.tpl"/>
 
-<table width="100%" align="center">
-    <tr>
-        <td><br>
-        </td>
-    </tr>
-    <tr>
-        <td>
-            <table style="border-left:1px solid #777777;border-top:1px solid #777777;" width="95%" align="center" cellspacing="0">
-				<tr>
-					<td class="groupTitle" colspan="4" style="background:#E5E5E5; color:gray; border-top:2px solid #FFFFFF; border-left:2px solid #FFFFFF">&nbsp;&nbsp;&nbsp; <%= _("Abstracts")%></td>
-				</tr>
-				<tr>
-					<td colspan="4">&nbsp <%= _("Click on the title of an abstract to see its details, or if you want to modify or withdraw it")%></td>
-				</tr>
-                <tr>
-                    <td nowrap class="titleCellFormat" style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;border-bottom: 1px solid #5294CC;"> <%= _("ID")%></td>
-                    <td nowrap class="titleCellFormat" style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;border-bottom: 1px solid #5294CC;"> <%= _("Title")%></td>
-                    <td nowrap class="titleCellFormat" style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;border-bottom: 1px solid #5294CC;"> <%= _("Status")%></td>
-                    <td nowrap class="titleCellFormat" style="border-right:5px solid #FFFFFF;border-left:5px solid #FFFFFF;border-bottom: 1px solid #5294CC;"> <%= _("Modification date")%></td>
-                </tr>
-                <form action=<%= abstractsPDFURL %> method="post" target="_blank">
-                <%= abstracts %>
-				<tr><td colspan="4">&nbsp;</td></tr>
-				<tr>
-                    <td align="center" colspan="4">
-                        <input type="submit" class="btn" value="<%= _("get PDF of selected abstracts")%>">
-                    </td>
-					</form>
-                </tr>
-            </table>
-        </td>
-    </tr>
-</table>
-<br>
+<%block name="title">
+    ${body_title}
+</%block>
+
+<%block name="content">
+    % if abstracts:
+    <div style="border-bottom: 1px solid #EAEAEA; padding-bottom: 5px; margin-bottom: 15px;">
+        <a href="${urlHandlers.UHUserAbstractsPDF.getURL(conf)}">${ _("Export to PDF")}</a>
+    </div>
+
+    <div id="abstractList">
+        % for abstract in abstracts:
+        <div class="abstractListAbstractItem">
+            <div>
+                <a href="${str( urlHandlers.UHAbstractDisplay.getURL( abstract ))}" style="font-size:14px">${abstract.getTitle()} </a>
+            </div>
+            <div style="line-height:17px; font-size: 12px; color:#666666;">
+                <div style="display:inline"><span style="font-weight:bold">${_("Id")}: </span>${abstract.getId()}</div>
+                <div style="display:inline"><span style="font-weight:bold">${_("Status")}: </span>${getAbstractStatus(abstract)}</div>
+                <div style="display:inline"><span style="font-weight:bold">${_("Last modified")}: </span>${formatDate(abstract.getModificationDate()) + " "+ formatTime(abstract.getModificationDate())}</div>
+            </div>
+        </div>
+        % endfor
+    </div>
+    % else:
+    <p>
+        ${_('There are currently no abstracts submitted for this conference.')}
+    </p>
+    % endif
+</%block>

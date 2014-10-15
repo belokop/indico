@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 // Filters - User Interface
 
 type("TimetableFilterList", ["CheckPopupWidget"],
@@ -200,11 +217,10 @@ type("TimeTableFilter", ["IWidget"], {
 
         this.div.append(content);
 
-        this.height = this.div.dom.offsetHeight;
+        this.height = $(self.div.dom).height();
 
         // Hide it by default
-        this.setPos(-this.height);
-        this.div.dom.style.visibility = 'visible';
+        this.div.dom.style.display = 'none';
     },
     setUpFilterMenu: function (link, menu)
     {
@@ -221,41 +237,15 @@ type("TimeTableFilter", ["IWidget"], {
             menu.open(pos.x - 30, self.height);
         });
     },
-    move: function(direction, limit, curState, xPos, i) {
-        var self = this;
-
-        if (!exists(curState) || !exists(xPos) || !exists(i)) {
-            var xPos = self.curXPos;
-            var i = 0;
-            var curState = self.state;
-        }
-
-        // If the button state has changed stop the animation
-        if (curState != self.state)
-            return;
-
-        xPos = xPos + (++i * direction);
-        if (direction*xPos >= (direction*limit)) {
-            self.setPos(limit);
-            return;
-        }
-        self.setPos(xPos);
-
-        setTimeout(function() { self.move(direction, limit, curState, xPos, i); }, 20);
-    },
     show: function(show) {
         this.state.set(!this.state.get());
         if (show)
-            this.move(1, 0);
+            $(this.div.dom).show("slide", { direction: "down" }, 200);
         else
-            this.move(-1, -this.height);
+            $(this.div.dom).hide("slide", { direction: "down" }, 200);
     },
     toggle: function() {
         this.show(!this.state.get())
-    },
-    setPos: function(pos) {
-        this.curXPos = pos;
-        this.div.dom.style.bottom = pixels(pos);
     }
     },
     function(timetableDrawer, closeHandler) {
@@ -266,7 +256,7 @@ type("TimeTableFilter", ["IWidget"], {
 
         this.state = new WatchValue(false);
 
-        this.div = Html.div({className: 'timetableFilter', style: {visibility: "hidden"}});
+        this.div = Html.div({className: 'timetableFilter', style: {display: "none"}});
         $E(document.body).append(this.div);
     }
 );

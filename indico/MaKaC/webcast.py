@@ -1,29 +1,27 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 from persistent import Persistent
-from MaKaC.common.db import DBMgr
-from MaKaC.common.logger import Logger
-from MaKaC.common.httpTimeout import urlOpenWithTimeout
+from indico.core.db import DBMgr
+from indico.core.logger import Logger
 from MaKaC.errors import MaKaCError
-from urllib2 import HTTPError, URLError
+from urllib2 import HTTPError, URLError, urlopen
 from BaseHTTPServer import BaseHTTPRequestHandler
 from MaKaC.plugins.Collaboration.collaborationTools import CollaborationTools
 
@@ -55,6 +53,15 @@ class WebcastManager(Persistent):
         if av in self.getManagers():
             self._managers.remove( av )
             self._p_changed=1
+
+    def removeManagerById( self, managerId ):
+        for av in self.getManagers():
+            if av.getId() == managerId:
+                self._managers.remove( av )
+                self._p_changed=1
+                return True
+        else:
+            return False
 
     def isManager( self, av ):
         if av in self.getManagers():
@@ -111,6 +118,12 @@ class WebcastManager(Persistent):
                 self.remoteSynchronize()
         else:
             wc.setAudience(audience)
+
+    def delForthcomingWebcast(self, event):
+        wc = self.getForthcomingWebcast(event)
+        if wc and wc in self._forthcoming_webcasts:
+            self._forthcoming_webcasts.remove(wc)
+            self._p_changed = 1
 
     def getForthcomingWebcast(self, event):
         for wc in self._forthcoming_webcasts:
@@ -283,7 +296,9 @@ class WebcastManager(Persistent):
         """ Returns the Webcast Service URL ( a string ).
             It will be used to display a link when an event is a forthcoming webcast.
         """
-        if not wc or not wc.getAudience():
+        if not wc:
+            return None
+        elif not wc.getAudience():
             return CollaborationTools.getOptionValue('WebcastRequest', "webcastPublicURL")
 
         for row in CollaborationTools.getOptionValue('WebcastRequest', "webcastAudiences"):
@@ -322,7 +337,7 @@ class WebcastManager(Persistent):
                 DBMgr.getInstance().commit()
                 Logger.get('webcast').info("Commit done.")
                 Logger.get('webcast').info("Calling the webcast synchronization URL: " + url)
-                answer = urlOpenWithTimeout(url , 10).read(100000).strip()
+                answer = urlopen(url , timeout=10).read(100000).strip()
                 Logger.get('webcast').info("Got answer: " + answer)
                 return answer
 
@@ -358,7 +373,7 @@ class WebcastManager(Persistent):
             except Exception, e:
                 Logger.get('webcast').error("""Calling the webcast synchronization URL: [%s] triggered Exception: %s""" % (str(url), str(e)))
                 if raiseExceptionOnSyncFail:
-                    raise e
+                    raise
 
 
         else:
@@ -494,7 +509,6 @@ class Webcast(Persistent):
     def __init__( self, event, audience="" ):
         self._event = event
         self._id = event.getId()
-        self._startDate = event.getStartDate()
         self._audience = audience
 
     def getId( self ):
@@ -507,7 +521,7 @@ class Webcast(Persistent):
         return self._event.getTitle()
 
     def getStartDate( self ):
-        return self._startDate
+        return self._event.getStartDate()
 
     def getRoom(self):
         r = self._event.getRoom()

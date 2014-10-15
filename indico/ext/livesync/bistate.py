@@ -1,32 +1,29 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 # plugin imports
 from indico.ext.livesync.agent import PushSyncAgent
+from indico.ext.livesync.metadata import MARCXMLGenerator
 
 # legacy indico
 from MaKaC import conference
 from MaKaC.accessControl import AccessWrapper
-
-# legacy OAI/XML libs - this should be replaced soon
-from MaKaC.export.oai2 import DataInt
 from MaKaC.common.xmlGen import XMLGen
 
 # some useful constants
@@ -108,7 +105,6 @@ class BistateRecordProcessor(object):
             ## if not obj.canAccess(AccessWrapper(access)):
             ##     # no access? jump over this one
             ##     continue
-
             for action in aw.getActions():
                 if action == 'deleted' and not isinstance(obj, conference.Category):
                     # if the record has been deleted, mark it as such
@@ -170,34 +166,48 @@ class BistateBatchUploaderAgent(PushSyncAgent):
         Retrieves the MARCXML metadata for the record
         """
         xg = XMLGen()
-        di = DataInt(xg)
+        mg = MARCXMLGenerator(xg)
         # set the permissions
-        di.setPermissionsOf(self._access)
+        mg.setPermissionsOf(self._access)
 
         xg.initXml()
-
         xg.openTag("collection", [["xmlns", "http://www.loc.gov/MARC21/slim"]])
 
         for record, recId, operation in records:
             deleted = operation & STATUS_DELETED
             try:
-                if record.getOwner() or recId:
-                    # caching is disabled because ACL changes do not trigger
-                    # notifyModification, and consequently can be classified as a hit
-                    # even if they were changed
-                    # TODO: change overrideCache to False when this problem is solved
-                    di.toMarc(recId if deleted else record, overrideCache=True, deleted=deleted)
+                if deleted:
+                    mg.generate(recId, overrideCache=True, deleted=True)
                 else:
-                    logger.warning('%s (%s) seems to have been deleted meanwhile!' % \
-                                   (record, recId))
-            # TODO: Replace with MetadataGenerationException or similar?
-            except AttributeError:
+                    if record.getOwner():
+                        # caching is disabled because ACL changes do not trigger
+                        # notifyModification, and consequently can be classified as a hit
+                        # even if they were changed
+                        # TODO: change overrideCache to False when this problem is solved
+                        mg.generate(record, overrideCache=True, deleted=False)
+                    else:
+                        logger.warning('%s (%s) is marked as non-deleted and has no owner' % \
+                                       (record, recId))
+            except:
                 if logger:
-                    logger.exception("Problem generating metadata for %s (deleted=%s)!" % (record, deleted))
+                    logger.exception("Something went wrong while processing '%s' (recId=%s) (owner=%s)! Possible metadata errors." %
+                                     (record, recId, record.getOwner()))
+                    # avoid duplicate record
+                self._removeUnfinishedRecord(mg._XMLGen)
 
         xg.closeTag("collection")
 
         return xg.getXml()
+
+    def _removeUnfinishedRecord(self, xg):
+        """
+        gets rid of a remaining '<record>' tag
+        """
+        # remove any line breaks, etc...
+        while not xg.xml[-1].strip():
+            xg.xml.pop()
+        # remove '<record>'
+        xg.xml.pop()
 
     def _generateRecords(self, data, lastTS, dbi=None):
         return BistateRecordProcessor.computeRecords(data, self._access, dbi=dbi)

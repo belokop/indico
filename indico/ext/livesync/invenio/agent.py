@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 """
 Agent definitions for CERN Search
@@ -29,11 +28,12 @@ import time
 from indico.ext.livesync.agent import AgentProviderComponent, RecordUploader
 from indico.ext.livesync.bistate import BistateBatchUploaderAgent
 from indico.ext.livesync.invenio.invenio_connector import InvenioConnector
+from indico.util.date_time import nowutc
 
 
 class InvenioBatchUploaderAgent(BistateBatchUploaderAgent):
 
-    def _run(self, records, logger=None, monitor=None, dbi=None):
+    def _run(self, records, logger=None, monitor=None, dbi=None, task=None):
 
         self._v_logger = logger
 
@@ -41,7 +41,7 @@ class InvenioBatchUploaderAgent(BistateBatchUploaderAgent):
 
         # the uploader will manage everything for us...
 
-        uploader = InvenioRecordUploader(logger, self, server)
+        uploader = InvenioRecordUploader(logger, self, server, task)
 
         if self._v_logger:
             self._v_logger.info('Starting metadata/upload cycle')
@@ -55,9 +55,10 @@ class InvenioRecordUploader(RecordUploader):
     A worker that uploads data using HTTP
     """
 
-    def __init__(self, logger, agent, server):
+    def __init__(self, logger, agent, server, task=None):
         super(InvenioRecordUploader, self).__init__(logger, agent)
         self._server = server
+        self._task = task
 
     def _uploadBatch(self, batch):
         """
@@ -74,14 +75,24 @@ class InvenioRecordUploader(RecordUploader):
         self._logger.info('Metadata ready ')
 
         tgen = time.time() - tstart
-
-        result = self._server.upload_marcxml(data, "-ir").read()
+        try:
+            result = self._server.upload_marcxml(data, "-ir").read()
+        except Exception:
+            self._logger.exception("Failed uploading records to local invenio server")
+            raise
 
         tupload = time.time() - (tstart + tgen)
 
+        if self._task:
+            self._task.setOnRunningListSince(nowutc())
+
         self._logger.debug('rec %s result: %s' % (batch, result))
 
-        if result.startswith('[INFO]'):
+        if isinstance(result, long):
+            self._logger.info('Batch of %d records submitted (task %s)'
+                              '[%f s %f s]' % (len(batch), result, tgen, tupload))
+
+        elif result.startswith('[INFO]'):
             fpath = result.strip().split(' ')[-1]
             self._logger.info('Batch of %d records stored in server (%s) '
                               '[%f s %f s]' % \

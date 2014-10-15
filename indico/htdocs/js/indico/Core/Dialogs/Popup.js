@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 type("PopupDialog", ["PopupWidget"], {
     draw: function(content, x, y) {
         return this.PopupWidget.prototype.draw.call(this, content, x, y, null, true);
@@ -52,272 +69,194 @@ type("PopupDialog", ["PopupWidget"], {
      }
     );
 
-type("ExclusivePopup", ["PopupWidget", "Printable"], {
 
-    /**
-     * Opens the popup
-     */
-    open : function() {
-        this.PopupWidget.prototype.open.call(this);
+type("ExclusivePopup", ["Printable"], {
+    open: function() {
+        this.draw();
+        this.canvas.dialog('open');
     },
 
-    draw : function(content, customStyle) {
-        var self = this;
-        customStyle = any(customStyle, {});
-
-        this.greyBg = Html.div({ className: this.printable ? 'noprint' : '',
-            style: {
-                'opacity': 0.5, /* Standard */
-                'filter': 'alpha(opacity=50)', /* IE */
-                '-khtml-opacity': 0.5, /* Older versions of Safari */
-                '-moz-opacity': 0.5, /* Older versions of Mozilla */
-                'background': '#444444',
-                'position': 'fixed',
-                'width': '100%',
-                'height': '100%',
-                'left': pixels(0),
-                'top': pixels(0)
-            }
-        });
-        IndicoUI.assignLayerLevel(this.greyBg);
-        $E(document.body).append(this.greyBg);
-
-        // This is the div that is being printed when user clicks print
-        this.content = Html.div({}, content);
-
-        this.contentWrapper = Html.div({style: {padding: pixels(10)}}, this.content);
-        this.container = Html.div({className: 'exclusivePopup' + (this.printable ? ' noprint' : ''), style: customStyle}, this.contentWrapper);
-
-        this.titleDiv = Html.div('title', this.title);
-        this.titleWrapper = Html.div('titleWrapper', this.titleDiv);
-
-        if (this.title && this.title !== '') {
-            // A 20*20px div is added into the existing div to set the size, work-around for an IE bug
-            this.container.append(Html.div('exclusivePopupTopBg', Html.div({style: {width: '20px', height: '20px'}})));
-            this.container.append(this.titleWrapper);
-            this.contentWrapper.setStyle('paddingTop', '0px');
+    draw: function(content, customStyle, popupStyle) {
+        customStyle = customStyle || {};
+        if(!content) {
+            content = '';
         }
-        this.container.append(this.contentWrapper);
-
-        this.closeButton = null;
-        if (this.closeHandler !== null) {
-            this.closeButton = Html.div('exclusivePopupCloseButton');
-            this.closeButton.observeClick(function(e) {
-                if (self.closeHandler()) {
-                    self.close();
-                }
-            });
-            this.titleWrapper.append(this.closeButton);
+        else if(content.dom) {
+            // support indico XElement objects
+            content = content.dom;
         }
 
-        this.printLink = null;
-        if (this.showPrintButton) {
-            this.printLink = Html.div('printLink', Html.div('printButton fakeLink', 'Print'));
-            this.titleWrapper.append(this.printLink);
-            this.printLink.observeClick(function() {
-               self.print();
-            });
+        if(popupStyle === undefined) {
+            popupStyle = customStyle;
         }
+        var container = $('<div class="exclusivePopup"/>').css(popupStyle).append(content);
 
-
-        return this.PopupWidget.prototype.draw.call(this, this.container, 0, 0, null, true);
+        this.showCloseButton = !!this.title;
+        this._makeCanvas();
+        this.canvas.empty().css(customStyle).append(container);
+        this.dialogElement.css(customStyle);
     },
 
     close: function() {
-        IndicoUI.unAssignLayerLevel(this.greyBg);
-        $E(document.body).remove(this.greyBg);
+        if(this.isopen) {
+            this.canvas.dialog('close');
+        }
+    },
 
-        this.PopupWidget.prototype.close.call(this);
+    _getDialogOptions: function() {
+        return {};
+    },
+
+    _makeCanvas: function() {
+        if(!this.canvas) {
+            var opts = $.extend(true, {
+                autoOpen: false,
+                draggable: true,
+                modal: true,
+                resizable: false,
+                closeOnEscape: true,
+                title: this.title,
+                minWidth: '250px',
+                minHeight: 0,
+                open: $.proxy(this._onOpen, this),
+                close: $.proxy(this._onClose, this),
+                beforeClose: $.proxy(this._onBeforeClose, this)
+            }, this._getDialogOptions());
+            this.canvas = $('<div/>').dialog(opts);
+        }
+        if(!this.dialogElement) {
+            this.dialogElement = this.canvas.dialog('widget');
+        }
+        this.buttons = this.dialogElement.find('.ui-dialog-buttonset button');
+    },
+
+    _onBeforeClose: function(e) {
+        // Close button clicked
+        if(e.originalEvent && $(e.originalEvent.currentTarget).hasClass('ui-dialog-titlebar-close')) {
+            if(isFunction(this.closeHandler) && !this.closeHandler()) {
+                return false;
+            }
+        }
+        // Escape key
+        else if(e.originalEvent && e.originalEvent.keyCode === $.ui.keyCode.ESCAPE) {
+            e.stopPropagation(); // otherwise this triggers twice for some reason
+            if(this.closeHandler === null || !this.showCloseButton) {
+                // Ignore escape if we don't have a close button
+                return false;
+            }
+            if(isFunction(this.closeHandler) && !this.closeHandler()) {
+                return false;
+            }
+        }
+    },
+
+    _onOpen: function(e) {
+        this.isopen = true;
+        if(this.closeHandler === null || !this.showCloseButton) {
+            this.dialogElement.find('.ui-dialog-titlebar-close').hide();
+            if(!this.title) {
+                this.dialogElement.find('.ui-dialog-titlebar').hide();
+            }
+        }
+
+        if(this.postDraw() === true) {
+            // refresh position
+            var pos = this.canvas.dialog('option', 'position');
+            this.canvas.dialog('option', 'position', pos);
+        }
     },
 
     postDraw: function() {
 
-        this.winDim = getWindowDimensions();
-
-        this._adjustContentWrapper();
-        this._postDrawPositionDialog();
-        this._postDrawAdjustTitle();
     },
 
-    _calculateContentHeight: function(){
-        var winHeight = this.winDim.height - 100;
-        var contentHeight = this.contentWrapper.dom.offsetHeight;
-
-        // If content is to big for the window
-        if (contentHeight > winHeight) {
-            // If the window is larger than maxHeight, use the latter
-            if (winHeight > this.maxHeight) {
-                contentHeight = this.maxHeight;
-            } else {
-                // otherwise limit the content to the window height
-                contentHeight = winHeight;
-            }
-        }
-        return contentHeight;
-    },
-
-    _adjustContentWrapper: function(){
-        // This is done in order to make sure that the scrollbar is shown
-        // if the content is too big or if new content is added after the popup
-        // dialog is displayed.
-        var contentHeight = this._calculateContentHeight();
-        this.contentWrapper.setStyle('height', pixels(contentHeight)); // commented out in 42c6b7ce - why?
-        //this.contentWrapper.setStyle('marginTop', pixels((this.closeHandler && !this.title) ? 30 : 10));
-        this.contentWrapper.setStyle('overflowY', 'auto');
-        this.contentWrapper.setStyle('overflowX', 'hidden');
-
-    },
-
-    _postDrawPositionDialog: function(){
-        var left = Math.floor((this.winDim.width - this.container.dom.offsetWidth) / 2);
-        var top = Math.floor((this.winDim.height - this.container.dom.offsetHeight) / 2);
-        var scrollOffset = getScrollOffset();
-        left += scrollOffset.x;
-        top += scrollOffset.y;
-        this.canvas.dom.style.left = pixels(Math.max(0, left));
-        this.canvas.dom.style.top = pixels(Math.max(0, top));
-    },
-
-    _postDrawAdjustTitle: function() {
-        // Make sure the title has correct right padding depending on close button and
-        // print button;
-        var titlePaddingRight = 20;
-        if (this.closeButton) {
-            titlePaddingRight += 30;
-        }
-        if (this.printLink) {
-            titlePaddingRight += this.printLink.dom.offsetWidth;
-        }
-        this.titleDiv.dom.style.paddingRight = pixels(titlePaddingRight);
-    },
-
-    print: function() {
-        if (!exists(this.printDiv)) {
-            this.printDiv = Html.div({className: 'onlyPrint', style: {position: 'absolute', top: '10px', left: '10px'}});
-            $E(document.body).append(this.printDiv);
-        }
-
-        this.printDiv.dom.innerHTML = this.content.dom.innerHTML;
-
-        this.Printable.prototype.print.call(this, this.printDiv);
+    _onClose: function(e, ui) {
+        this.isopen = false;
+        this.canvas.dialog('destroy');
+        this.canvas.remove();
+        this.canvas = this.dialogElement = null;
+        this.buttons = [];
     }
-    },
-     function (title, closeButtonHandler, printable, showPrintButton) {
-         this.title = any(title, null);
 
-         // Called when user clicks the close button, if the function
-         // returns true the dialog will be closed.
-         this.closeHandler = any(closeButtonHandler, positive);
+}, function(title, closeButtonHandler, printable, showPrintButton, noCanvas) {
+    this.title = any(title, null);
 
-         // The maximum allowed height, used since it doesn't look
-         // very nice it the dialog gets too big.
-         this.maxHeight = 600;
+    // Called when user clicks the close button, if the function
+    // returns true the dialog will be closed.
+    this.closeHandler = any(closeButtonHandler, positive);
+    // the close button will be enabled in draw() so if that method is overridden it will not be drawn
+    this.showCloseButton = false;
 
-         // Decides whether the popup should be printable. That is, when the user
-         // clicks print only the content of the dialog will be printed not the
-         // whole page. Should be true in general unless the dialog is containing
-         // something users normally don't want to print, i.e. the loading dialog.
-         this.printable = any(printable, true);
+    // The maximum allowed height, used since it doesn't look
+    // very nice it the dialog gets too big.
+    this.maxHeight = 600;
 
-         // Whether to show the print button or not in the title
-         // Note: the button will only be shown if the popup dialog has a title.
-         // and is printable.
-         this.showPrintButton = any(showPrintButton && title && printable, false);
+    // Decides whether the popup should be printable. That is, when the user
+    // clicks print only the content of the dialog will be printed not the
+    // whole page. Should be true in general unless the dialog is containing
+    // something users normally don't want to print, i.e. the loading dialog.
+    this.printable = any(printable, true);
 
-         this.PopupWidget();
+    // Whether to show the print button or not in the title
+    // Note: the button will only be shown if the popup dialog has a title.
+    // and is printable.
+    this.showPrintButton = any(showPrintButton && title && printable, false);
+
+    this.buttons = $();
+    if(!noCanvas) {
+        this._makeCanvas();
     }
-);
+});
+
+
+
 
 /**
  * Builds an exclusive popup with a button bar
  * Constructor arguments: the same ones as ExclusivePopup
  */
 type("ExclusivePopupWithButtons", ["ExclusivePopup"], {
-
-    /**
-     * Draws the dialog
-     * @param {XElement} mainContent the content that will go in the center of the popup
-     * @param {XElement} buttonContent the content that will go in the button bar
-     * @param {object} popupCustomStyle An object with custom styles attributes, will be passed to ExclusivePopup.draw
-     * @param {object} mainContentStyle An object with custom styles attributes for the "mainContent" of the dialog,
-     *                                  useful if we do not want padding:10px, for example
-     * @param {object} buttonBarStyle An object with custom styles attributes for the "buttonBarStyle" of the dialog,
-     *                                useful if we do not want text-align: center, for example
-     */
-    draw: function(mainContent, buttonContent, popupCustomStyle, mainContentStyle, buttonBarStyle) {
-
-        popupCustomStyle = any(popupCustomStyle, {});
-
-        mainContentStyle = any(mainContentStyle, {});
-        var mainContentDiv = Html.div({className: "popupWithButtonsMainContent", style:mainContentStyle}, mainContent);
-
-        var canvas = this.ExclusivePopup.prototype.draw.call(this, mainContentDiv, popupCustomStyle);
-
-        buttonBarStyle = any(buttonBarStyle, {});
-        var buttonDiv = Html.div({className: "popupButtonBar", style: buttonBarStyle}, buttonContent);
-
-        this.container.append(buttonDiv);
-
-        return canvas;
-
+    _getButtons: function() {
+        return null;
     },
-
-    /**
-     * Overloads ExclusivePopup._adjustContentWrapper
-     */
-    _adjustContentWrapper: function() {
-        this.contentWrapper.setStyle('padding', pixels(0));
-        this.contentWrapper.setStyle('overflowY', 'auto');
-        this.contentWrapper.setStyle('overflowX', 'hidden');
-        this.contentWrapper.setStyle('position', 'relative');
-        if (this.title && this.title !== '') {
-            this.contentWrapper.setStyle('top', pixels(-10));
-        } else {
-            this.contentWrapper.setStyle('top', pixels(10));
+    _getDialogOptions: function() {
+        var self = this;
+        var buttons = this._getButtons();
+        var dlgButtons = [];
+        this.defaultButton = null;
+        if(buttons) {
+            $.each(buttons, function(i, button) {
+                dlgButtons.push({
+                    text: button[0],
+                    click: button[1]
+                });
+                if(button.length > 2 && button[2]) {
+                    self.defaultButton = i;
+                }
+            });
+        }
+        return {
+            buttons: dlgButtons
+        };
+    },
+    _onOpen: function(e) {
+        this.ExclusivePopup.prototype._onOpen.call(this, e);
+        if(this.defaultButton !== null) {
+            this.buttons[this.defaultButton].focus();
         }
 
-        var contentHeight = this._calculateContentHeight();
-        this.contentWrapper.setStyle('height', pixels(contentHeight));
-    }
-},
-    function(title, closeButtonHandler, printable, showPrintButton){
-        this.ExclusivePopup(title, closeButtonHandler, printable, showPrintButton);
-    }
-);
-
-/**
- * Builds an exclusive popup with a button bar which can grow vertically
- * Constructor arguments: the same ones as ExclusivePopup
- */
-type("ExclusivePopupWithButtonsGrowing", ["ExclusivePopupWithButtons"], {
-    /**
-     * Overloads ExclusivePopupWithButtons._adjustContentWrapper
-     */
-    _adjustContentWrapper: function() {
-        this.contentWrapper.setStyle('padding', pixels(0));
-        this.contentWrapper.setStyle('overflowY', 'auto');
-        this.contentWrapper.setStyle('overflowX', 'hidden');
-        this.contentWrapper.setStyle('position', 'relative');
-        if (this.title && this.title !== '') {
-            this.contentWrapper.setStyle('top', pixels(-10));
-        } else {
-            this.contentWrapper.setStyle('top', pixels(10));
-        }
+        this.canvas.scrollblocker({
+            overflowType: "auto"
+        });
     },
-
-    lockHeight: function() {
-        var contentHeight = this._calculateContentHeight();
-        this.contentWrapper.setStyle('height', pixels(contentHeight));
-        // always show scroll bar as overflow:auto likes to hide content behind the scrollbar
-        this.contentWrapper.setStyle('overflowY', 'scroll');
-        //this.contentWrapper.setStyle('paddingRight', pixels(8));
+    _onClose: function(e) {
+        this.ExclusivePopup.prototype._onClose.call(this, e);
+        $("body").off("mousewheel wheel");
     }
-},
-    function(title, closeButtonHandler, printable, showPrintButton){
-        this.ExclusivePopup(title, closeButtonHandler, printable, showPrintButton);
-    }
-);
 
+}, function(title, closeButtonHandler, printable, showPrintButton, noCanvas){
+    this.ExclusivePopup(title, closeButtonHandler, printable, showPrintButton, noCanvas);
+});
 
 type("BalloonPopup", ["PopupDialog"], {
     draw: function(x, y) {
@@ -382,8 +321,8 @@ type("BalloonPopup", ["PopupDialog"], {
             return;
         }
 
-        if ((this.y - height) < getScrollOffset().y )  {
-            if ((getWindowDimensions().height + getScrollOffset().y) > (this.y + height)) {
+        if ((this.y - height) < $(window).scrollTop())  {
+            if (($(window).height() + $(window).scrollTop()) > (this.y + height)) {
                 this.switchOrientation();
                 return;
             }
@@ -396,8 +335,8 @@ type("BalloonPopup", ["PopupDialog"], {
         var leftPos = this.x - Math.floor(balloonWidth/2);
 
         // Check if the balloon is outside left side of browser window
-        if (leftPos - getScrollOffset().x < 0) {
-            leftPos = getScrollOffset().x + 5; // 5 pixel margin
+        if (leftPos - $(window).scrollLeft() < 0) {
+            leftPos = $(window).scrollLeft() + 5; // 5 pixel margin
 
             // Check if the arrow is outside the balloon, then move the balloon to
             // a correct position based on the arrow
@@ -408,9 +347,9 @@ type("BalloonPopup", ["PopupDialog"], {
         }
         // Check if the balloon is outside the right side of browser windows
         // Counts width 25px margin because of the scrollbar.
-        else if (leftPos + balloonWidth > getScrollOffset().x + getWindowDimensions().width - 25) {
+        else if (leftPos + balloonWidth > $(window).scrollLeft() + $(window).width() - 25) {
 
-            leftPos = getScrollOffset().x + getWindowDimensions().width - balloonWidth - 25;
+            leftPos = $(window).scrollLeft() + $(window).width() - balloonWidth - 25;
 
             // Check if the arrow is outside the balloon, then move the balloon to
             // a correct position based on the arrow
@@ -473,22 +412,36 @@ type("NotificationBalloonPopup", ["BalloonPopup"],
  * @param {Html or String} title The title of the error popup.
  * @param {Element} content Anything you want to put inside.
  */
-type("AlertPopup", ["ExclusivePopup"],
+type("AlertPopup", ["ExclusivePopupWithButtons"],
     {
-         draw: function() {
-             var self = this;
-             var okButton = Html.input('button', {style:{marginTop: pixels(20)}}, $T('OK'));
-             okButton.observeClick(function(){
-                 self.close();
-             });
+        draw: function() {
+            var content = $('<div/>').css({
+                maxWidth: '400px',
+                padding: '10px',
+                textAlign: 'center'
+            }).append($('<div/>').css('textAlign', 'left').html(this.content));
+            return this.ExclusivePopupWithButtons.prototype.draw.call(this, content);
+        },
 
-             return this.ExclusivePopup.prototype.draw.call(this, Html.div({style: {maxWidth: pixels(400), padding: pixels(10), textAlign: 'center'}}, Html.div({style: {textAlign: 'left'}}, this.content), okButton));
-         }
+        _getButtons: function() {
+            var self = this;
+            return [
+                [$T('OK'), function() {
+                    self.close();
+                    self.callback();
+                }]
+            ];
+        }
     },
 
-    function(title, content) {
+    function(title, content, callback) {
+        if(content.dom) {
+            // Indico XElement object
+            content = content.dom;
+        }
         this.content = content;
-        this.ExclusivePopup(Html.div({style:{textAlign: 'center'}}, title), positive);
+        this.callback = callback || positive;
+        this.ExclusivePopupWithButtons(title, this.callback);
     }
 );
 
@@ -503,35 +456,33 @@ type("AlertPopup", ["ExclusivePopup"],
  */
 type("ConfirmPopup", ["ExclusivePopupWithButtons"],
     {
-         draw: function() {
-             var self = this;
-
-             var okButton = Html.input('button', {style:{marginRight: pixels(3)}}, $T(this.buttonTitle));
-             okButton.observeClick(function(){
-                 self.close();
-                 self.handler(true);
-             });
-
-             var cancelButton = Html.input('button', {style:{marginLeft: pixels(3)}}, $T(this.cancelButtonTitle));
-             cancelButton.observeClick(function(){
-                 self.close();
-                 self.handler(false);
-             });
-
-             return this.ExclusivePopupWithButtons.prototype.draw.call(this,
-                     this.content,
-                     Html.div({}, okButton, cancelButton));
-         }
+        draw: function() {
+            return this.ExclusivePopup.prototype.draw.call(this, this.content, this.style);
+        },
+        _getButtons: function() {
+            var self = this;
+            return [
+                [$T(this.buttonTitle), function() {
+                    self.close();
+                    self.handler(true);
+                }],
+                [$T(this.cancelButtonTitle), function() {
+                    self.close();
+                    self.handler(false);
+                }]
+            ];
+        }
     },
 
-    function(title, content, handler, buttonTitle, cancelButtonTitle) {
+    function(title, content, handler, buttonTitle, cancelButtonTitle, style) {
         var self = this;
 
         this.buttonTitle = buttonTitle || 'OK';
         this.cancelButtonTitle = cancelButtonTitle || 'Cancel';
+        this.style = style || {};
         this.content = content;
         this.handler = handler;
-        this.ExclusivePopupWithButtons(Html.div({style:{textAlign: 'center'}}, title), function(){
+        this.ExclusivePopupWithButtons(title, function() {
             self.handler(false);
             return true;
         });
@@ -542,43 +493,39 @@ type("ConfirmPopup", ["ExclusivePopupWithButtons"],
 /**
  * Works exactly the same as the ConfirmPopup, but includes a parametermanager to perform checks when pressing OK
  */
-type("ConfirmPopupWithPM", ["ExclusivePopupWithButtons"],
-        {
-             draw: function() {
-                 var self = this;
-
-                 var okButton = Html.input('button', {style:{marginRight: pixels(3)}}, $T('OK'));
-                 okButton.observeClick(function(){
-                     checkOK = self.parameterManager.check();
-                     if(checkOK){
+type("ConfirmPopupWithPM", ["ConfirmPopup"],
+    {
+        _getButtons: function() {
+            var self = this;
+            return [
+                [$T(this.buttonTitle), function() {
+                     if(self.parameterManager.check()) {
                          self.handler(true);
                      }
-                 });
-
-                 var cancelButton = Html.input('button', {style:{marginLeft: pixels(3)}}, $T('Cancel'));
-                 cancelButton.observeClick(function(){
-                     self.close();
-                     self.handler(false);
-                 });
-
-                 return this.ExclusivePopupWithButtons.prototype.draw.call(this,
-                         this.content,
-                         Html.div({}, okButton, cancelButton));
-             }
-        },
-
-        function(title, content, handler) {
-            var self = this;
-
-            this.content = content;
-            this.handler = handler;
-            this.parameterManager = new IndicoUtil.parameterManager();
-            this.ExclusivePopupWithButtons(Html.div({style:{textAlign: 'center'}}, title), function(){
-                self.handler(false);
-                return true;
-            });
+                }],
+                [$T(this.cancelButtonTitle), function() {
+                    self.close();
+                    self.handler(false);
+                }]
+            ];
         }
-    );
+    },
+
+    function(title, content, handler, buttonTitle, cancelButtonTitle) {
+        this.parameterManager = new IndicoUtil.parameterManager();
+        this.ConfirmPopup(title, content, handler, buttonTitle, cancelButtonTitle);
+    }
+);
+
+type('ConfirmPopupWithReason', ['ConfirmPopupWithPM'], {
+
+}, function(title, content, handler, buttonTitle, cancelButtonTitle) {
+
+    this.reason = Html.textarea({style:{width:'100%'}});
+
+    this.ConfirmPopupWithPM(title, Html.div({}, content, Html.div({style: {marginTop:pixels(10)}},Html.div({style:{fontWeight:"bold"}}, $T("Reason: ")),this.reason)), handler, buttonTitle, cancelButtonTitle);
+    this.parameterManager.add(this.reason, 'text', false);
+});
 
 /**
  * Utility function to display a three buttons popup.
@@ -591,31 +538,27 @@ type("ConfirmPopupWithPM", ["ExclusivePopupWithButtons"],
  */
 type("SpecialRemovePopup", ["ExclusivePopupWithButtons"],
     {
-         draw: function() {
-             var self = this;
+        draw: function() {
+            return this.ExclusivePopupWithButtons.prototype.draw.call(this, this.content);
+        },
 
-             var button1 = Html.input('button', {style:{marginRight: pixels(3)}}, $T(this.buttonTitle1));
-             button1.observeClick(function(){
-                 self.close();
-                 self.handler(1);
-             });
-
-             var button2 = Html.input('button', {style:{marginLeft: pixels(3), marginRight: pixels(3)}}, $T(this.buttonTitle2));
-             button2.observeClick(function(){
-                 self.close();
-                 self.handler(2);
-             });
-
-             var cancelButton = Html.input('button', {style:{marginLeft: pixels(3)}}, $T('Cancel'));
-             cancelButton.observeClick(function(){
-                 self.close();
-                 self.handler(0);
-             });
-
-             return this.ExclusivePopupWithButtons.prototype.draw.call(this,
-                     this.content,
-                     Html.div({}, button1, button2, cancelButton));
-         }
+        _getButtons: function() {
+            var self = this;
+            return [
+                [$T(this.buttonTitle1), function() {
+                    self.close();
+                    self.handler(1);
+                }],
+                [$T(this.buttonTitle2), function() {
+                    self.close();
+                    self.handler(2);
+                }],
+                [$T('Cancel'), function() {
+                    self.close();
+                    self.handler(0);
+                }]
+            ];
+        }
     },
 
     function(title, content, handler, buttonTitle1, buttonTitle2) {
@@ -625,7 +568,7 @@ type("SpecialRemovePopup", ["ExclusivePopupWithButtons"],
         this.buttonTitle2 = buttonTitle2;
         this.content = content;
         this.handler = handler;
-        this.ExclusivePopupWithButtons(Html.div({style:{textAlign: 'center'}}, title), function(){
+        this.ExclusivePopupWithButtons(title, function(){
             self.handler(0);
             return true;
         });
@@ -644,35 +587,27 @@ type("SpecialRemovePopup", ["ExclusivePopupWithButtons"],
  */
 type("SaveConfirmPopup", ["ExclusivePopupWithButtons"],
     {
-         draw: function() {
-             var self = this;
+        draw: function() {
+            return this.ExclusivePopupWithButtons.prototype.draw.call(this, this.content);
+        },
 
-             var saveButton = Html.input('button', {style:{marginRight: pixels(3)}}, $T('Save'));
-             saveButton.observeClick(function(){
-                 self.close();
-                 self.handler(1);
-             });
-
-             var dontSaveButton = Html.input('button', {style:{marginLeft: pixels(3), marginRight: pixels(3)}}, $T('Don\'t Save'));
-             dontSaveButton.observeClick(function(){
-                 self.close();
-                 self.handler(2);
-             });
-
-             var cancelButton = Html.input('button', {style:{marginLeft: pixels(3)}}, $T('Cancel'));
-             cancelButton.observeClick(function(){
-                 self.close();
-                 self.handler(0);
-             });
-
-             window.setTimeout(function() {
-                saveButton.dom.focus();
-             }, 0);
-
-             return this.ExclusivePopupWithButtons.prototype.draw.call(this,
-                     this.content,
-                     Html.div({align: 'right'}, saveButton, dontSaveButton, cancelButton));
-         }
+        _getButtons: function() {
+            var self = this;
+            return [
+                [$T('Save'), function() {
+                    self.close();
+                    self.handler(1);
+                }, true],
+                [$T('Don\'t Save'), function() {
+                    self.close();
+                    self.handler(2);
+                }],
+                [$T('Cancel'), function() {
+                    self.close();
+                    self.handler(0);
+                }]
+            ];
+        }
     },
 
     function(title, content, handler) {
@@ -680,7 +615,7 @@ type("SaveConfirmPopup", ["ExclusivePopupWithButtons"],
 
         this.content = content;
         this.handler = handler;
-        this.ExclusivePopupWithButtons(Html.div({style:{textAlign: 'center'}}, title), function(){
+        this.ExclusivePopupWithButtons(title, function(){
             self.handler(0);
             return true;
         });
@@ -739,10 +674,7 @@ type("WarningPopup", ["AlertPopup"],
         }
     },
     function(title, lines) {
-        var self = this;
-        var content = this._formatContent(lines, 0);
-
-        this.AlertPopup(Html.span('warningTitle', title), content);
+        this.AlertPopup(title, this._formatContent(lines, 0).dom);
     }
 );
 
@@ -766,14 +698,316 @@ type("ErrorPopup", ["ExclusivePopup"],
                  });
              }
 
-             return this.ExclusivePopup.prototype.draw.call(this,
-                                                            Widget.block([errorList, this.afterMessage]));
+             return this.ExclusivePopup.prototype.draw.call(this, Widget.block([errorList, this.afterMessage]).dom);
          }
      },
 
      function(title, errors, afterMessage) {
          this.afterMessage = afterMessage;
          this.errors = errors;
-         this.ExclusivePopup(title, function() {return true;});
+         this.ExclusivePopup(title, positive);
+     }
+    );
+
+
+type("AuthorsPopup", ["ExclusivePopup"], {
+
+    draw: function() {
+        var self = this;
+        var container = $("<div/>");
+        each(this.authorList, function(author) {
+            var authorElem = $("<div/>");
+            var url = build_url(Indico.Urls.AuthorDisplay, {
+                confId: self.confId,
+                contribId: self.contribId,
+                authorId: author.id
+            });
+            var link = $("<a/>").attr("href", url).text(author.name);
+            var title = $("<div/>").css("color", "#444444").css("width", self.width + "px").css("font-size", "15px").append(link);
+            var emailUrl = build_url(Indico.Urls.AuthorEmail, {
+                confId: self.confId,
+                sessionId: self.sessionId,
+                contribId: self.contribId,
+                authorId: author.id
+            });
+
+            var infoDiv = $("<div/>").css("width", self.width +"px").css("border-bottom", "1px solid #EAEAEA").css("paddingBottom","5px").css("color", "#888").css("font-size", "12px");
+            var emailDiv = $("<div/>").append($("<a/>").attr("href", emailUrl).text($T("Email author")));
+            var affiliationDiv = $("<div/>").append($("<span/>").css("font-weight", "bold").text($T("Affiliation") + ": ")).append($("<span/>").text(author.affiliation));
+            infoDiv.append(affiliationDiv);
+            infoDiv.append(emailDiv);
+            authorElem.append(title);
+            authorElem.append(infoDiv);
+            container.append(authorElem);
+        });
+        return this.ExclusivePopup.prototype.draw.call(this, container);
+    },
+    postDraw: function(){
+        this.ExclusivePopup.prototype.postDraw.call(this);
+    }
+    },
+     function(title, authorList, confId, contribId, sessionId, closeHandler) {
+
+         this.authorList = $L(authorList);
+         this.confId = confId;
+         this.contribId = contribId;
+         this.sessionId = sessionId;
+
+         this.title = title;
+         this.width = 400;
+
+         this.ExclusivePopup(this.title, closeHandler, true, true);
+     }
+    );
+
+type("SubmitPopup", ["ExclusivePopupWithButtons"], {
+
+    _save: function() {
+        var self = this;
+        var killProgress = IndicoUI.Dialogs.Util.progress($T('Submitting paper for reviewing...'));
+
+        indicoRequest('reviewing.contribution.submitPaper',
+                self.args,
+                function(response,error) {
+                    if (exists(error)) {
+                        self.postDraw();
+                        killProgress();
+                        IndicoUtil.errorReport(error);
+                    } else {
+                        killProgress();
+                        window.location.reload(true);
+                    }
+                }
+               );
+    },
+
+    draw: function() {
+        var contentDiv = $("<div/>");
+        var materialList = $("<div/>", {id: "reviewingMaterialListPlace1"});
+        var warningDiv =  $("<div/>", {id: "submitWarningText"}).addClass("rescheduleWarning");
+        warningDiv.css("padding-bottom", "3px");
+        warningDiv.css("padding-left", "3px");
+        warningDiv.css("margin-top", "5px");
+        warningDiv.css("display", "none");
+        warningDiv.text("Note that you cannot modify the reviewing material after submitting it.");
+        this.saveButton = this.buttons.eq(0);
+        this.saveButton.disabledButtonWithTooltip({
+            tooltip: $T('First you should add the materials and then by clicking on this button you will submit them for reviewing. They will be locked until the end of the process.'),
+            disabled: true
+        });
+        contentDiv.append(materialList);
+        contentDiv.append(warningDiv);
+        return this.ExclusivePopup.prototype.draw.call(this, contentDiv);
+
+    },
+
+    postDraw: function(){
+        var mlist = new ReviewingMaterialListWidget(this.args, [["reviewing", "Reviewing"]], Indico.Urls.UploadAction.contribution , null, null, true, this.buttons.eq(0), $("#submitWarningText"));
+
+        $("#reviewingMaterialListPlace1").html(mlist.draw().dom);
+
+        this.ExclusivePopup.prototype.postDraw.call(this);
+    },
+    _getButtons: function() {
+        var self = this;
+        return [
+            [$T('Submit'), function() {
+                var confirm = new ConfirmPopup("Submit", $T('Do you want to send the paper for reviewing? After sending it, you will not be able to submit another file until it is reviewed.'),
+                            function(action){
+                    if(action){
+                        self._save();
+                    }
+                });
+                confirm.open();
+            }],
+            [$T('Close'), function() {
+                self.close()
+            }]
+        ];
+    }
+    },
+     function(title, args) {
+
+         this.title = title;
+         this.args = args;
+         this.width = 400;
+
+         this.ExclusivePopup(this.title, null, true, true);
+     }
+    );
+
+type("UploadedPaperPopup", ["ExclusivePopup"], {
+
+    draw: function() {
+        var self = this;
+        var container = $("<div/>");
+        if(this.resourceList.length.get() > 0){
+            var paperList = $("<ul/>").css("list-style", "none").css("padding", "0px");
+            each(this.resourceList, function(resource) {
+                var resourceElem = $("<li/>");
+                var details = $("<ul/>").css("list-style", "none").css("padding-left", "25px");
+                resourceElem.append($("<a/>").attr("href", resource.url).text(resource.name));
+                details.append($("<li/>").append($("<span/>").css("font-weight", "bold").text($T("File name")+": ")).append($("<span/>").text(resource.file.fileName)));
+                details.append($("<li/>").append($("<span/>").css("font-weight", "bold").text($T("File size")+": ")).append($("<span/>").text(Math.floor(resource.file.fileSize/1024)+ "KB")));
+                details.append($("<li/>").append($("<span/>").css("font-weight", "bold").text($T("File creation date")+": ")).append($("<span/>").text(resource.file.creationDate)));
+                resourceElem.append(details);
+                paperList.append(resourceElem);
+            });
+            container.append(paperList);
+        } else{
+            container.append($("<div/>").css({textAlign:"center", padding: pixels(5)}).append($T("No paper uploaded")));
+        }
+        return this.ExclusivePopup.prototype.draw.call(this, container);
+    },
+    postDraw: function(){
+        this.ExclusivePopup.prototype.postDraw.call(this);
+    }
+    },
+     function(title, resourceList) {
+
+         this.resourceList = $L(resourceList);
+
+         this.title = title;
+         this.width = 400;
+
+         this.ExclusivePopup(this.title, null, true, true);
+     }
+    );
+
+type("ContributionsPopup", ["ExclusivePopup"], {
+
+    _generateUrl: function(contrib) {
+        var url = this.urlModif ? Indico.Urls.ContributionModification : Indico.Urls.ContributionDisplay;
+        var params = {
+            contribId: contrib.contributionId,
+            confId: contrib.conferenceId
+        };
+        if (contrib.sessionId) {
+            params.sessionId = contrib.sessionId;
+        }
+        return build_url(url, params);
+    },
+
+    draw: function() {
+        var self = this;
+        var table = Html.tbody({});
+        each(this.contributions, function(contrib) {
+            var time = Html.div({style: {paddingTop: pixels(7), marginRight: pixels(3), fontSize: '12px', fontWeight: 'bold'}}, self.isPoster || contrib.startDate == null ? '' : contrib.startDate.time.substr(0,5));
+            var link = Html.a({href: self._generateUrl(contrib)}, contrib.title);
+            var title = Html.div({style: {color: '#444444', width: pixels(self.width), padding: pixels(5), fontSize: '15px'}}, link);
+
+            var infoDiv = Html.div({style: {width: pixels(self.width), border: '1px solid rgb(234, 234, 234)', marginBottom: pixels(10), marginLeft: pixels(5), padding: pixels(5), backgroundColor: 'rgb(248, 248, 248)',color: '#444444', fontSize: '12px'}});
+
+            var showFullDescLink = Html.a({style: {cursor: 'pointer', fontWeight: 'bold', fontSize: '12px', fontStyle: 'italic'}}, ' Show full description');
+            var hideFullDescLink = Html.a({style: {cursor: 'pointer', fontWeight: 'bold', fontSize: '12px', fontStyle: 'italic'}}, ' Hide full description');
+            var shortDesc = Html.span({style: {display: 'block'}}, contrib.description.substr(0, 250) + '... ', showFullDescLink);
+            var longDesc = Html.span({style: {display: 'none'}}, contrib.description, hideFullDescLink);
+
+            if (contrib.description && contrib.description !== '') {
+                if (contrib.description.length <= 250) {
+                    longDesc.setStyle('display', 'block');
+                    hideFullDescLink.setStyle('display', 'none');
+                    infoDiv.append(longDesc);
+                } else {
+                    infoDiv.append(longDesc);
+                    infoDiv.append(shortDesc);
+                }
+            }
+
+            if (contrib.presenters.length > 0) {
+                var speakers = Html.span({style: {marginTop: pixels(5), display: 'block'}}, Html.strong({}, 'Presenter(s): '));
+
+                var i = 0;
+                each(contrib.presenters, function(p) {
+                    speakers.append((i++ > 0 ? ', ' : '') + p.name);
+                    if (p.affiliation && p.affiliation !== '') {
+                        speakers.append(Html.em({style: {fontSize: '12px'}}, ' (' + p.affiliation + ')'));
+                    }
+                });
+
+                infoDiv.append(speakers);
+            }
+
+            if (contrib.room && contrib.room !== '') {
+                var room = Html.span({style: {marginTop: pixels(3), display: 'block'}}, Html.strong({}, 'Room: '), contrib.room);
+                infoDiv.append(room);
+            }
+
+            if (contrib.location && contrib.location !== '') {
+                var location = Html.span({style: {marginTop: pixels(3), display: 'block'}}, Html.strong({}, 'Location: '), contrib.location);
+                infoDiv.append(location);
+            }
+
+            showFullDescLink.observeClick(function(e) {
+                shortDesc.setStyle('display', 'none');
+                longDesc.setStyle('display', 'block');
+            });
+            hideFullDescLink.observeClick(function(e) {
+                shortDesc.setStyle('display', 'block');
+                longDesc.setStyle('display', 'none');
+            });
+
+            // Hide the infoDiv if it's empty
+            if (infoDiv.dom.innerHTML === "") {
+                infoDiv.dom.style.display = 'none';
+            }
+
+            table.append(Html.tr({}, Html.td({style:{verticalAlign: 'top'}}, time), Html.td({}, title, infoDiv)));
+        });
+        this.innerHTML = Html.table({style: {marginBottom: pixels(10)}}, table).dom.innerHTML;
+        return this.ExclusivePopup.prototype.draw.call(this, Html.table({style: {marginBottom: pixels(10)}}, table), {},
+                                                       {overflowX: 'hidden', maxHeight: Math.min($(window).height() - 50, 700)});
+    },
+    postDraw: function(){
+        this.ExclusivePopup.prototype.postDraw.call(this);
+    }
+    },
+     function(title, contributions, isPoster, urlModif, closeHandler, sort) {
+
+         this.contributions = $L(contributions);
+         if(sort){
+             this.contributions.sort(IndicoSortCriteria.StartTime);
+         }
+         this.urlModif = urlModif;
+
+         this.isPoster = isPoster;
+         this.width = 500;
+
+         this.ExclusivePopup(title, closeHandler, true, true);
+     }
+    );
+
+type("ChildrenProtectionPopup", ["ExclusivePopup"], {
+
+    draw: function() {
+        var self = this;
+        var container = $("<table/>").attr("cellspacing", 0).css("margin-bottom", "5px");
+        each(this.elementList, function(element) {
+            var className = (self.elementList.length.get() != self.elementList.indexOf(element) + 1)?"CRLabstractDataCell":"CRLLastDataCell";
+            var row = $("<tr/>").css("color","#444444");
+            var link = $('<a/>').attr('href', element.protectionURL).html($T("Edit protection"));
+
+            // If it is a LocalFile, rename it to File.
+            var type = "LocalFile" == element._type?$T("File"):element._type;
+            type = element.resources?$T("Material"):type;
+
+            row.append($("<td/>").addClass(className).css({"font-weight": "bold", "width": "15%"}).html(type));
+            row.append($("<td/>").addClass(className).css("width","50%").html(_.contains(["Link", "File"], type)?element.name:element.title));
+            row.append($("<td/>").attr("nowrap", "nowrap").addClass(className).append(link));
+            container.append(row);
+        });
+        return this.ExclusivePopup.prototype.draw.call(this, container, {margin: pixels(5), minWidth: pixels(300), maxWidth: pixels(this.width),  maxHeight: pixels(this.height)});
+    },
+    postDraw: function(){
+        this.ExclusivePopup.prototype.postDraw.call(this);
+    }
+    },
+     function(title, elementList) {
+
+         this.elementList = $L(elementList);
+         this.title = title;
+         this.width = 450;
+         this.height = window.innerHeight*0.8;
+         this.ExclusivePopup(this.title, null, true, true);
      }
     );

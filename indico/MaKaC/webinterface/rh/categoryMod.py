@@ -1,47 +1,39 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
-import os,types, tempfile
+from flask import request
+import tempfile
 
-import MaKaC.webinterface.rh.base as base
 import MaKaC.webinterface.locators as locators
 import MaKaC.webinterface.urlHandlers as urlHandlers
 import MaKaC.webinterface.pages.category as category
 from MaKaC.webinterface.user import UserListModificationBase
-from MaKaC.common.Configuration import Config
-import MaKaC.common.indexes as indexes
-from MaKaC.common.utils import sortCategoryByTitle
-import MaKaC.conference as conference
+from indico.core.config import Config
+from MaKaC.common.utils import sortCategoryByTitle, validMail
 import MaKaC.user as user
-import MaKaC.domain as domain
-from MaKaC.common.general import *
 from MaKaC.webinterface.rh.base import RHModificationBaseProtected
-from MaKaC.errors import MaKaCError,NoReportError,FormValuesError
-#import MaKaC.webinterface.pages.conferences as conferences
+from MaKaC.errors import MaKaCError, FormValuesError, NotFoundError
 import MaKaC.conference as conference
-import stat
-import MaKaC.webinterface.materialFactories as materialFactories
-from MaKaC.conference import LocalFile,Material,Link
-from MaKaC.export import fileConverter
 from MaKaC.webinterface.rh.conferenceBase import RHSubmitMaterialBase
-from MaKaC.i18n import _
+
+from indico.util.i18n import _
+
 
 class RHCategModifBase( RHModificationBaseProtected ):
 
@@ -50,21 +42,23 @@ class RHCategModifBase( RHModificationBaseProtected ):
             RHModificationBaseProtected._checkProtection(self)
             return
         else:
+            self._doProcess = False
             self._redirect(urlHandlers.UHCategoryDisplay.getURL(self._target))
 
-    def _checkParams( self, params ):
-        l = locators.CategoryWebLocator( params )
+    def _checkParams(self, params):
+        l = locators.CategoryWebLocator(params)
         self._target = l.getObject()
-        if self._target == None:
-            raise NoReportError(_("The specified category with id \"%s\" does not exist or has been deleted")%params["categId"])
-        self._getSession().setVar("currentCategoryId", self._target.getId())
+        if self._target is None:
+            raise NotFoundError(_("The category with id '{}' does not exist or has been deleted").format(
+                                "<strong>{}</strong>".format(params["categId"])),
+                                title=_("Category not found"))
 
 
-class RHCategoryModification( RHCategModifBase ):
+class RHCategoryModification(RHCategModifBase):
     _uh = urlHandlers.UHCategoryModification
 
-    def _process( self ):
-        p = category.WPCategoryModification( self, self._target )
+    def _process(self):
+        p = category.WPCategoryModification(self, self._target)
         return p.display()
 
 
@@ -75,19 +69,6 @@ class RHCategoryDataModif( RHCategModifBase ):
         p = category.WPCategoryDataModification( self, self._target )
         return p.display()
 
-class RHCategoryClearCache( RHCategModifBase ):
-    _uh = urlHandlers.UHCategoryClearCache
-
-    def _process( self ):
-        self._target.clearCache()
-        self._redirect( urlHandlers.UHCategoryModification.getURL( self._target ) )
-
-class RHCategoryClearConferenceCaches( RHCategModifBase ):
-    _uh = urlHandlers.UHCategoryClearConferenceCaches
-
-    def _process( self ):
-        self._target.clearConferenceCaches()
-        self._redirect( urlHandlers.UHCategoryModification.getURL( self._target ) )
 
 class RHCategoryPerformModification( RHCategModifBase ):
     _uh = urlHandlers.UHCategoryPerformModification
@@ -103,11 +84,9 @@ class RHCategoryPerformModification( RHCategModifBase ):
         tempFileName = tempfile.mkstemp( suffix="Indico.tmp", dir = tempPath )[1]
         return tempFileName
 
-    def _saveFileToTemp( self, fd ):
+    def _saveFileToTemp(self, fs):
         fileName = self._getNewTempFile()
-        f = open( fileName, "wb" )
-        f.write( fd.read() )
-        f.close()
+        fs.save(fileName)
         return fileName
 
     def _process( self):
@@ -135,13 +114,15 @@ class RHCategoryPerformModification( RHCategModifBase ):
             self._target.setDefaultStyle("meeting",params.get("defaultMeetingStyle", ""),subcat)
             if self._target.getVisibility() != int(params.get("visibility",999)):
                 self._target.setVisibility(params.get("visibility",999))
-            if  "delete" in params and self._target.getIcon() is not None:
+            if self._getUser().isAdmin():
+                self._target.setSuggestionsDisabled('disableSuggestions' in request.form)
+            if "delete" in params and self._target.getIcon() is not None:
                 self._target.removeIcon()
             if "icon" in params and type(params["icon"]) != str and \
                    params["icon"].filename.strip() != "":
                 if not hasattr(self, "_filePath"):
                     # do not save the file again if it has already been done (db conflicts)
-                    self._filePath = self._saveFileToTemp( params["icon"].file )
+                    self._filePath = self._saveFileToTemp(params["icon"])
                     self._tempFilesToDelete.append(self._filePath)
                 self._fileName = params["icon"].filename
 
@@ -205,20 +186,16 @@ class RHCategoryFiles( RHCategModifBase ):
         return p.display()
 
 
-class RHAddMaterial( RHCategModifBase ):
+class RHAddMaterial(RHSubmitMaterialBase, RHCategModifBase):
     _uh = urlHandlers.UHCategoryAddMaterial
 
-    def _checkParams( self, params ):
-        RHCategModifBase._checkParams(self, params)
-        if not hasattr(self, "_rhSubmitMaterial"):
-            self._rhSubmitMaterial=RHSubmitMaterialBase(self._target, self)
-        self._rhSubmitMaterial._checkParams(params)
+    def __init__(self, req):
+        RHCategModifBase.__init__(self, req)
+        RHSubmitMaterialBase.__init__(self)
 
-    def _process( self ):
-        r=self._rhSubmitMaterial._process(self, self._getRequestParams())
-        if r is None:
-            self._redirect(self._uh.getURL(self._target))
-        return r
+    def _checkParams(self, params):
+        RHCategModifBase._checkParams(self, params)
+        RHSubmitMaterialBase._checkParams(self, params)
 
 
 class RHCategoryTasksAction( RHCategModifBase ):
@@ -353,7 +330,7 @@ class RHCategoryPerformCreation( RHCategModifBase ):
                 allowedUsers = self._getAllowedUsers(params)
                 if allowedUsers :
                     for person in allowedUsers :
-                        if isinstance(person, user.Avatar) or isinstance(person, user.Group) or isinstance(person, user.CERNGroup):
+                        if isinstance(person, user.Avatar) or isinstance(person, user.Group):
                             nc.grantAccess(person)
 
         self._redirect( urlHandlers.UHCategoryModification.getURL( self._target ) )
@@ -368,32 +345,6 @@ class RHCategoryPerformCreation( RHCategModifBase ):
             auAvatars, auNewUsers, auEditedAvatars = UserListModificationBase.retrieveUsers({"allowedUserList":allowedUsersDict}, "allowedUserList")
 
         return auAvatars
-
-
-#class RHCategoryRemoveSubItems( RHCategModifBase ):
-#    _uh = urlHandlers.UHCategoryPerformCreation
-#
-#    def _checkParams( self, params ):
-#        RHCategModifBase._checkParams( self, params )
-#        self._cancel = False
-#        if params.get("cancel"):
-#            self._cancel = True
-#            return
-#        categIdList = self._normaliseListParam(params.get("selectedCateg", []))
-#        self._categs = []
-#        cm = conference.CategoryManager()
-#        for categId in categIdList:
-#            self._categs.append( cm.getById( categId ) )
-#        confIdList = self._normaliseListParam(params.get( "selectedConf", [] ))
-#        self._confs = []
-#        ch = conference.ConferenceHolder()
-#        for confId in confIdList:
-#            self._confs.append( ch.getById( confId ) )
-#
-#    def _process( self ):
-#        if self._cancel:
-#            self._redirect(WPCategoryModification.getURL( self._target ))
-#            return "done"
 
 
 class _ActionSubCategDeletion:
@@ -500,25 +451,25 @@ class RHCategoryActionSubCategs( RHCategModifBase ):
                 #remove, reallocate
                 self._action.perform()
             else:
-                return self._action.askConfirmation( self._getRequestParams() )
-        self._redirect( urlHandlers.UHCategoryModification.getURL( self._target ) )
+                return self._action.askConfirmation(self._getRequestParams())
+        self._redirect(urlHandlers.UHCategoryModification.getURL(self._target))
+
 
 class _ActionConferenceDeletion:
 
-    def __init__( self, rh,target, selConfs,):
+    def __init__(self, rh, target, selConfs):
         self._rh = rh
         self._target = target
         self._confs = selConfs
 
-    def perform( self,confs ):
+    def perform(self, confs):
         for event in confs:
-            for manager in event.getManagerList():
-                event.revokeModification(manager)
             event.delete()
 
-    def askConfirmation( self, params ):
-        p = category.WPConferenceDeletion( self._rh, self._target )
-        return p.display( events=self._confs )
+    def askConfirmation(self, params):
+        p = category.WPConferenceDeletion(self._rh, self._target)
+        return p.display(events=self._confs)
+
 
 class _ActionConferenceReallocation:
 
@@ -533,16 +484,16 @@ class _ActionConferenceReallocation:
         params["confs"] = self._confs
         return p.display( **params )
 
-    def perform( self, confs ):
-        #ToDo: check if the current user can create conferences on the
-        #   destination category
-        if self._confs == []:
+    def perform(self, confs):
+        # TODO: check if the current user can create conferences on the destination category
+        if not self._confs:
             self._confs = confs
         for conf in self._confs:
-            self._categ.moveConference(conf, self._target)
+            if self._categ == conf.getOwner():
+                self._categ.moveConference(conf, self._target)
 
 
-class RHCategoryActionConferences( RHCategModifBase ):
+class RHCategoryActionConferences(RHCategModifBase):
     _uh = urlHandlers.UHCategoryActionConferences
 
     def _checkParams( self, params ):
@@ -573,40 +524,6 @@ class RHCategoryActionConferences( RHCategModifBase ):
             return self._action.askConfirmation( self._getRequestParams() )
 
 
-class RHCategorySelectManagers( RHCategModifBase ):
-    _uh = urlHandlers.UHCategorySelectManagers
-
-    def _process( self ):
-        p = category.WPCategorySelectManagers( self, self._target )
-        return p.display( **self._getRequestParams() )
-
-
-class RHCategoryAddManagers( RHCategModifBase ):
-    _uh = urlHandlers.UHCategoryAddManagers
-
-    def _process( self ):
-        params = self._getRequestParams()
-        if "selectedPrincipals" in params and not "cancel" in params:
-            ph = user.PrincipalHolder()
-            for id in self._normaliseListParam( params["selectedPrincipals"] ):
-                av = ph.getById( id )
-                self._target.grantModification( av )
-        self._redirect( urlHandlers.UHCategModifAC.getURL( self._target ) )
-
-
-class RHCategoryRemoveManagers( RHCategModifBase ):
-    _uh = urlHandlers.UHCategoryRemoveManagers
-
-    def _process( self ):
-        params = self._getRequestParams()
-        if ("selectedPrincipals" in params) and \
-            (len(params["selectedPrincipals"])!=0):
-            ph = user.PrincipalHolder()
-            for id in self._normaliseListParam( params["selectedPrincipals"] ):
-                self._target.revokeModification( ph.getById( id ) )
-        self._redirect( urlHandlers.UHCategModifAC.getURL( self._target ) )
-
-
 class RHCategorySetVisibility( RHCategModifBase ):
     _uh = urlHandlers.UHCategorySetVisibility
 
@@ -628,63 +545,6 @@ class RHCategorySetVisibility( RHCategModifBase ):
         self._redirect( urlHandlers.UHCategModifAC.getURL( self._target ) )
 
 
-class RHCategorySelectAllowed( RHCategModifBase ):
-    _uh = urlHandlers.UHCategorySelectAllowed
-
-    def _process( self ):
-        p = category.WPCategorySelectAllowed( self, self._target )
-        return p.display( **self._getRequestParams() )
-
-
-class RHCategoryAddAllowed( RHCategModifBase ):
-    _uh = urlHandlers.UHCategoryAddAllowed
-
-    def _process( self ):
-        params = self._getRequestParams()
-        if "selectedPrincipals" in params and not "cancel" in params:
-            ph = user.PrincipalHolder()
-            for id in self._normaliseListParam( params["selectedPrincipals"] ):
-                self._target.grantAccess( ph.getById( id ) )
-        self._redirect( urlHandlers.UHCategModifAC.getURL( self._target ) )
-
-
-class RHCategoryRemoveAllowed( RHCategModifBase ):
-    _uh = urlHandlers.UHCategoryRemoveAllowed
-
-    def _process( self ):
-        params = self._getRequestParams()
-        if ("selectedPrincipals" in params) and \
-            (len(params["selectedPrincipals"])!=0):
-            ph = user.PrincipalHolder()
-            for id in self._normaliseListParam( params["selectedPrincipals"] ):
-                self._target.revokeAccess( ph.getById( id ) )
-        self._redirect( urlHandlers.UHCategModifAC.getURL( self._target ) )
-
-
-class RHCategoryAddDomains( RHCategModifBase ):
-    _uh = urlHandlers.UHCategoryAddDomain
-
-    def _process( self ):
-        params = self._getRequestParams()
-        if ("addDomain" in params) and (len(params["addDomain"])!=0):
-            dh = domain.DomainHolder()
-            for domId in self._normaliseListParam( params["addDomain"] ):
-                self._target.requireDomain( dh.getById( domId ) )
-        self._redirect( urlHandlers.UHCategModifAC.getURL( self._target ) )
-
-
-class RHCategoryRemoveDomains( RHCategModifBase ):
-    _uh = urlHandlers.UHCategoryRemoveDomain
-
-    def _process( self ):
-        params = self._getRequestParams()
-        if ("selectedDomain" in params) and (len(params["selectedDomain"])!=0):
-            dh = domain.DomainHolder()
-            for domId in self._normaliseListParam( params["selectedDomain"] ):
-                self._target.freeDomain( dh.getById( domId ) )
-        self._redirect( urlHandlers.UHCategModifAC.getURL( self._target ) )
-
-
 class RHCategorySetConfControl( RHCategModifBase ):
     _uh = urlHandlers.UHCategorySetConfCreationControl
 
@@ -697,50 +557,21 @@ class RHCategorySetConfControl( RHCategModifBase ):
         self._redirect( urlHandlers.UHCategModifAC.getURL( self._target ) )
 
 
-class RHCategorySelectConfCreators( RHCategModifBase ):
-    _uh = urlHandlers.UHCategorySelectConfCreators
-
-    def _process( self ):
-        p = category.WPCategorySelectConfCreators( self, self._target )
-        return p.display( **self._getRequestParams() )
-
-
-class RHCategoryAddConfCreators( RHCategModifBase ):
-    _uh = urlHandlers.UHCategoryAddConfCreators
-
-    def _process( self ):
-        params = self._getRequestParams()
-        if "selectedPrincipals" in params and not "cancel" in params:
-            ph = user.PrincipalHolder()
-            for id in self._normaliseListParam( params["selectedPrincipals"] ):
-                entity = ph.getById( id )
-                assert(isinstance(entity, user.Avatar) or
-                       isinstance(entity, user.Group))
-                self._target.grantConferenceCreation( entity )
-        self._redirect( urlHandlers.UHCategModifAC.getURL( self._target ) )
-
-
-class RHCategoryRemoveConfCreators( RHCategModifBase ):
-    _uh = urlHandlers.UHCategoryRemoveConfCreators
-
-    def _process( self ):
-        params = self._getRequestParams()
-        if ("selectedPrincipals" in params) and \
-            (len(params["selectedPrincipals"])!=0):
-            ph = user.PrincipalHolder()
-            for id in self._normaliseListParam( params["selectedPrincipals"] ):
-                self._target.revokeConferenceCreation( ph.getById( id ) )
-        self._redirect( urlHandlers.UHCategModifAC.getURL( self._target ) )
-
 class RHCategorySetNotifyCreation( RHCategModifBase ):
     _uh = urlHandlers.UHCategorySetNotifyCreation
 
+    def _checkParams(self, params):
+        RHCategModifBase._checkParams(self, params)
+        self._emailList = params.get("notifyCreationList","")
+        if self._emailList.strip() != "" and not validMail(self._emailList):
+            raise FormValuesError(_("The email list contains invalid e-mail addresses or invalid separator"))
+
     def _process( self ):
-        params = self._getRequestParams()
-        self._target.setNotifyCreationList(params.get("notifyCreationList",""))
+        self._target.setNotifyCreationList(self._emailList)
         self._redirect( urlHandlers.UHCategModifAC.getURL( self._target ) )
 
-class RHCategoryDeletion( RHCategModifBase ):
+
+class RHCategoryDeletion(RHCategModifBase):
     _uh = urlHandlers.UHCategoryDeletion
 
     def _checkParams( self, params ):
@@ -759,8 +590,7 @@ class RHCategoryDeletion( RHCategModifBase ):
         elif self._confirmation:
             owner = self._target.getOwner()
             self._perform()
-            self._redirect( urlHandlers.UHCategoryModification.getURL( owner ) )
+            self._redirect(urlHandlers.UHCategoryModification.getURL(owner))
         else:
-            p = category.WPCategoryDeletion( self, self._target )
+            p = category.WPCategoryDeletion(self, self._target)
             return p.display()
-

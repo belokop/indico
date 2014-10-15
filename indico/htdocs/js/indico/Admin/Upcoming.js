@@ -1,3 +1,20 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 /*
 
 type("CategoryEventSelectionWidget", ["IWidget"],
@@ -74,7 +91,7 @@ type("UpcomingEventFavoritesList", ["RemoteListWidget"],
          this.RemoteListWidget("CategoryList", 'upcomingEvents.admin.getEventCategoryList', {});
      });
 
-type("CategoryEventAddDialog", ["ExclusivePopup"],
+type("CategoryEventAddDialog", ["ExclusivePopupWithButtons"],
      {
          draw: function() {
              var self = this;
@@ -83,40 +100,45 @@ type("CategoryEventAddDialog", ["ExclusivePopup"],
                  Html.option({value: 'category'}, "Category"),
                  Html.option({value: 'event'}, "Event"));
 
-             var info = new WatchObject();
-             info.set('type','category');
+             this.info = new WatchObject();
+             this.info.set('type', 'category');
 
              var form = IndicoUtil.createFormFromMap([
-                 ["Type", $B(selection, info.accessor('type'))],
-                 ["Id", $B(Html.edit(), info.accessor('id'))],
-                 ["Weight (float)", $B(Html.edit(), info.accessor('weight'))],
-                 ["Advertisement time (days)", $B(Html.edit(), info.accessor('delta'))]]);
+                 ["Type", $B(selection, this.info.accessor('type'))],
+                 ["Id", $B(Html.edit(), this.info.accessor('id'))],
+                 ["Weight (float)", $B(Html.edit(), this.info.accessor('weight'))],
+                 ["Advertisement time (days)", $B(Html.edit(), this.info.accessor('delta'))]]);
 
-             var button = Widget.button(command(
-                 function() {
+             return this.ExclusivePopupWithButtons.prototype.draw.call(this, $('<div></div>').append(form));
+         },
+
+         _getButtons: function() {
+             var self = this;
+             return [
+                 [$T('Add'), function() {
                      var killProgress = IndicoUI.Dialogs.Util.progress();
-                     indicoRequest('upcomingEvents.admin.addObservedObject', info,
-                                   function(result, error) {
-                                       if (!error) {
-                                           self.targetList._addElement(result);
-                                           self.close();
-                                           killProgress();
-                                       } else {
-                                           IndicoUtil.errorReport(error);
-                                           killProgress();
-                                       }
-                                   });
-                 }, "Add"));
-
-             return this.ExclusivePopup.prototype.draw.call(this, Html.div({},
-                                                                           form,
-                                                                           button));
+                     indicoRequest('upcomingEvents.admin.addObservedObject', self.info, function(result, error) {
+                         if (!error) {
+                             self.targetList._addElement(result);
+                             self.close();
+                             killProgress();
+                         }
+                         else {
+                             IndicoUtil.errorReport(error);
+                             killProgress();
+                         }
+                     });
+                 }],
+                 [$T('Cancel'), function() {
+                     self.close();
+                 }]
+             ];
          }
      },
      function(targetList) {
          var self = this;
          this.targetList = targetList;
-         this.ExclusivePopup("Add Category/Event", function() {
+         this.ExclusivePopupWithButtons("Add Category/Event", function() {
              return true;
          });
      });

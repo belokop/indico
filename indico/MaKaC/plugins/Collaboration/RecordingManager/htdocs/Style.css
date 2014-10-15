@@ -70,7 +70,6 @@ div.RMtalkDisplay {
     border: 1px;
     border-color: #FFFFFF;
     border-style: solid;
-    height: 34px;
     font-family: serif;
     font-size: smaller;
     margin: 0px;
@@ -83,10 +82,8 @@ div.RMtalkHover {
     background-color: #FFF6DF;
     border-width: 1px;
     border-style: dashed;
-    height: 34px;
     font-family: serif;
     font-size: small;
-/*   line-height: 1; */
     margin: 0px;
     padding: 2px;
     background-position: right;
@@ -97,7 +94,6 @@ div.RMtalkSelected {
     background-color: #CDEB8B;
     border-width: 1px;
     border-style: solid;
-    height: 34px;
     font-family: serif;
     font-size: small;
     font-weight: normal;
@@ -142,49 +138,64 @@ div.RMLOSelected {
 }
 
 div.RMcolumnStatusNone {
-    width: 50px;
+    width: 48px;
     height: 28px;
     text-align: center;
+}
+
+div.RMcolumnStatusAgreedDone{
+    width: 48px;
+    height: 28px;
+    text-align: center;
+    background-image: url(/images/RecordingManagerAgreedCheck.png);
+}
+
+div.RMcolumnStatusAgreedNotDone{
+    width: 48px;
+    height: 28px;
+    text-align: center;
+    background-image: url(/images/RecordingManagerAgreedNotCheck.png);
 }
 
 div.RMcolumnStatusMicalaDone {
-    width: 50px;
+    width: 48px;
     height: 28px;
     text-align: center;
-    background-image: url(./images/RecordingManagerMicalaCheck.png);
+    background-image: url(/images/RecordingManagerMicalaCheck.png);
 }
 
 div.RMcolumnStatusCDSPending {
-    width: 50px;
+    width: 48px;
     height: 28px;
     text-align: center;
-    background-image: url(./images/RecordingManagerCDSPending.png);
+    background-image: url(/images/RecordingManagerCDSPending.png);
 }
 
 div.RMcolumnStatusCDSDone {
-    width: 50px;
+    width: 48px;
     height: 28px;
     text-align: center;
-    background-image: url(./images/RecordingManagerCDSCheck.png);
+    background-image: url(/images/RecordingManagerCDSCheck.png);
 }
 
 div.RMcolumnStatusCDSDoneHover {
-    width: 50px;
+    width: 48px;
     height: 28px;
     text-align: center;
     cursor: pointer;
-    background-image: url(./images/RecordingManagerCDSHover.png);
+    background-image: url(/images/RecordingManagerCDSHover.png);
 }
 
 div.RMcolumnStatusIndicoDone {
-    width: 50px;
+    width: 48px;
     height: 28px;
     text-align: center;
-    background-image: url(./images/RecordingManagerIndicoCheck.png);
+    background-image: url(/images/RecordingManagerIndicoCheck.png);
 }
 
 div.RMlowerPane {
     width: 100%;
+    overflow: auto;
 }
 
 span.RMButtonCreateCDSRecord {

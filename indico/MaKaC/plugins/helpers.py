@@ -2,43 +2,29 @@
 ##
 ## $id$
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
-from MaKaC.common.logger import Logger
+from indico.core.logger import Logger
 from MaKaC.services.interface.rpc.common import ServiceError, NoReportError
 from MaKaC.webinterface import urlHandlers
 from MaKaC.plugins.InstantMessaging.indexes import CounterIndex, IndexByConf, IndexByID, IndexByUser
 from MaKaC.i18n import _
 
 import string
-
-class MailHelper:
-    def __init__(self):
-        self.__mails = []
-
-    def newMail(self, function, *args):
-        self.__mails.append({'function': function, 'args': args})
-        return self.__mails
-
-    def sendMails(self):
-        for mail in self.__mails:
-            mail['function'](*mail['args'])
-        return True
 
 class DBHelpers:
 
@@ -65,14 +51,54 @@ class DBHelpers:
         return index[id]
 
     @classmethod
-    def getRoomsByUser(cls, user):
+    def _filterIndexExclusion(self, idx, exclude, func=None):
+        """ Filters out all matching exclude items from index idx, may specify
+            specific matching function, func, for filter if required.
+        """
+        if func is not None:
+            return filter(idx, func(exclude))
+
+        return filter(lambda c: exclude not in c.getConferences().keys(), idx)
+
+    @classmethod
+    def getRoomsByUser(cls, user, offset=0, limit=None, exclude=None):
         """ Will return the chat rooms created by the requested user """
         userID = str(user['id'])
         index = IndexByUser().get()
 
         if not index.has_key(userID):
             return []
-        return index[userID]
+
+        idx = index[userID].values()
+
+        if exclude is not None:
+            idx = DBHelpers()._filterIndexExclusion(idx, exclude)
+
+        if offset >= len(idx): # If we have gone over the boundaries
+            return []
+
+        limit = limit if limit is not None else (len(index[userID]) - 1)
+        limit += offset
+
+        return list(idx[offset:limit])
+
+    @classmethod
+    def getNumberOfRoomsByUser(cls, user, exclude=None):
+        """ Will return the number of rooms that the user has in this index,
+            can exclude a conference if passed through by exclude param.
+        """
+        userID = str(user['id'])
+        index = IndexByUser().get()
+
+        if not index.has_key(userID):
+            return 0
+
+        idx = index[userID].values()
+
+        if exclude is not None:
+            idx = DBHelpers()._filterIndexExclusion(idx, exclude)
+
+        return len(idx)
 
     @classmethod
     def roomsToShow(cls, conf):

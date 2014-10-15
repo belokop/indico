@@ -1,228 +1,27 @@
-import os, string
-import logging.handlers, logging.config
-import ConfigParser
+# -*- coding: utf-8 -*-
+##
+##
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+##
+## Indico is free software; you can redistribute it and/or
+## modify it under the terms of the GNU General Public License as
+## published by the Free Software Foundation; either version 3 of the
+## License, or (at your option) any later version.
+##
+## Indico is distributed in the hope that it will be useful, but
+## WITHOUT ANY WARRANTY; without even the implied warranty of
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+## General Public License for more details.
+##
+## You should have received a copy of the GNU General Public License
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
-from MaKaC.common.Configuration import Config
+"""
+Obsolete module for logging
+"""
+import warnings
+warnings.warn("the 'MaKaC.common.logger' module is deprecated; "
+              "use indico.core.logger instead", DeprecationWarning, 2)
 
-class ExtraIndicoFilter(logging.Filter):
-
-    def filter(self, record):
-        if record.name.split('.')[0] == 'indico':
-            return 0
-        return 1
-
-class LoggerUtils:
-
-    @classmethod
-    def configFromFile(cls, fname, defaultArgs, filters):
-        """
-        Read the logging configuration from the logging.conf file.
-        Fetch default values if the logging.conf file is not set.
-        """
-
-        if not os.path.exists(fname):
-            return
-
-        cp = ConfigParser.ConfigParser()
-        if hasattr(cp, 'readfp') and hasattr(fname, 'readline'):
-            cp.readfp(fname)
-        else:
-            cp.read(fname)
-
-        try:
-            formatters = logging.config._create_formatters(cp)
-        except:
-            #TODO: this is just for backwards compatibility. It should be removed in v0.98 with p2.6
-            formatters = cls._create_formatters(cp)
-
-        logging._acquireLock()
-        try:
-            logging._handlers.clear()
-            del logging._handlerList[:]
-            handlers = cls._install_handlers(cp, defaultArgs, formatters, filters)
-            try:
-                logging.config._install_loggers(cp, handlers)
-            except:
-                #TODO: this is just for backwards compatibility. It should be removed in v0.98 with p2.6
-                try:
-                    logging.config._install_loggers(cp, handlers, False)
-                except:
-                    cls._install_loggers(cp, handlers)
-
-        finally:
-            logging._releaseLock()
-
-    @classmethod
-    def _install_handlers(self, cp, defaultArgs, formatters, filters = None):
-        """
-        Install and return handlers. If a handler configuration
-        is missing its args, fetches the default values from the
-        indico.conf file
-        """
-        hlist = cp.get("handlers", "keys")
-        if not len(hlist):
-            return {}
-        hlist = hlist.split(",")
-        handlers = {}
-        fixups = [] #for inter-handler references
-
-        for hand in hlist:
-            sectname = "handler_%s" % hand.strip()
-            klass = cp.get(sectname, "class")
-            opts = cp.options(sectname)
-            if "formatter" in opts:
-                fmt = cp.get(sectname, "formatter")
-            else:
-                fmt = ""
-            klass = eval(klass, vars(logging))
-            if "args" in opts :
-                # if the args are not present in the file,
-                # take default values
-                args = cp.get(sectname, "args")
-            else :
-                try:
-                    args = defaultArgs[hand.strip()]
-                except KeyError:
-                    continue
-            args = eval(args, vars(logging))
-            h = apply(klass, args)
-            if "level" in opts:
-                level = cp.get(sectname, "level")
-                h.setLevel(logging._levelNames[level])
-            if len(fmt):
-                h.setFormatter(formatters[fmt])
-            if filters and hand.strip() in filters:
-                for fltr in filters[hand.strip()]:
-                    h.addFilter(fltr)
-            #temporary hack for FileHandler and MemoryHandler.
-            if klass == logging.handlers.MemoryHandler:
-                if "target" in opts:
-                    target = cp.get(sectname,"target")
-                else:
-                    target = ""
-                if len(target): #the target handler may not be loaded yet, so keep for later...
-                    fixups.append((h, target))
-            handlers[hand] = h
-        #now all handlers are loaded, fixup inter-handler references...
-        for h, t in fixups:
-            h.setTarget(handlers[t])
-        return handlers
-
-    @classmethod
-    def _create_formatters(cls, cp):
-        #TODO: this is just for backwards compatibility. It should be removed in v0.98 with p2.6
-        flist = cp.get("formatters", "keys")
-        if len(flist):
-            flist = string.split(flist, ",")
-            formatters = {}
-            for form in flist:
-                sectname = "formatter_%s" % form
-                opts = cp.options(sectname)
-                if "format" in opts:
-                    fs = cp.get(sectname, "format", 1)
-                else:
-                    fs = None
-                if "datefmt" in opts:
-                    dfs = cp.get(sectname, "datefmt", 1)
-                else:
-                    dfs = None
-                f = logging.Formatter(fs, dfs)
-                formatters[form] = f
-            return formatters
-        return {}
-
-    @classmethod
-    def _install_loggers(cls, cp, handlers):
-        #TODO: this is just for backwards compatibility. It should be removed in v0.98 with p2.6
-        llist = cp.get("loggers", "keys")
-        llist = string.split(llist, ",")
-        llist.remove("root")
-        sectname = "logger_root"
-        root = logging.root
-        log = root
-        opts = cp.options(sectname)
-        if "level" in opts:
-            level = cp.get(sectname, "level")
-            log.setLevel(logging._levelNames[level])
-        for h in root.handlers[:]:
-            root.removeHandler(h)
-        hlist = cp.get(sectname, "handlers")
-        if len(hlist):
-            hlist = string.split(hlist, ",")
-            for hand in hlist:
-                log.addHandler(handlers[hand])
-        #and now the others...
-        #we don't want to lose the existing loggers,
-        #since other threads may have pointers to them.
-        #existing is set to contain all existing loggers,
-        #and as we go through the new configuration we
-        #remove any which are configured. At the end,
-        #what's left in existing is the set of loggers
-        #which were in the previous configuration but
-        #which are not in the new configuration.
-        existing = root.manager.loggerDict.keys()
-        #now set up the new ones...
-        for log in llist:
-            sectname = "logger_%s" % log
-            qn = cp.get(sectname, "qualname")
-            opts = cp.options(sectname)
-            if "propagate" in opts:
-                propagate = cp.getint(sectname, "propagate")
-            else:
-                propagate = 1
-            logger = logging.getLogger(qn)
-            if qn in existing:
-                existing.remove(qn)
-            if "level" in opts:
-                level = cp.get(sectname, "level")
-                logger.setLevel(logging._levelNames[level])
-            for h in logger.handlers[:]:
-                logger.removeHandler(h)
-            logger.propagate = propagate
-            logger.disabled = 0
-            hlist = cp.get(sectname, "handlers")
-            if len(hlist):
-                hlist = string.split(hlist, ",")
-                for hand in hlist:
-                    logger.addHandler(handlers[hand])
-        #Disable any old loggers. There's no point deleting
-        #them as other threads may continue to hold references
-        #and by disabling them, you stop them doing any logging.
-        for log in existing:
-            root.manager.loggerDict[log].disabled = 1
-
-
-
-class Logger:
-    """
-    Encapsulates the features provided by the standard logging module
-    """
-
-    config = Config.getInstance()
-
-    configDir = config.getLogDir()
-    smtpServer = config.getSmtpServer()
-    serverName = config.getWorkerName()
-    if not serverName:
-        serverName = config.getHostNameURL()
-
-    # Default arguments for the handlers, taken mostly for the configuration
-    defaultArgs = { 'indico' : "('%s', 'a')" %os.path.join(configDir, 'indico.log'),
-                    'other'  : "('%s', 'a')" %os.path.join(configDir, 'other.log'),
-                    'smtp'   : "('%s', 'logger@%s', ['%s'], 'Unexpected Exception occurred at %s')"
-                                %(smtpServer, serverName, config.getSupportEmail(), serverName)
-                    }
-
-    # Lists of filters for each handler
-    filters = {'indico' : [logging.Filter('indico')],
-               'other'  : [ExtraIndicoFilter()],
-               'smtp'   : [logging.Filter('indico')]}
-
-    logConfFilepath = os.path.join(config.getConfigurationDir(), "logging.conf")
-
-    #logging.config.fileConfig(logConfFilepath)
-    LoggerUtils.configFromFile(logConfFilepath, defaultArgs, filters)
-
-    @classmethod
-    def get(cls, module=None):
-        return logging.getLogger('indico' if module == None else 'indico.' + module)
+from indico.core.logger import *

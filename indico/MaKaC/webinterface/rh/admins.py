@@ -1,22 +1,23 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
+
+from persistent.dict import PersistentDict
 
 import string
 import MaKaC.webinterface.pages.admins as admins
@@ -26,9 +27,9 @@ import MaKaC.common.info as info
 from MaKaC.errors import AdminError, MaKaCError, PluginError, FormValuesError
 from MaKaC.common import HelperMaKaCInfo
 from MaKaC.webinterface.rh.base import RHProtected
-from MaKaC.common.cache import CategoryCache, EventCache
 from MaKaC.plugins import PluginsHolder
-from MaKaC.i18n import _
+from indico.util.i18n import _
+
 
 class RCAdmin(object):
     @staticmethod
@@ -96,42 +97,6 @@ class RHConfigUpcoming( RHAdminBase ):
         return p.display()
 
 
-class RHAdminSelectUsers( RHAdminBase ):
-    _uh = urlHandlers.UHAdminsSelectUsers
-
-    def _process( self ):
-        p = admins.WPAdminSelectUsers( self )
-        return p.display( **self._getRequestParams() )
-
-
-class RHAdminAddUsers( RHAdminBase ):
-    _uh = urlHandlers.UHAdminsAddUsers
-
-    def _process( self ):
-        params = self._getRequestParams()
-        if "selectedPrincipals" in params and not "cancel" in params:
-            al = self._minfo.getAdminList()
-            ph = user.PrincipalHolder()
-            for id in self._normaliseListParam( params["selectedPrincipals"] ):
-                if ph.getById( id ) != None:
-                    al.grant( ph.getById( id ) )
-        self._redirect( urlHandlers.UHAdminArea.getURL() )
-
-
-class RHAdminRemoveUsers( RHAdminBase ):
-    _uh = urlHandlers.UHAdminsRemoveUsers
-
-    def _process( self ):
-        params = self._getRequestParams()
-        if "selectedPrincipals" in params and not "cancel" in params:
-            al = self._minfo.getAdminList()
-            ph = user.PrincipalHolder()
-            for id in self._normaliseListParam( params["selectedPrincipals"] ):
-                if ph.getById( id ) != None:
-                    al.revoke( ph.getById( id ) )
-        self._redirect( urlHandlers.UHAdminArea.getURL() )
-
-
 class RHGeneralInfoModification( RHAdminBase ):
     _uh = urlHandlers.UHGeneralInfoModification
 
@@ -139,36 +104,6 @@ class RHGeneralInfoModification( RHAdminBase ):
         p = admins.WPGenInfoModification( self )
         return p.display()
 
-class RHAdminLocalDefinitions( RHAdminBase ):
-    _uh = urlHandlers.UHAdminLocalDefinitions
-
-    def _process( self ):
-        p = admins.WPAdminLocalDefinitions( self )
-        return p.display()
-
-class RHAdminSaveTemplateSet( RHAdminBase ):
-    _uh = urlHandlers.UHAdminSaveTemplateSet
-
-    def _checkParams( self, params ):
-        self._params = params
-        self._defSet = params.get("templateSet",None)
-        if self._defSet == "None":
-            self._defSet = None
-        RHAdminBase._checkParams( self, params )
-
-    def _process( self ):
-        self._minfo.setDefaultTemplateSet(self._defSet)
-        self._redirect( urlHandlers.UHAdminLocalDefinitions.getURL() )
-
-
-class RHAdminSwitchCacheActive( RHAdminBase ):
-    _uh = urlHandlers.UHAdminSwitchCacheActive
-
-    def _process( self ):
-        CategoryCache().cleanUpAllFiles()
-        EventCache().cleanUpAllFiles()
-        self._minfo.setCacheActive( not self._minfo.isCacheActive() )
-        self._redirect( urlHandlers.UHAdminArea.getURL() )
 
 class RHAdminSwitchNewsActive( RHAdminBase ):
     _uh = urlHandlers.UHAdminSwitchNewsActive
@@ -177,19 +112,6 @@ class RHAdminSwitchNewsActive( RHAdminBase ):
         self._minfo.setNewsActive( not self._minfo.isNewsActive() )
         self._redirect( urlHandlers.UHAdminArea.getURL() )
 
-class RHAdminSwitchDebugActive( RHAdminBase ):
-    _uh = urlHandlers.UHAdminSwitchDebugActive
-
-    def _process( self ):
-        self._minfo.setDebugActive( not self._minfo.isDebugActive() )
-        self._redirect( urlHandlers.UHAdminArea.getURL() )
-
-class RHAdminSwitchHighlightActive( RHAdminBase ):
-    _uh = urlHandlers.UHAdminSwitchHighlightActive
-
-    def _process( self ):
-        self._minfo.setHighlightActive( not self._minfo.isHighlightActive() )
-        self._redirect( urlHandlers.UHAdminArea.getURL() )
 
 class RHGeneralInfoPerformModification( RHAdminBase ):
     _uh = urlHandlers.UHGeneralInfoPerformModification
@@ -200,9 +122,6 @@ class RHGeneralInfoPerformModification( RHAdminBase ):
         if params['action'] != 'cancel':
             self._minfo.setTitle( params["title"] )
             self._minfo.setOrganisation( params["organisation"] )
-            self._minfo.setSupportEmail( params["supportEmail"] )
-            self._minfo.setPublicSupportEmail( params["publicSupportEmail"] )
-            self._minfo.setNoReplyEmail( params["noReplyEmail"] )
             self._minfo.setCity( params["city"] )
             self._minfo.setCountry( params["country"] )
             self._minfo.setTimezone( params["timezone"] )
@@ -216,68 +135,18 @@ class RHUserMerge(RHAdminBase):
         self._params = params
         RHAdminBase._checkParams( self, params )
 
-
-        self.prin = None
-        if self._params.get("prinId", None) and self._params["prinId"] != "":
-            self.prin = ah.getById(self._params["prinId"])
-
-        self.toMerge = None
-        if self._params.get("toMergeId", None) and self._params["toMergeId"] != "":
-            self.toMerge = ah.getById(self._params["toMergeId"])
-
-        self.selectPrin = False
-        if self._params.get("selectPrin", None):
-            self.selectPrin = True
-
-        self.selectToMerge = False
-        if self._params.get("selectToMerge", None):
-            self.selectToMerge = True
+        self.prin = ah.getById(self._params.get("prinId", None))
+        self.toMerge = ah.getById(self._params.get("toMergeId", None))
 
         self.merge = False
         if self._params.get("merge", None):
             self.merge = True
             if self.prin is not None and self.toMerge is not None and self.prin == self.toMerge:
                 raise FormValuesError(_("One cannot merge a user with him/herself"))
-        self.cancel = False
-        self.setPrin = False
-        self.newPrin = None
-        if self._params.get("setPrin", None):
-            if self._params.get("selectedPrincipals", None):
-                self.setPrin = True
-                self.newPrin = ah.getById(self._params.get("selectedPrincipals", ""))
-            else:
-                self.cancel = True
-
-        self.setToMerge = False
-        self.newToMerge = None
-        if self._params.get("setToMerge", None):
-            if self._params.get("selectedPrincipals", None):
-                self.setToMerge = True
-                self.newToMerge = ah.getById(self._params.get("selectedPrincipals", ""))
-            else:
-                self.cancel = True
 
 
     def _process( self ):
-
-        if self.setPrin:
-            self.prin = self.newPrin
-
-        elif self.setToMerge:
-            self.toMerge = self.newToMerge
-
-        elif self.cancel:
-            pass
-
-        elif self.selectPrin:
-            p = admins.WPUserMergeSelectPrin( self, self.prin, self.toMerge )
-            return p.display(**self._getRequestParams())
-
-        elif self.selectToMerge:
-            p = admins.WPUserMergeSelectToMerge( self, self.prin, self.toMerge )
-            return p.display(**self._getRequestParams())
-
-        elif self.merge:
+        if self.merge:
             if self.prin and self.toMerge:
                 ah = user.AvatarHolder()
                 ah.mergeAvatar(self.prin, self.toMerge)
@@ -296,22 +165,34 @@ class RHStyles(RHAdminBase):
         RHAdminBase._checkParams( self, params )
         self._new = params.get("new", "")
         self._name = params.get("name", "")
-        self._xslfile = params.get("xslfile", "")
+        self._styleID = params.get("styleID", "")
+        self._tplfile = params.get("tplfile", "")
+        self._useCss = params.get("useCss", "")
+        self._cssfile = params.get("cssfile", "")
         self._eventType = params.get("event_type", "")
         self._action = params.get("action", "")
         self._newstyle = params.get("newstyle","")
+        self._stylesheetfile = params.get("stylesheetfile", "")
+        self._typeTemplate = params.get("templatetype", "")
+
 
     def _process( self ):
         styleMgr = info.HelperMaKaCInfo.getMaKaCInfoInstance().getStyleManager()
         if self._new != "":
-            if self._xslfile not in styleMgr.getStylesheets().keys() and self._name != "":
-                styles = styleMgr.getStylesheets()
-                styles[self._xslfile] = self._name
-                styleMgr.setStylesheets(styles)
-        if self._action == "default" and self._eventType != "" and self._xslfile != "":
-            styleMgr.setDefaultStyle(self._xslfile, self._eventType)
-        if self._action == "delete" and self._eventType != "" and self._xslfile != "":
-            styleMgr.removeStyle(self._xslfile, self._eventType)
+            if self._styleID not in styleMgr.getStyles().keys() and self._name != "" and self._styleID != "":
+                styles = styleMgr.getStyles()
+                if not self._useCss:
+                    self._cssfile = None
+                if self._typeTemplate == 'xsl':
+                    file = self._stylesheetfile
+                else:
+                    file = self._tplfile
+                styles[self._styleID] = (self._name, file, self._cssfile)
+                styleMgr.setStyles(styles)
+        if self._action == "default" and self._eventType != "" and self._tplfile != "":
+            styleMgr.setDefaultStyle(self._tplfile, self._eventType)
+        if self._action == "delete" and self._eventType != "" and self._tplfile != "":
+            styleMgr.removeStyle(self._tplfile, self._eventType)
         if self._action == "add" and self._eventType != "" and self._newstyle != "":
             styleMgr.addStyleToEventType(self._newstyle, self._eventType)
         p = admins.WPAdminsStyles( self )
@@ -322,13 +203,13 @@ class RHDeleteStyle(RHAdminBase):
 
     def _checkParams( self, params ):
         RHAdminBase._checkParams( self, params )
-        self._xslfile = params.get("xslfile", "")
+        self._tplfile = params.get("templatefile", "")
         self._eventType = params.get("event_type","")
 
     def _process( self ):
         styleMgr = info.HelperMaKaCInfo.getMaKaCInfoInstance().getStyleManager()
-        if self._xslfile != "":
-            styleMgr.removeStyle(self._xslfile, self._eventType)
+        if self._tplfile != "":
+            styleMgr.removeStyle(self._tplfile, self._eventType)
         self._redirect(urlHandlers.UHAdminsStyles.getURL())
 
 class RHAddStyle(RHAdminBase):
@@ -338,7 +219,47 @@ class RHAddStyle(RHAdminBase):
         p = admins.WPAdminsAddStyle( self )
         return p.display()
 
-#Plugin admin start
+
+class RHAdminLayoutGeneral(RHAdminBase):
+    _uh = urlHandlers.UHAdminLayoutGeneral
+
+    def _process(self):
+        p = admins.WPAdminLayoutGeneral(self)
+        return p.display()
+
+
+class RHAdminLayoutSaveTemplateSet( RHAdminBase ):
+    _uh = urlHandlers.UHAdminLayoutSaveTemplateSet
+
+    def _checkParams( self, params ):
+        self._params = params
+        self._defSet = params.get("templateSet",None)
+        if self._defSet == "None":
+            self._defSet = None
+        RHAdminBase._checkParams( self, params )
+
+    def _process( self ):
+        self._minfo.setDefaultTemplateSet(self._defSet)
+        self._redirect( urlHandlers.UHAdminLayoutGeneral.getURL() )
+
+
+class RHAdminLayoutSaveSocial(RHAdminBase):
+    _uh = urlHandlers.UHAdminLayoutSaveSocial
+
+    def _checkParams( self, params ):
+        self._params = params
+        RHAdminBase._checkParams( self, params )
+
+    def _process(self):
+        minfo = HelperMaKaCInfo.getMaKaCInfoInstance()
+        cfg = minfo.getSocialAppConfig()
+        if 'socialActive' in self._params:
+            cfg['active'] = self._params.get('socialActive') == 'yes'
+        if 'facebook_appId' in self._params:
+            cfg.setdefault('facebook', PersistentDict())['appId'] = self._params.get('facebook_appId')
+        self._redirect( urlHandlers.UHAdminLayoutGeneral.getURL() )
+
+
 class RHAdminPluginsBase(RHAdminBase):
     """ Base RH class for all plugin management requests.
         It will store 2 string parameters: pluginType and pluginId.
@@ -360,6 +281,7 @@ class RHAdminPluginsBase(RHAdminBase):
             raise PluginError("The plugin type " + self._pluginType + " does not exist or is not visible")
         elif self._pluginType and self._pluginId and not self._ph.getPluginType(self._pluginType).hasPlugin(self._pluginId):
             raise PluginError("The plugin " + self._pluginId + " does not exist")
+
 
 class RHAdminPlugins(RHAdminPluginsBase):
     """ Displays information about a given plugin type.
@@ -622,6 +544,7 @@ class RHSystemModify(RHAdminBase):
     def _checkParams( self, params ):
         RHAdminBase._checkParams( self, params )
         self._action = params.get("action", None)
+        self._volume = params.get("volume", None)
         self._proxy = False
         if params.get("proxy", False):
             self._proxy = True
@@ -629,6 +552,7 @@ class RHSystemModify(RHAdminBase):
     def _process( self ):
         if self._action == "ok":
             self._minfo.setProxy(self._proxy)
+            self._minfo.setArchivingVolume(self._volume)
             self._redirect(urlHandlers.UHAdminsSystem.getURL())
         elif self._action == "cancel":
             self._redirect(urlHandlers.UHAdminsSystem.getURL())
@@ -644,4 +568,14 @@ class RHConferenceStyles(RHAdminBase):
 
     def _process( self ):
         p = admins.WPAdminsConferenceStyles( self )
+        return p.display()
+
+class RHAdminProtection( RHAdminBase ):
+    _uh = urlHandlers.UHDomains
+
+    def _checkParams( self, params ):
+        RHAdminBase._checkParams( self, params )
+
+    def _process( self ):
+        p = admins.WPAdminProtection( self )
         return p.display()

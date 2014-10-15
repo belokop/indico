@@ -1,5 +1,22 @@
+/* This file is part of Indico.
+ * Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
+ *
+ * Indico is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of the
+ * License, or (at your option) any later version.
+ *
+ * Indico is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Indico; if not, see <http://www.gnu.org/licenses/>.
+ */
+
 // Place where to put page-wide Indico-related global variables
-var IndicoGlobalVars = {}
+var IndicoGlobalVars = {};
 
 var Util = {
     parseId: function(id){
@@ -136,8 +153,14 @@ var Util = {
             return null;
         }
 
-        var date = new Date(results['%Y'],results['%m']-1,results['%d']);
-        setTime(date, [results['%H'],results['%M'],results['%S']]);
+        var date = new Date(results['%Y'], results['%m']-1, results['%d']);
+
+        if (date.getDate() != results['%d'] || (date.getMonth() + 1) != results['%m']) {
+            // stuff such as 31/11
+            return null
+        }
+
+        setTime(date, [results['%H'], results['%M'], results['%S']]);
 
         return date;
     },
@@ -158,11 +181,11 @@ var Util = {
     },
 
     dateTimeIndicoToJS: function(obj) {
-        m1 = obj.date.match(/(\d+)[\-\/](\d+)[\-\/](\d+)/);
-        m2 = obj.time.match(/(\d+):(\d+):(\d+)/);
+        var m1 = obj.date.match(/(\d+)[\-\/](\d+)[\-\/](\d+)/);
+        var m2 = obj.time.match(/(\d+):(\d+)(?::(\d+))?/);
 
 
-        var date = new Date(m1[1],m1[2],m1[3]);
+        var date = new Date(m1[1],m1[2] - 1,m1[3]||0);
         setTime(date, [m2[1],m2[2],m2[3]]);
 
         return date;
@@ -171,6 +194,11 @@ var Util = {
     dateTimeJSToIndico: function(obj){
         return {date:  obj.getFullYear()+ '-'+ zeropad(obj.getMonth()+1) + '-' + zeropad(obj.getDate()),
                 time: zeropad(obj.getHours())+':'+zeropad(obj.getMinutes())+':'+zeropad(obj.getSeconds())};
+    },
+
+    HTMLEscape: function(text) {
+        // escape special HTML chars - kind of hacky but works
+        return $('<p/>').text(text || '').html();
     }
 
 };
@@ -196,11 +224,7 @@ Util.Validation = {
     },
 
     isHtml: function(text) {
-        if (/<.*>[\s\S]*<\/.*>|<br\s*\/>/.exec(text)) {
-            return true;
-        } else {
-            return false;
-        }
+        return /<.*>[\s\S]*<\/.*>|<br\s*\/>/.exec(text);
     }
 
 };
@@ -219,6 +243,22 @@ Util.DateTime = {
 
             return Html.span({}, day, ' ', dateStr[1]);
         }
+    }
+};
+
+Util.Text = {
+    wordsCounter: function(value) {
+        var fullStr = value + " ";
+        var initialWhitespaceRExp = /^[^A-Za-z0-9]+/gi;
+        var leftTrimmedStr = fullStr.replace(initialWhitespaceRExp, "");
+        var nonAlphanumericsRExp = /[^A-Za-z0-9]+/gi;
+        var cleanedStr = leftTrimmedStr.replace(nonAlphanumericsRExp, " ");
+        var splitString = cleanedStr.split(" ");
+        var wordCount = splitString.length - 1;
+        if (fullStr.length < 2) {
+            wordCount = 0;
+        }
+        return wordCount;
     }
 };
 

@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is part of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is part of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 
 """
 Here are included the listeners and other components that are part of the
@@ -27,10 +26,10 @@ Here are included the listeners and other components that are part of the
 from zope.interface import implements
 
 # indico imports
-from indico.core.api import Component
-from indico.core.api.events import IAccessControlListener, IObjectLifeCycleListener, \
+from indico.core.extpoint import Component
+from indico.core.extpoint.events import IAccessControlListener, IObjectLifeCycleListener, \
      IMetadataChangeListener
-from indico.core.api.rh import IServerRequestListener
+from indico.core.extpoint.rh import IServerRequestListener
 from indico.util.date_time import int_timestamp, nowutc
 from indico.util.event import uniqueId
 
@@ -39,8 +38,8 @@ from indico.ext.livesync.base import ActionWrapper
 from indico.ext.livesync.agent import SyncManager
 
 # legacy indico imports
-from MaKaC.common.contextManager import ContextManager
-from MaKaC.common.logger import Logger
+from MaKaC.common.contextManager import ContextManager, DummyDict
+from indico.core.logger import Logger
 from MaKaC import conference, accessControl
 
 
@@ -54,7 +53,7 @@ class RequestListener(Component):
 
     # IServerRequestListener
 
-    def requestFinished(self, obj, req):
+    def requestFinished(self, obj):
 
         sm = SyncManager.getDBInstance()
         cm = ContextManager.get('indico.ext.livesync:actions')
@@ -63,7 +62,7 @@ class RequestListener(Component):
         timestamp = int_timestamp(nowutc())
 
         # if the returned context is a dummy one, there's nothing to do
-        if cm.__class__ == ContextManager.DummyContext:
+        if cm.__class__ == DummyDict:
             return
 
         # Insert the elements from the temporary index
@@ -77,12 +76,12 @@ class RequestListener(Component):
                 sm.add(timestamp,
                        ActionWrapper(timestamp, obj, actions, objId))
 
-    def requestRetry(self, obj, req, nretry):
+    def requestRetry(self, obj, nretry):
         # reset the context manager
         ContextManager.set('indico.ext.livesync:actions', {})
         ContextManager.set('indico.ext.livesync:ids', {})
 
-    def requestStarted(self, obj, req):
+    def requestStarted(self, obj):
         # reset the context manager
         ContextManager.set('indico.ext.livesync:actions', {})
         ContextManager.set('indico.ext.livesync:ids', {})
@@ -96,10 +95,10 @@ class RequestListenerContext(object):
         self._reqListener = RequestListener()
 
     def __enter__(self):
-        self._reqListener.requestStarted(None, None)
+        self._reqListener.requestStarted(None)
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self._reqListener.requestFinished(None, None)
+        self._reqListener.requestFinished(None)
 
 
 class ObjectChangeListener(Component):
@@ -118,15 +117,17 @@ class ObjectChangeListener(Component):
         Adds a provided object to the temporary index.
         Actions: ['moved','deleted',..]
         """
+
         cm_set = ContextManager.get('indico.ext.livesync:actions').setdefault(
             obj, set([]))
-
 
         # the context may not be initialized
         if cm_set != None:
             cm_set |= set(actions)
-        ContextManager.get('indico.ext.livesync:ids').setdefault(
-            obj, uniqueId(obj))
+        uid = uniqueId(obj)
+        if uid is not None and uid != '':
+            ContextManager.get('indico.ext.livesync:ids').setdefault(
+                obj, uid)
 
     def _protectionChanged(self, obj, oldValue, newValue):
         """

@@ -1,27 +1,28 @@
 # -*- coding: utf-8 -*-
 ##
 ##
-## This file is par{t of CDS Indico.
-## Copyright (C) 2002, 2003, 2004, 2005, 2006, 2007 CERN.
+## This file is par{t of Indico.
+## Copyright (C) 2002 - 2014 European Organization for Nuclear Research (CERN).
 ##
-## CDS Indico is free software; you can redistribute it and/or
+## Indico is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
-## published by the Free Software Foundation; either version 2 of the
+## published by the Free Software Foundation; either version 3 of the
 ## License, or (at your option) any later version.
 ##
-## CDS Indico is distributed in the hope that it will be useful, but
+## Indico is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ## General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with CDS Indico; if not, write to the Free Software Foundation, Inc.,
-## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
+## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 from MaKaC.webinterface.mail import GenericNotification
 
 from MaKaC.common.info import HelperMaKaCInfo
 from MaKaC.plugins.Collaboration.collaborationTools import MailTools
 from MaKaC.plugins.Collaboration.WebcastRequest.common import getCommonTalkInformation
+from indico.core.config import Config
+from indico.util.string import safe_upper
 
 
 class WebcastRequestNotificationBase(GenericNotification):
@@ -36,7 +37,7 @@ class WebcastRequestNotificationBase(GenericNotification):
 
         self._modifLink = str(booking.getModificationURL())
 
-        self.setFromAddr("Indico Mailer<%s>"%HelperMaKaCInfo.getMaKaCInfoInstance().getSupportEmail())
+        self.setFromAddr("Indico Mailer<%s>"%Config.getInstance().getSupportEmail())
         self.setContentType("text/html")
 
     def _getRequestDetails(self, typeOfMail):
@@ -72,17 +73,6 @@ Request details:<br />
     </tr>
     <tr>
         <td colspan="2">
-            <strong>Comments about talk selection</strong><br />
-            %s
-        </td>
-    </tr>
-    <tr>
-        <td colspan="2">
-            <strong>Have all the speakers given permission to have their talks webcasted?</strong>  %s
-        </td>
-    </tr>
-    <tr>
-        <td colspan="2">
             <strong>Audience:</strong><br />
             %s
         </td>
@@ -106,9 +96,7 @@ Request details:<br />
        MailTools.bookingCreationDate(self._booking),
        MailTools.bookingModificationDate(self._booking, typeOfMail),
        self._getTalksShortMessage(),
-       self._getTalkSelectionComments(),
-       bp["permission"],
-       self._bp["audience"] or _("Public"),
+       self._bp["audience"] or _("No restriction"),
        self._getComments(),
        self._getTalks())
 
@@ -121,7 +109,7 @@ Request details:<br />
             if self._bp["talks"] == "all":
                 talkInfo = getCommonTalkInformation(self._conference)
                 text = ["""The user chose "All webcast-able Talks". List of webcast-able talks:"""]
-                webcastableTalks = talkInfo[2]
+                webcastableTalks = talkInfo[3]
                 if webcastableTalks:
                     text.extend(MailTools.talkListText(self._conference, webcastableTalks))
                     text.append("<strong>Important note:</strong> room is only shown if different from event.")
@@ -149,17 +137,6 @@ Request details:<br />
                 return """Please see the talk selection comments"""
             else:
                 return """The user chose "Choose talks". The list of chosen talks can be found at the end of this e-mail."""
-
-    def _getTalkSelectionComments(self):
-        if self._isLecture:
-            return """(This event is a lecture. Therefore, it has no talk selection comments)"""
-        else:
-            comments = None
-            if self._bp["talkSelectionComments"]:
-                comments = self._bp["talkSelectionComments"].strip()
-            if comments:
-                return comments
-            return "(User didn't write any comments)"
 
     def _getComments(self):
         comments = self._bp["otherComments"].strip()
@@ -364,8 +341,8 @@ class RequestAcceptedNotificationAdmin(WebcastRequestAdminNotificationBase):
                         % (self._conference.getTitle(), str(self._conference.getId())))
 
         userInfo = ""
-        if user :
-            userInfo = " by %s %s" %(user.getFirstName(), user.getFamilyName().upper())
+        if user:
+            userInfo = " by %s %s" % (user.getFirstName(), safe_upper(user.getFamilyName()))
         self.setBody("""Dear Webcast Manager,<br />
 <br />
 A webcast request for the event: "%s" has been accepted in <a href="%s">%s</a>""" %(self._conference.getTitle(),
