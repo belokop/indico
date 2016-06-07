@@ -120,6 +120,7 @@ additionalInfo = confObj.getContactInfo()
     </td>
 </tr>
 % endif
+<!-- YB 2016-06-07.  Drop this block, make the event creation simple
 <tr>
     <td class="dataCaptionTD">
         <span class="dataCaptionFormat">${ _("Default style")}</span>
@@ -144,6 +145,7 @@ additionalInfo = confObj.getContactInfo()
         <span id="inPlaceEditType">${eventType }</span>
     </td>
 </tr>
+-->
 <tr>
     <td class="dataCaptionTD">
         <span class="dataCaptionFormat">${ _("Keywords")}</span>
@@ -227,7 +229,7 @@ from MaKaC.common import info
 styleOptions = info.HelperMaKaCInfo.getMaKaCInfoInstance().getStyleManager().getStyleDictForEventType(confObj.getType())
 styleOptions = dict(map(lambda k: (k, styleOptions[k][0]), styleOptions))
 %>
-
+/* YB 2016-06-07.  Drop this block, make the event creation simple
 $E('inPlaceEditDefaultStyle').set(new SelectEditWidget('event.main.changeDefaultStyle',
         {'conference':'${ conferenceId }'}, ${ styleOptions }, ${ jsonEncode(defaultStyle) }, null).draw());
 
@@ -236,7 +238,7 @@ $E('inPlaceEditVisibility').set(new SelectEditWidget('event.main.changeVisibilit
 
 $E('inPlaceEditType').set(new SelectEditWidget('event.main.changeType',
         {'conference':'${ conferenceId }'}, ${ typeList }, ${ jsonEncode(eventType) }, null).draw());
-
+*/
 $E('inPlaceEditStartEndDate').set(new StartEndDateWidget('event.main.changeDates', ${ jsonEncode(dict(conference="%s"%conferenceId)) }, {'startDate': confFossile.startDate, 'endDate': confFossile.endDate}, confFossile.type != 'simple_event').draw());
 
 $E('inPlaceEditDescription').set(new ParsedRichTextInlineEditWidget('event.main.changeDescription', ${ jsonEncode(dict(conference="%s"%conferenceId)) }, confFossile.description, null, null, "${_('No description')}").draw());
@@ -261,10 +263,10 @@ timezoneList.sort(function(val1, val2){
 return SortCriteria.Default(timezoneList.get(val1), timezoneList.get(val2));
 });
 
-
+/* YB 2016-06-07.  Drop this block, make the event creation simple
 $E('inPlaceEditTimezone').set(new SelectEditWidget('event.main.changeTimezone',
         {'conference':'${ conferenceId }'}, timezoneList, ${ jsonEncode(timezone) }, null).draw());
-
+*/
 
 // Room parameters widget
 var context = new WidgetEditableContext();

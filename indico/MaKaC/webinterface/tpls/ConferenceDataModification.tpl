@@ -50,7 +50,10 @@
                 <input type="hidden" value="${ eMinute }" name="eMinute" id="eMinute" />
             </td>
         </tr>
-        <!-- Fermi timezone awareness -->
+
+<!-- YB 2016-06-06 NO Fermi timezone changes... -->
+<input type="hidden" name="Timezone" value="Europe/Stockholm" />
+<!--
         <tr>
             <td nowrap class="titleCellTD"><span class="titleCellFormat">Timezone</span></td>
             <td bgcolor="white" width="100%">
@@ -59,7 +62,8 @@
               </select>
             </td>
         </tr>
-        <!-- Fermi timezone awareness(end) -->
+-->
+
 ${ additionalInfo }
         <tr>
             <td nowrap class="titleCellTD"><span class="titleCellFormat"> ${ _("Support caption")}</span></td>
@@ -94,10 +98,12 @@ ${ additionalInfo }
             </td>
         </tr>
         % endif
+<!-- YB 2016-06-06 No visibility&Timetable&type changes, lets make it simple...
         <tr>
             <td nowrap class="titleCellTD"><span class="titleCellFormat"> ${ _("Timetable default style")}</span></td>
             <td bgcolor="white" width="100%"><select name="defaultStyle">${ styleOptions }</select></td>
         </tr>
+
         <tr>
             <td nowrap class="titleCellTD"><span class="titleCellFormat"> ${ _("Visibility")}</span></td>
             <td bgcolor="white" width="100%">
@@ -114,6 +120,7 @@ ${ additionalInfo }
               </select>
         </td>
         </tr>
+-->
         % if Config.getInstance().getShortEventURL() != "" :
         <tr>
             <td nowrap class="titleCellTD"><span class="titleCellFormat">Short URL tag</span></td>

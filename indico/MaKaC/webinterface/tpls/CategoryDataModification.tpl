@@ -65,6 +65,9 @@
                 % endif
             </td>
         </tr>
+<input type=hidden name="modifyConfTZ" value=False />
+<input type=hidden name="defaultTimezone" value="Europe/Stockholm" />
+<!--  YB 2016-06-07.  Drop timezone selection, important for CERN only. 
         <tr>
             <td nowrap class="dataCaptionTD"><span class="dataCaptionFormat">${ _("Default Timezone")}</span></td>
             <td class="blacktext"><select name="defaultTimezone">${ timezoneOptions }</select>
@@ -72,6 +75,7 @@
             <input type=checkbox name="modifyConfTZ" value=False>${ _("Modify timezone for all conferences")}</td>
             % endif
         </tr>
+-->
     <tr>
             <td>&nbsp;</td>
             <td class="blacktext">

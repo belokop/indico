@@ -1,5 +1,6 @@
 <h2 class="formTitle">${ _("User Preferences")}</h2>
 <table style="margin-left: 100px;">
+<!-- YB 2016-06-07.  Drop language/timezone selection, important for CERN only. 
     <tr>
         <td class="titleCellTD"><span class="titleCellFormat">${ _("Language")}</span></td>
         <td class="blacktext spaceLeft"><div id="selectLanguage" class="userPrefOption"></div><div id="langStatus" class="userPrefOptionStatus"></div></td>
@@ -12,6 +13,7 @@
         <td class="titleCellTD"><span class="titleCellFormat">${ _("Display Timezone")}</span></td>
         <td class="blacktext spaceLeft"><div id="displayTimezone" class="userPrefOption"></div><div id="displayTimezoneStatus" class="userPrefOptionStatus"></div></td>
     </tr>
+-->
     <tr>
         <td class="titleCellTD" nowrap><span class="titleCellFormat">${ _("Show past events by default")}</span></td>
         <td class="blacktext spaceLeft" nowrap><div id="tabShowPastEvents"></div></td>

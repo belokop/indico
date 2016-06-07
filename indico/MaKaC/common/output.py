@@ -158,10 +158,12 @@ class outputGenerator(Observable):
         out.openTag("user")
         out.writeTag("title", user.getTitle())
         out.writeTag("name", "", [["first", user.getFirstName()], ["middle", ""], ["last", user.getFamilyName()]])
+        out.writeTag("firstname", user.getFirstName())
+        out.writeTag("lastname",  user.getFamilyName())
         out.writeTag("organization", user.getAffiliation())
 
-        if obj.canModify(self.__aw):
-            out.writeTag("email", user.getEmail())
+        #if obj.canModify(self.__aw):
+        out.writeTag("email", user.getEmail())
 
         out.writeTag("emailHash", md5(user.getEmail()).hexdigest())
 

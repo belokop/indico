@@ -44,12 +44,16 @@
             </td>
         </tr>
         <!-- Fermi timezone awareness -->
+<!-- YB 2016-06-07.  Drop timezone selection, important for CERN only. Replace by Central Europen time -->
+<input type="hidden" name="Timezone" value="Europe/Stockholm">
+<!--
         <tr>
             <td nowrap class="titleCellTD"><span class="titleCellFormat">${ _("Timezone")}</span></td>
             <td nowrap class="contentCellTD">
                 <select id="Timezone" name="Timezone">${ timezoneOptions }</select>
             </td>
         </tr>
+-->
         <!-- Fermi timezone awareness(end) -->
         <%include file="EventLocationInfo.tpl" args="modifying=False, showParent=False, conf=False"/>
         <tr>

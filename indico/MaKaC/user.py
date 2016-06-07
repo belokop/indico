@@ -557,12 +557,15 @@ class Avatar(Persistent, Fossilizable):
             if isinstance(obj, data['cls']):
                 if role not in data['roles']:
                     raise ValueError('role %s is not allowed for %s objects' % (role, type(obj).__name__))
-                self.linkedTo[field][role].add(obj)
-                self._p_changed = 1
-                if redis_write_client:
-                    event = avatar_links.event_from_obj(obj)
-                    if event:
-                        avatar_links.add_link(self, event, field + '_' + role)
+                try:
+                    self.linkedTo[field][role].add(obj)
+                    self._p_changed = 1
+                    if redis_write_client:
+                        event = avatar_links.event_from_obj(obj)
+                        if event:
+                            avatar_links.add_link(self, event, field + '_' + role)
+                except:
+                    pass
                 break
 
     def getLinkTo(self, field, role):

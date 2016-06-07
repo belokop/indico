@@ -10,7 +10,10 @@
         % endif
 
         <div class="details">
-            ${common.renderEventTime(startDate, endDate, timezone)}
+<!-- YB 2016-06-07.  Drop timezone selection, important for CERN only. 
+	    ${common.renderEventTime(startDate, endDate, timezone)}
+-->
+            ${common.renderEventTime(startDate, endDate)}
 
             % if getLocationInfo(conf) != ('', '', ''):
                 <br />at ${common.renderLocation(conf, span='headerRoomLink')}

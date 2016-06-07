@@ -85,7 +85,7 @@
     <time itemprop="${name}" datetime="${dt.isoformat()}">${date} ${_("at")} ${time}</time>
 </%def>
 
-<%def name="renderEventTime(startDate, endDate, timezone, strong=True)">
+<%def name="renderEventTime(startDate, endDate, timezone='', strong=True)">
     <% timeFormat = "<strong>%s</strong>" if strong else "%s" %>
     % if getDate(startDate) == getDate(endDate):
         ${prettyDate(startDate)}
@@ -99,7 +99,9 @@
         ${ _("from")} ${timeTag2('startDate', startDate, prettyDate(startDate), (timeFormat % getTime(startDate)))}
         ${ _("to")} ${timeTag2('endDate', endDate, prettyDate(endDate), (timeFormat % getTime(endDate)))}
     % endif
-    (${str(timezone)})
+    % if timezone!='':
+        (${str(timezone)})
+    % endif
 </%def>
 
 <%def name="renderEventTime2(startDate, endDate, timezone='')">

@@ -368,7 +368,7 @@ class MaKaCInfo(Persistent):
         return self._archivingVolume
 
     def getIPBasedACLMgr(self):
-        return self._ip_based_acl_mgr
+        return IPBasedACLMgr()
 
     def isAPIHTTPSRequired(self):
         if hasattr(self, '_apiHTTPSRequired'):

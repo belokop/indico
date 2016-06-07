@@ -1,3 +1,4 @@
+<!-- YB 2016-06-07.  Drop LanguageSelector, important for CERN only
 <%page args="Languages=None, IsHeader=None, dark=None"/>
 
 <li id="languageSelector">
@@ -34,3 +35,4 @@ languageLink.observeClick(function(e) {
     return false;
 });
 </script>
+-->

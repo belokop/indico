@@ -32,8 +32,9 @@ if lItem.getType() == "simple_event":
             speakerList.append(spk.getDirectFullName())
         eventTitle = "%s, \"%s\"" % (", ".join(speakerList),eventTitle)
 
+eventTitle = escape(remove_tags(lItem.getTitle().strip())) or "[no title]"
 %>
-<li itemscope itemtype="http://data-vocabulary.org/Event">
+<li itemscope itemtype="http://schema.org/Event">
     <span class="ical">
         <a href="${ urlHandlers.UHConferenceToiCal.getURL(lItem) }"><img src="${ systemIcon("ical_grey") }" alt="iCal export" /></a>
     </span>

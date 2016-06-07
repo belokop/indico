@@ -7876,7 +7876,8 @@ class Contribution(CommonObjectBase, Locatable):
         if self.place is not None:
             data["place"] = self.place.getName()
         if self.room is not None:
-            data["room"] = self.room.getName()
+            try: data["room"] = self.room.getName()
+            except: pass
         data["board number"] = self._boardNumber
         for sc in self.getSubContributionList():
             data["subcontribution %s" % sc.getId()] = sc.getTitle()

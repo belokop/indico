@@ -9,11 +9,13 @@ protection = getProtection(target) if target else None
 %>
 
 <div id="sessionBar" class="${'ui-follow-scroll' if target and protection[0] != 'Public' else ''} sessionBar${" sessionBarDark" if dark_ == True else ""}">
+<!-- YB 2016-06-07.  
     % if not target or protection == "Public":
         <div class="corner"></div>
     % else:
         <div class="corner corner${protection[0]}"></div>
     % endif
+-->
     <div class="links">
         <ul>
             % if target and protection[0] != "Public":
@@ -25,9 +27,11 @@ protection = getProtection(target) if target else None
                 });
                 </script>
             % endif
+<!-- YB 2016-06-07.  Drop timezone selection, important for CERN only. 
             <li>
                 <%include file="TimezoneSelector.tpl"/>
             </li>
+-->
             % if currentUser:
                 <%include file="SettingsWidget.tpl" args="Languages = Languages"/>
             % else:

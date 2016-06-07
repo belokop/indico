@@ -57,7 +57,7 @@ from MaKaC.webinterface.general import strfFileSize
 
         <h1 class="category-title ${"sidebar-padding" if isRootCategory or materials or managers else ""}">
         % if isRootCategory and containsCategories:
-            ${ _("Main categories") }
+            ${ _("Lectures, Meetings, Conferences") }
         % elif isRootCategory:
             ${ _("All events") }
         % else:
@@ -139,9 +139,7 @@ from MaKaC.webinterface.general import strfFileSize
         <div class="category-content">
             <div class="category-info">
 
-            % if isRootCategory:
-                ${_("Welcome to Indico. The Indico tool allows you to manage complex conferences, workshops and meetings.<br/> In order to start browsing, please select one of the categories below.")}
-            % elif description:
+            % if description and not isRootCategory:
                 ${description}
             % endif
             </div>
