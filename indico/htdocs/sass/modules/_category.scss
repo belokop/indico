@@ -44,15 +44,14 @@
 }
 
 .category-header {
-    @include background-image(linear-gradient(top, #FCFCFC, #F2F2F2));
-    border-bottom: 1px solid #E6E6E6;
-    border-top: 1px solid #FFFFFF;
+    background: #fbeed7 none repeat scroll 0 0;
+    border-bottom: 1px solid #fed18d;
     padding: 20px 20px 20px 20px;
 }
 
 .category-title {
     font-size: 2em;
-    color: #B14300;
+    color: #7b5033;
     font-weight: normal;
     margin: auto;
     max-width: 850px;
@@ -260,7 +259,7 @@ ul.category-list {
         a {
             @include single-transition(color);
             display: block;
-            color: #2C95E0;
+            color: #7b5033;
             padding: 0 0 0 1em;
             outline: none;
 

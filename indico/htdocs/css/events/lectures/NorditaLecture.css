@@ -1,0 +1,11 @@
+/*
+* -*- mode: text; coding: utf-8; -*-
+*/
+
+@import url("IndicoLecture.css");
+
+div.lectureEventHeader {
+	background: #1a64a0 url('../../../images/nordita_75x70.png') left top no-repeat;
+	background-position: 25px 45px;
+	padding-left: 200px;
+}

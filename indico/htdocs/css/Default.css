@@ -31,6 +31,7 @@ div.wrapper {
 
 div.main {
     padding-bottom: 60px;
+/*  background: #fbeed7; */
 }
 
 /*
@@ -156,7 +157,8 @@ pre {
 */
 
 a:link, .fakeLink {
-   color: #0b63a5;
+/* color: #0b63a5;  */
+   color: #7b5033;
    text-decoration: none;
 }
 
@@ -182,7 +184,8 @@ a.fakeLink:hover span.infoBubble{
 }
 
 a:visited {
-   color: #0b63a5;
+/* color: #0b63a5;  */
+   color: #7b5033;
    text-decoration: none;
 }
 a:active {
@@ -1182,7 +1185,7 @@ input.smallbtn {
 }
 
 .yellowButton {
-    background: white url(../images/sprites.png) repeat-x scroll 0 -90px;
+    background: #fed18d;
 }
 
 .yellowButton input {
@@ -1722,7 +1725,8 @@ ul.CategoryList li{
     vertical-align: middle;
     cursor: pointer;
     background-color: white;
-    color: #0B63A5;
+/* color: #0b63a5;  */
+   color: #7b5033;
 }
 
 ul.CategoryList li:hover{
@@ -2472,11 +2476,14 @@ div.pageHeader {
 }
 
 div.pageHeaderDark {
-    background-color: #424242;
+/*  background-color: #424242; */
+/*  background-color: #fbf9f6; */
+    background-color: #7b5033;
 }
 
 div.pageHeaderMainPage {
-    background: white url("../images/indico_bg.gif") repeat 0 0;
+/*    background: white url("../images/indico_bg.gif") repeat 0 0; */
+    background-color: white;
 }
 
 div.pageOverHeader
@@ -2571,9 +2578,9 @@ div.mobile-device-header .i-button {
 
 div.globalMenu
 {
-    background: #0b63a5 url(../images/sprites.png) repeat-x scroll 0 0;
-    border-top: 1px solid #999999;
-    border-bottom: 1px solid #999999;
+    background: #7b5033;
+    border-top: 1px solid #fed18d;
+    border-bottom: 1px solid #fed18d;
     height: 30px;
     width: 100%;
 }
@@ -2594,7 +2601,7 @@ div.globalMenu li {
 }
 
 div.globalMenu li.mouseover {
-    background: #439ddc url(../images/sprites.png) repeat-x scroll 0 -30px;
+    background: #fed18d;
 }
 
 div.globalMenu a
@@ -2637,7 +2644,8 @@ div.sessionBar {
 
 div.sessionBar .links
 {
-    background: transparent url(../images/sprites.png) repeat-x scroll 0 -60px;
+/*  background: transparent url(../images/sprites.png) repeat-x scroll 0 -60px; */
+    background: #7b5033;
     margin-left: 25px;
     padding-top: 0px;
     height: 25px;
@@ -2657,7 +2665,7 @@ div.sessionBar .icon-shield {
 }
 
 .loginHighlighted {
-    background: transparent url(../images/sprites.png) repeat-x scroll 0 -150px;
+/*  background: transparent url(../images/sprites.png) repeat-x scroll 0 -150px; */
     height: 16px;
 }
 
@@ -2798,13 +2806,15 @@ div.sessionBar .cornerRestricted {
 }
 
 div.mainBreadcrumb {
-    background-color: #ECECEC;
+/*  background-color: #ECECEC; */
+    background: #fbeed7;
     padding: 4px 15px;
     border-bottom: 1px solid #AAAAAA;
 }
 
 div.mainNoBreadcrumb {
-    background: transparent url(../images/sprites.png) scroll repeat-x 0 -120px;
+/*  background: transparent url(../images/sprites.png) scroll repeat-x 0 -120px; */
+    background: #fbeed7;
     height: 10px;
 }
 
@@ -2835,8 +2845,8 @@ img.headerLogo {
 
     margin: 7px 10px;
     border: none;
-    width: 196px;
-    height: 52px;
+#    width: 196px;
+#    height: 52px;
 }
 
 div.headerAboutIndico
@@ -5153,7 +5163,8 @@ ul.timetableSectionPopupList ul.subPopupList {
 }
 
 ul.globalMenuPopupList {
-    background-color: #4e89b8;
+/*  background-color: #4e89b8; */
+    background-color: #7b5033;
     border: 0;
     display: block;
 }
@@ -5177,7 +5188,7 @@ ul.globalMenuPopupList li a:hover {
     display: block;
     list-style-type:none;
     color: white;
-    background: #5fa5d4;
+    background: #fed18d;
 }
 
 ul.categoryDisplayPopupList li a {
