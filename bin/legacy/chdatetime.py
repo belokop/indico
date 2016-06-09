@@ -31,7 +31,7 @@ def main():
     DBMgr.getInstance().startRequest()
     ch = CategoryManager()
     for cat in ch.getList():
-      for conf in cat.getConferenceList():
+      for conf in cat.conferences.values():
         chconf(conf)
       get_transaction().commit()
 

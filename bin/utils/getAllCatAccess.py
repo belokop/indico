@@ -17,7 +17,7 @@ def showSubCategory(cat, group):
         for subcat in cat.getSubCategoryList():
             showSubCategory(subcat,group)
     else:
-        for conference in  cat.getConferenceList():
+        for conference in  cat.conferences.values():
            if checkGroup(conference, group):
                print "%s - %s"%(conference.getName(), UHConferenceDisplay.getURL(conference))
 

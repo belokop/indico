@@ -32,24 +32,27 @@ def main():
     im.removeById('category')
     catIdx = im.getIndex('category')
     ch = CategoryManager()
-    totnum = len(ch.getList())
-    curnum = 0
-    curper = 0
+    print "\n%s categories to be processed" % len(ch.getList())
+    totcats = 0
+    totconfs = 0
     for cat in ch.getList():
+        totcats = totcats + 1
+        try:    conferences = cat.conferences.values()
+        except: conferences = cat.getConferenceList()
+        print "\n%s (%s conferences)" % (cat.getTitle(),len(conferences))
         while 1:
             try:
-                for conf in cat.getConferenceList():
+                for conf in conferences:
+                    totconfs = totconfs + 1
+                    print "   %4s %s" % (conf.getId(),conf.getTitle())
                     catIdx.indexConf(conf)
                 transaction.commit()
                 break
             except:
                 DBMgr.getInstance().sync()
-        curnum += 1
-        per = int(float(curnum)/float(totnum)*100)
-        if per != curper:
-            curper = per
-            print "%s%%" % per
     DBMgr.getInstance().endRequest()
+
+    print "\nDONE, %s categories, %s conferences\n" % (totcats,totconfs)
 
 if __name__ == "__main__":
     main()

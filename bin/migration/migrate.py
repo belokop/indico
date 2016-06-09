@@ -614,12 +614,15 @@ def ip_based_acl(dbi, withRBDB, prevVersion):
     """
     Moving from OAI Private Harvesting to a more general IP-based ACL.
     """
-    from MaKaC.common.info import IPBasedACLMgr
-    minfo = HelperMaKaCInfo.getMaKaCInfoInstance()
-    ip_set = set(minfo._oaiPrivateHarvesterList)
-    ip_acl_mgr = minfo._ip_based_acl_mgr = IPBasedACLMgr()
-    ip_acl_mgr._full_access_acl = ip_set
-    dbi.commit()
+    try:
+        from MaKaC.common.info import IPBasedACLMgr
+        minfo = HelperMaKaCInfo.getMaKaCInfoInstance()
+        ip_set = set(minfo._oaiPrivateHarvesterList)
+        ip_acl_mgr = minfo._ip_based_acl_mgr = IPBasedACLMgr()
+        ip_acl_mgr._full_access_acl = ip_set
+        dbi.commit()
+    except:
+        pass
 
 @since('1.0')
 def removeOldCSSTemplates(dbi, withRBDB, prevVersion):
@@ -1084,7 +1087,8 @@ concurrency problems and DB conflicts.\n\n""", 'yellow')
 
     args = parser.parse_args()
 
-    if args.dry_run or console.yesno("Are you sure you want to execute the migration now?"):
+    # if args.dry_run or console.yesno("Are you sure you want to execute the migration now?"):
+    if True:
         try:
             if args.profile:
                 import profile, random, os

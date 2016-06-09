@@ -29,7 +29,7 @@ import os,shutil
 from indico.core.db import DBMgr
 import MaKaC.common.info as info
 from pytz import timezone,common_timezones
-from MaKaC.conference import CategoryManager, ConferenceHolder, DeletedObjectHolder
+from MaKaC.conference import CategoryManager, ConferenceHolder
 from MaKaC.user import AvatarHolder
 from MaKaC.common import indexes, timerExec
 from datetime import datetime
@@ -37,7 +37,7 @@ import MaKaC.common.indexes as indexes
 from time import sleep
 from indico.core.config import Config
 
-LOG_FILE = ""
+LOG_FILE = "/tmp/TZMigration.log"
 logfile = None
 catTZMap = {}
 CAT_TZ_FILE = ""
@@ -50,6 +50,7 @@ def log(msg):
     logfile.write("%s\n"%msg)
 
 def getCatTZMap():
+    return
     global CAT_TZ_FILE
     global catTZMap
     if CAT_TZ_FILE == "":
@@ -142,6 +143,7 @@ def updateOAIIndexes():
 
     log("Index deleted conference and contribution...")
     try:
+        from MaKaC.conference import DeletedObjectHolder
         DBMgr.getInstance().startRequest()
         doh = DeletedObjectHolder()
         doh.initIndexes()
@@ -173,7 +175,9 @@ def updateCalendarIndex():
                 del cat._calIdx
             except:
                 pass
-            for conf in cat.getConferenceList():
+            try:    conferences = cat.conferences.values()
+            except: conferences = cat.getConferenceList()
+            for conf in conferences:
                 try:
                     calindex.indexConf(conf)
                 except Exception,e:
@@ -204,7 +208,7 @@ def chDate( date, tz=None):
     if not date:
         return None
     if not hasTZ(date):
-        date = timezone(tz).localize(date).astimezone(timezone('UTC'))
+        date = timezone(tz).localize(date).astimezone(timezone(defTZ))
     return date
 
 def updateSchedule( sch, tz=None ):
@@ -310,9 +314,9 @@ def updateAbstract( abs, tz = None ):
 def updateContribution( cont , tz=None):
     if not tz:
         tz = defTZ
-    cont.startDate = chDate(cont.startDate, tz)
-    cont._OAImodificationDS = chDate(cont.getOAIModificationDate(), tz)
     try:
+        cont.startDate = chDate(cont.startDate, tz)
+        cont._OAImodificationDS = chDate(cont.getOAIModificationDate(), tz)
         cont._modificationDS = chDate(cont._modificationDS, tz)
     except:
         pass
@@ -326,18 +330,25 @@ def updateContribution( cont , tz=None):
         pass
 
 def updateLogHandler(lh):
-    for li in lh.getEmailLogList():
-        li._logDate = chDate(li._logDate, defTZ)
-    for li in lh.getActionLogList():
-        li._logDate = chDate(li._logDate, defTZ)
-    for li in lh.getGeneralLogList():
-        li._logDate = chDate(li._logDate, defTZ)
+    try:
+        for li in lh.getEmailLogList():
+            li._logDate = chDate(li._logDate, defTZ)
+    except: pass
+    try:
+        for li in lh.getActionLogList():
+            li._logDate = chDate(li._logDate, defTZ)
+    except: pass
+    try:
+        for li in lh.getGeneralLogList():
+            li._logDate = chDate(li._logDate, defTZ)
+    except: pass
 
 def updateEvent( conf, tz=None ):
     if not tz:
         tz = defTZ
     conf.setTimezone(tz)
-    conf._OAImodificationDS = chDate(conf.getOAIModificationDate(),defTZ)
+    try: conf._OAImodificationDS = chDate(conf.getOAIModificationDate(),defTZ)
+    except: pass
     updateEventDates( conf, tz )
     updateSchedule( conf.getSchedule(), tz )
     #sessions
@@ -393,7 +404,9 @@ def updateCategsAndEvents():
             log("    use default tz: %s"%tz)
         cat.setTimezone(tz)
         updateCatTasks(cat)
-        for conf in cat.getConferenceList():
+        try:    conferences = cat.conferences.values()
+        except: conferences = cat.getConferenceList()
+        for conf in conferences:
             updateEvent(conf, tz)
             log("  conf %s: %s updated with tz: %s"%(conf.getId(), conf.getTitle(), tz))
         DBMgr.getInstance().endRequest()
@@ -419,6 +432,7 @@ getCatTZMap()
 DBMgr.getInstance().startRequest()
 
 #defTZ = info.HelperMaKaCInfo.getMaKaCInfoInstance().getTimezone()
+defTZ = "Europe/Stockholm"
 d = {}
 for i in common_timezones:
     if i in ['GMT','UTC']:
@@ -433,13 +447,12 @@ for i in common_timezones:
             d[cont].append(i)
         else:
             d[cont] = [i]
-cont = ""
+cont = "Europe"
 while not cont in d.keys():
     for i in d.keys():
         log(i)
     cont = raw_input("Enter the country/continent of the server:")
 
-defTZ = ""
 while not defTZ in d[cont]:
     for i in d[cont]:
         log(i)
@@ -501,7 +514,10 @@ DBMgr.getInstance().endRequest()
 # reindex OAI
 if 5 in execute:
     log("step 5/7: rebuild OAI index")
-    updateOAIIndexes()
+    try:
+        updateOAIIndexes()
+    except:
+        log("    ... failed")
 
 DBMgr.getInstance().startRequest()
 # update default conference dates

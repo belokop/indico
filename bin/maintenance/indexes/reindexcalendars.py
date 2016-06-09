@@ -41,7 +41,9 @@ def main():
                 del cat._calIdx
             except:
                 pass
-            for conf in cat.getConferenceList():
+            try:    conferences = cat.conferences.values()
+            except: conferences = cat.getConferenceList()
+            for conf in conferences:
                 calindex.indexConf(conf)
             try:
                 DBMgr.getInstance().commit()

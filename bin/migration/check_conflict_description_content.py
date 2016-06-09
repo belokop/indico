@@ -22,7 +22,7 @@ from indico.core.db import DBMgr
 from MaKaC.conference import ConferenceHolder, AcceptedContribution
 from time import sleep
 
-LOG_FILENAME=""
+LOG_FILENAME="/tmp/check_conflict_description_content.log"
 
 logFile = []
 def log(txt):

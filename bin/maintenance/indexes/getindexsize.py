@@ -26,17 +26,18 @@ def main():
     im = indexes.IndexesHolder()
     emailindex = im.getIndex('email')
     nameindex = im.getIndex('name')
-    surnameindex = im.getIndex('surname')
+    surnameindex = im.getIndex('surName')
     organisationindex = im.getIndex('organisation')
     calendarindex = im.getIndex('calendar')
     categindex = im.getIndex('category')
     print """
-calendar:     %s
-category:     %s
-email:        %s
-name:         %s
-surname:      %s
-organisation: %s""" % (len(repr(calendarindex.dump())),len(repr(categindex.dump())),len(repr(emailindex.dump())),len(repr(nameindex.dump())),len(repr(surnameindex.dump())),len(repr(organisationindex.dump())))
+Indeces size:
+calendar:     %9s
+category:     %9s
+email:        %9s
+name:         %9s
+surName:      %9s
+organisation: %9s""" % (len(repr(calendarindex.dump())),len(repr(categindex.dump())),len(repr(emailindex.dump())),len(repr(nameindex.dump())),len(repr(surnameindex.dump())),len(repr(organisationindex.dump())))
     DBMgr.getInstance().endRequest(False)
 
 if __name__ == "__main__":

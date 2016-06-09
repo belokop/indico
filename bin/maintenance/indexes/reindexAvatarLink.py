@@ -161,9 +161,11 @@ for confId in confids:
 
     #abstracts
     for abs in conf.getAbstractMgr().getAbstractList():
-
-        if isinstance(abs.getSubmitter().getUser(), Avatar):
-            abs.getSubmitter().getUser().linkTo(abs, "submitter")
+        try:
+            if isinstance(abs.getSubmitter().getUser(), Avatar):
+                abs.getSubmitter().getUser().linkTo(abs, "submitter")
+        except:
+            pass
 
     DBMgr.getInstance().endRequest()
 

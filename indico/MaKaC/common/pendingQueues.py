@@ -104,7 +104,8 @@ class PendingHolder(object):
     def _removeTask(self, email):
         if self._hasTask(email):
             t=self._getTasksIdx().matchTask(email)[0]
-            Scheduler.removeTask(t)
+            try: Scheduler.removeTask(t)
+            except: pass
             self._tasksIdx.unindexTask(email, t)
 
     def _hasTask(self, email):
