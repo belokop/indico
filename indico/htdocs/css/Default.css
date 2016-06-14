@@ -31,7 +31,6 @@ div.wrapper {
 
 div.main {
     padding-bottom: 60px;
-/*  background: #fbeed7; */
 }
 
 /*
@@ -2806,15 +2805,14 @@ div.sessionBar .cornerRestricted {
 }
 
 div.mainBreadcrumb {
-/*  background-color: #ECECEC; */
-    background: #fbeed7;
+    background-color: #ECECEC;
     padding: 4px 15px;
     border-bottom: 1px solid #AAAAAA;
 }
 
 div.mainNoBreadcrumb {
 /*  background: transparent url(../images/sprites.png) scroll repeat-x 0 -120px; */
-    background: #fbeed7;
+    background: #fbf9f6;
     height: 10px;
 }
 

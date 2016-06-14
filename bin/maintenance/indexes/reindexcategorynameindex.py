@@ -18,7 +18,7 @@
 ## along with Indico;if not, see <http://www.gnu.org/licenses/>.
 import sys
 
-
+from indico.core.db import DBMgr
 from MaKaC.common import db
 from MaKaC.conference import CategoryManager
 from MaKaC.common import indexes

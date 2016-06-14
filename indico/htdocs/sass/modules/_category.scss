@@ -44,8 +44,8 @@
 }
 
 .category-header {
-    background: #fbeed7 none repeat scroll 0 0;
-    border-bottom: 1px solid #fed18d;
+    background: #fbf9f6 none repeat scroll 0 0;
+    border-bottom: 1px solid #E6E6E6;
     padding: 20px 20px 20px 20px;
 }
 
@@ -274,7 +274,7 @@ ul.category-list {
         &:hover {
             color: $light-black;
             a {
-                color: #0b63a5;
+                color: #e25300;
             }
             &:before {
                 color: $light-black;

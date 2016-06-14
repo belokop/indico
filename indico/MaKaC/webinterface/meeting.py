@@ -479,7 +479,7 @@ class WPMMaterialDisplayBase( material.WPMaterialDisplayBase):
 
     def __init__( self, rh, materialObj ):
         material.WPMaterialDisplayBase.__init__(self, rh, materialObj)
-        self._extraCSS.append(" body { background: #fbeed7; } ")
+        self._extraCSS.append(" body { background: #fbf9f6; } ")
 
     def _applyConfDisplayDecoration( self, body ):
         frame = WMConfDisplayFrame( self._getAW(), self._conf )
@@ -1068,7 +1068,7 @@ class WPMEvaluationDisplay (WPMEvaluationBase, evaluations.WPEvaluationDisplay):
     def __init__(self, rh, conf):
         WPMeetingDisplay.__init__(self, rh, conf)
         # An hack to make sure that the background is the same as the header
-        self._extraCSS.append("body { background: #fbeed7; } ")
+        self._extraCSS.append("body { background: #fbf9f6; } ")
 
     def _getFooter( self ):
         wc = wcomponents.WFooter()
@@ -1142,7 +1142,7 @@ class WPMTimeTableCustomizePDF(WPMeetingDisplay):
         # display page with the same layout when cancelling the pdf export
         self._view = view
         # An hack to make sure that the background is the same as the header
-        self._extraCSS.append("body { background: #fbeed7; } ")
+        self._extraCSS.append("body { background: #fbf9f6; } ")
 
     def _getFooter( self ):
         wc = wcomponents.WFooter()
@@ -1175,7 +1175,7 @@ class WPMDisplayFullMaterialPackage(WPMeetingDisplay, conferences.WPDisplayFullM
     def __init__(self, rh, conf):
         WPMeetingDisplay.__init__(self, rh, conf)
         # An hack to make sure that the background is the same as the header
-        self._extraCSS.append("body { background: #fbeed7; } ")
+        self._extraCSS.append("body { background: #fbf9f6; } ")
 
     def _getFooter( self ):
         wc = wcomponents.WFooter()

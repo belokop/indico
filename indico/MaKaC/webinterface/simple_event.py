@@ -150,7 +150,7 @@ class WPMMaterialDisplayBase( conferences.WPConferenceDefaultDisplayBase):
         self._material = material
         conferences.WPConferenceDefaultDisplayBase.__init__( self, rh, self._material.getConference())
         self._navigationTarget = self._material
-        self._extraCSS.append(" body { background: #fbeed7; } ")
+        self._extraCSS.append(" body { background: #fbf9f6; } ")
 
     def _getNavigationBarHTML(self):
         item = self.navigationEntry
@@ -444,7 +444,7 @@ class WPSEEvaluationDisplay (WPSEEvaluationBase, evaluations.WPEvaluationDisplay
     def __init__(self, rh, conf):
         WPSimpleEventDisplay.__init__(self, rh, conf)
         # An hack to make sure that the background is the same as the header
-        self._extraCSS.append("body { background: #fbeed7; } ")
+        self._extraCSS.append("body { background: #fbf9f6; } ")
 
     def _getFooter( self ):
         wc = wcomponents.WFooter()
@@ -517,7 +517,7 @@ class WPSEDisplayFullMaterialPackage(WPSimpleEventDisplay, conferences.WPDisplay
     def __init__(self, rh, conf):
         WPSimpleEventDisplay.__init__(self, rh, conf)
         # An hack to make sure that the background is the same as the header
-        self._extraCSS.append("body { background: #fbeed7; } ")
+        self._extraCSS.append("body { background: #fbf9f6; } ")
 
     def _getFooter( self ):
         wc = wcomponents.WFooter()
